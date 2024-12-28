@@ -108,7 +108,7 @@ const processAllVideos = async () => {
 
   // Duyệt qua từng folder nền
   for (let i = 0; i < backgroundFolders.length; i++) {
-    const folderName = `folder_${i + 1}`;
+    const folderName = `${i + 1}`;
     const groupFolder = path.join(outputFolder, folderName);
 
     if (!fs.existsSync(groupFolder)) {
@@ -134,10 +134,7 @@ const processAllVideos = async () => {
       const background = backgroundFiles[backgroundIndex];
 
       const overlayFileName = path.basename(overlay, path.extname(overlay));
-      const outputPath = path.join(
-        groupFolder,
-        `${overlayFileName}_rendered.mp4`
-      );
+      const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
 
       console.log(`Đang xử lý overlay: ${overlay} với nền: ${background}`);
       try {

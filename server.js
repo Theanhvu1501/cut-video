@@ -1,4 +1,5 @@
 const fs = require("fs");
+const path = require("path");
 const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
 const ffmpeg = require("fluent-ffmpeg");
 ffmpeg.setFfmpegPath(ffmpegPath);
@@ -37,39 +38,60 @@ function cutVideoSegment(inputFile, outputFile, startTime, duration) {
   });
 }
 
-// Hàm kiểm tra số file đã có trong thư mục hiện tại
-function getNextFileIndex() {
-  const files = fs.readdirSync("."); // Đọc danh sách file trong thư mục hiện tại
-  const videoFiles = files.filter(
-    (file) => file.startsWith("video_done") && file.endsWith(".mp4")
-  );
-  return videoFiles.length + 1;
-}
-
-// Hàm chính để cắt video thành các đoạn 1 tiếng
-async function splitVideoIntoSegments(inputFile) {
+// Hàm chính xử lý cắt video trong tất cả thư mục
+async function processAllVideosInFolders(inputRoot, outputRoot) {
   try {
-    const duration = await getVideoDuration(inputFile); // Lấy độ dài video
-    const segmentDuration = 3600; // Thời lượng mỗi đoạn là 1 tiếng (3600 giây)
-    const totalSegments = Math.floor(duration / segmentDuration); // Số lượng đoạn 1 tiếng
+    const folders = fs.readdirSync(inputRoot).filter((item) => {
+      const fullPath = path.join(inputRoot, item);
+      return fs.statSync(fullPath).isDirectory(); // Chỉ lấy thư mục
+    });
 
-    // Tạo danh sách các Promise để chạy song song
-    const promises = [];
-    for (let i = 0; i < totalSegments; i++) {
-      const startTime = i * segmentDuration;
-      const outputFile = `video_done${getNextFileIndex() + i}.mp4`;
-      promises.push(
-        cutVideoSegment(inputFile, outputFile, startTime, segmentDuration)
-      );
+    for (const folder of folders) {
+      const inputFolderPath = path.join(inputRoot, folder);
+      const outputFolderPath = path.join(outputRoot, folder);
+
+      // Tạo thư mục output nếu chưa tồn tại
+      if (!fs.existsSync(outputFolderPath)) {
+        fs.mkdirSync(outputFolderPath, { recursive: true });
+      }
+
+      const videos = fs
+        .readdirSync(inputFolderPath)
+        .filter((file) => file.endsWith(".mp4"));
+
+      for (const video of videos) {
+        const inputFile = path.join(inputFolderPath, video);
+        const baseVideoName = path.basename(video, ".mp4");
+        const duration = await getVideoDuration(inputFile);
+        const segmentDuration = 3600; // 1 tiếng
+        const totalSegments = Math.floor(duration / segmentDuration);
+
+        for (let i = 0; i < totalSegments; i++) {
+          const startTime = i * segmentDuration;
+          const outputFile = path.join(
+            outputFolderPath,
+            `${baseVideoName}_done${i + 1}.mp4`
+          );
+
+          await cutVideoSegment(
+            inputFile,
+            outputFile,
+            startTime,
+            segmentDuration
+          );
+        }
+      }
     }
 
-    // Chạy tất cả các Promise đồng thời
-    await Promise.all(promises);
-    console.log("All segments processed");
+    console.log("All videos processed successfully.");
   } catch (err) {
-    console.log("Error processing segments:", err);
+    console.error("Error processing videos:", err);
   }
 }
 
-// Gọi hàm để cắt video
-splitVideoIntoSegments("video.mp4");
+// Thư mục nguồn và đích
+const inputRoot = "bgs";
+const outputRoot = "backgrounds";
+
+// Gọi hàm chính
+processAllVideosInFolders(inputRoot, outputRoot);

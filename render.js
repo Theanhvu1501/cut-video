@@ -74,7 +74,7 @@ const processVideo = (inputOverlay, inputBackground, outputPath) => {
         .input(inputOverlay)
         .inputOptions("-t", durationOverlay) // Cắt video nền theo độ dài video overlay
         .complexFilter([
-          "[1:v]scale=1280:720,crop=1280:220:0:500,eq=brightness=-1.0:contrast=2.0:gamma=1.2:saturation=0,format=yuva420p,colorchannelmixer=aa=0.8[overlay_video];" +
+          "[1:v]scale=1280:720,crop=1280:220:0:500,eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0,format=yuva420p,colorchannelmixer=aa=0.8[overlay_video];" +
             "[0:v][overlay_video]overlay=0:H-h[combined_video];" +
             "[1:a]volume=1.0[overlay_audio]",
         ])

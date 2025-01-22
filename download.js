@@ -1,14 +1,42 @@
-const fs = require("fs");
-const path = require("path");
-const sharp = require("sharp");
+import fs from "fs"; // Đọc file
+import pLimit from "p-limit"; // Giới hạn số lượng video tải song song
+import path from "path";
+import sharp from "sharp";
+import youtubedl from "youtube-dl-exec"; // Tải video từ YouTube
+// Hàm tải video YouTube với định dạng MP4
+const downloadVideo = async (url, outputPath) => {
+  try {
+    const output = path.join(outputPath, "%(title)s.%(ext)s");
+    await youtubedl(url, {
+      output: output,
+      format: "bestvideo[height=720]+bestaudio[ext=m4a]/mp4",
+      mergeOutputFormat: "mp4",
+      writeThumbnail: true,
+      convertThumbnails: "jpg",
+    });
+    console.log(`Tải video từ ${url} thành công dưới định dạng MP4!`);
+  } catch (error) {
+    console.error(`Lỗi khi tải video từ ${url}:`, error.message);
+  }
+};
 
-/**
- * Đọc tất cả ảnh từ một thư mục, xử lý từng ảnh (chèn overlay hình tròn) và lưu kết quả vào thư mục khác.
- * @param {string} inputDir - Đường dẫn thư mục chứa ảnh gốc.
- * @param {string} overlayPath - Đường dẫn ảnh overlay.
- * @param {string} outputDir - Đường dẫn thư mục lưu kết quả.
- * @param {number} overlaySize - Kích thước đường kính overlay hình tròn.
- */
+// Hàm tải nhiều video từ danh sách URL
+const downloadVideos = async (filePath, savePath) => {
+  if (!fs.existsSync(savePath)) fs.mkdirSync(savePath); // Tạo thư mục nếu chưa có
+
+  // Đọc file chứa danh sách URL
+  const urls = fs.readFileSync(filePath, "utf-8").split("\n").filter(Boolean); // Tách từng dòng và loại bỏ dòng trống
+
+  const limit = pLimit(3); // Giới hạn tối đa 3 video chạy song song
+
+  // Lặp qua từng URL và gọi hàm tải video
+  const downloadPromises = urls.map((url) =>
+    limit(() => downloadVideo(url, savePath))
+  );
+
+  await Promise.all(downloadPromises); // Chạy tất cả các Promise song song với giới hạn
+};
+
 async function processImagesFromFolder(
   inputDir,
   overlayPath,
@@ -85,10 +113,19 @@ async function processImagesFromFolder(
   }
 }
 
-// Sử dụng hàm
-processImagesFromFolder(
-  "./thumb", // Thư mục chứa ảnh gốc
-  "./avatar.jpg", // Đường dẫn ảnh overlay
-  "./thumb_done", // Thư mục lưu kết quả
-  125 // Đường kính overlay hình tròn
-);
+async function main() {
+  // Đường dẫn tới file chứa các URL
+  const filePath = "./urls.txt"; // Đọc từ file txt chứa các URL
+  const savePath = "./overlays"; // Thư mục lưu video
+  const thumbPath = "./thumbs";
+  // Gọi hàm tải video
+  await downloadVideos(filePath, savePath);
+  await processImagesFromFolder(
+    savePath, // Thư mục chứa ảnh gốc
+    "./avatar.jpg", // Đường dẫn ảnh overlay
+    thumbPath, // Thư mục lưu kết quả
+    125 // Đường kính overlay hình tròn
+  );
+}
+
+main(); // Chạy chương trình main() khi chương trình chạy đầu tiên

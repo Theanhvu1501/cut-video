@@ -1,7 +1,7 @@
-const fs = require("fs");
-const path = require("path");
-const ffmpeg = require("fluent-ffmpeg");
-const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
+import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
+import ffmpeg from "fluent-ffmpeg";
+import fs from "fs";
+import path from "path";
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 // Lấy số ngày và số video từ tham số dòng lệnh
@@ -23,6 +23,17 @@ if (isNaN(currentDay) || currentDay <= 0) {
 if (isNaN(videosPerFolder) || videosPerFolder <= 0) {
   console.error("Số video mỗi folder phải là một số nguyên dương.");
   process.exit(1);
+}
+
+// Ghi currentDay vào file
+const currentDayFile = "./currentDay.txt"; // Đường dẫn file để lưu currentDay
+try {
+  fs.writeFileSync(currentDayFile, currentDay.toString(), {
+    encoding: "utf-8",
+  });
+  console.log(`Đã lưu currentDay (${currentDay}) vào file: ${currentDayFile}`);
+} catch (error) {
+  console.error("Lỗi khi ghi currentDay vào file:", error.message);
 }
 
 const overlayFolder = "./overlays"; // Thư mục chứa các video overlay

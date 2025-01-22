@@ -4,3 +4,4 @@ video*
 node_modules
 *.jpg
 *.mp4
+*.txt

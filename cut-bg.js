@@ -1,7 +1,7 @@
-const fs = require("fs");
-const path = require("path");
-const ffmpegPath = require("@ffmpeg-installer/ffmpeg").path;
-const ffmpeg = require("fluent-ffmpeg");
+import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
+import ffmpeg from "fluent-ffmpeg";
+import fs from "fs";
+import path from "path";
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 // Hàm lấy độ dài video

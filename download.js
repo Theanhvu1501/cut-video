@@ -44,37 +44,38 @@ async function processImagesFromFolder(
   overlaySize
 ) {
   try {
-    // Đảm bảo thư mục đầu ra tồn tại
     if (!fs.existsSync(outputDir)) {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    // Lấy danh sách file trong thư mục đầu vào
     const files = fs.readdirSync(inputDir).filter((file) => {
       const ext = path.extname(file).toLowerCase();
-      return [".jpg", ".jpeg", ".png", ".webp"].includes(ext); // Chỉ xử lý các file ảnh
+      return [".jpg", ".jpeg", ".png", ".webp"].includes(ext);
     });
 
     console.log(
       `Tìm thấy ${files.length} file cần xử lý trong thư mục: ${inputDir}`
     );
 
-    // Tạo ảnh overlay hình tròn một lần để tái sử dụng
+    // Tạo overlay hình tròn với nền trong suốt
     const overlayCircle = await sharp(overlayPath)
       .resize(overlaySize, overlaySize)
       .composite([
         {
           input: Buffer.from(
-            `<svg><circle cx="${overlaySize / 2}" cy="${overlaySize / 2}" r="${
+            `<svg width="${overlaySize}" height="${overlaySize}">
+              <rect width="100%" height="100%" fill="none"/> 
+              <circle cx="${overlaySize / 2}" cy="${overlaySize / 2}" r="${
               overlaySize / 2
-            }" fill="white"/></svg>`
+            }" fill="white" stroke="white"/>
+            </svg>`
           ),
           blend: "dest-in",
         },
       ])
+      .png() // Chuyển sang PNG để hỗ trợ nền trong suốt
       .toBuffer();
 
-    // Xử lý từng ảnh
     for (const file of files) {
       const inputPath = path.join(inputDir, file);
       const outputPath = path.join(outputDir, file);
@@ -87,16 +88,16 @@ async function processImagesFromFolder(
           .modulate({
             brightness: 1.1, // Tăng độ sáng 10%
             saturation: 1.2, // Tăng độ bão hòa 20%
-            hue: 50, // Đổi tông màu (50 độ)
+            hue: 20, // Đổi tông màu (50 độ)
           })
           .toBuffer();
 
         // Lấy kích thước ảnh gốc
         const metadata = await sharp(transformedBaseImage).metadata();
-        const x = metadata.width - overlaySize;
-        const y = 0;
+        const x = metadata.width - overlaySize - 10;
+        const y = 10;
 
-        // Chèn overlay vào ảnh gốc
+        // Chèn overlay hình tròn vào ảnh gốc
         await sharp(transformedBaseImage)
           .composite([{ input: overlayCircle, top: y, left: x }])
           .toFile(outputPath);

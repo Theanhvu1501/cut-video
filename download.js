@@ -1,10 +1,10 @@
+import ffmpeg from "@ffmpeg-installer/ffmpeg";
+import ffmpegFluent from "fluent-ffmpeg";
 import fs from "fs"; // Đọc file
 import pLimit from "p-limit"; // Giới hạn số lượng video tải song song
 import path from "path";
 import sharp from "sharp";
 import youtubedl from "youtube-dl-exec"; // Tải video từ YouTube
-import ffmpeg from "@ffmpeg-installer/ffmpeg";
-import ffmpegFluent from "fluent-ffmpeg";
 
 // Cấu hình FFmpeg cho fluent-ffmpeg
 ffmpegFluent.setFfmpegPath(ffmpeg.path);
@@ -42,7 +42,6 @@ const downloadVideos = async (filePath, savePath) => {
   await Promise.all(downloadPromises); // Chạy tất cả các Promise song song với giới hạn
 };
 
-
 const convertCodec = async (directory) => {
   const files = fs.readdirSync(directory);
 
@@ -78,24 +77,35 @@ const convertCodec = async (directory) => {
   }
 };
 
-async function processImagesFromFolder(inputDir, overlayDir, outputBaseDir, overlaySize) {
+async function processImagesFromFolder(
+  inputDir,
+  overlayDir,
+  outputBaseDir,
+  overlaySize
+) {
   try {
     if (!fs.existsSync(outputBaseDir)) {
       fs.mkdirSync(outputBaseDir, { recursive: true });
     }
 
     // Lấy danh sách ảnh overlay
-    const overlayFiles = fs.readdirSync(overlayDir)
-      .filter(file => /\.(jpg|jpeg|png|webp)$/i.test(file)) // Lọc file ảnh
+    const overlayFiles = fs
+      .readdirSync(overlayDir)
+      .filter((file) => /\.(jpg|jpeg|png|webp)$/i.test(file)) // Lọc file ảnh
       .sort((a, b) => parseInt(a) - parseInt(b)); // Sắp xếp theo số
 
-    console.log(`Tìm thấy ${overlayFiles.length} ảnh overlay trong thư mục: ${overlayDir}`);
+    console.log(
+      `Tìm thấy ${overlayFiles.length} ảnh overlay trong thư mục: ${overlayDir}`
+    );
 
     // Lấy danh sách ảnh đầu vào
-    const inputFiles = fs.readdirSync(inputDir)
-      .filter(file => /\.(jpg|jpeg|png|webp)$/i.test(file));
+    const inputFiles = fs
+      .readdirSync(inputDir)
+      .filter((file) => /\.(jpg|jpeg|png|webp)$/i.test(file));
 
-    console.log(`Tìm thấy ${inputFiles.length} ảnh cần xử lý trong thư mục: ${inputDir}`);
+    console.log(
+      `Tìm thấy ${inputFiles.length} ảnh cần xử lý trong thư mục: ${inputDir}`
+    );
 
     for (let i = 0; i < overlayFiles.length; i++) {
       const overlayPath = path.join(overlayDir, overlayFiles[i]);
@@ -105,20 +115,26 @@ async function processImagesFromFolder(inputDir, overlayDir, outputBaseDir, over
         fs.mkdirSync(outputDir, { recursive: true });
       }
 
-      console.log(`Sử dụng overlay: ${overlayFiles[i]} -> Lưu vào ${outputDir}`);
+      console.log(
+        `Sử dụng overlay: ${overlayFiles[i]} -> Lưu vào ${outputDir}`
+      );
 
       // Tạo overlay hình tròn
       const overlayCircle = await sharp(overlayPath)
         .resize(overlaySize, overlaySize)
-        .composite([{
-          input: Buffer.from(
-            `<svg width="${overlaySize}" height="${overlaySize}">
+        .composite([
+          {
+            input: Buffer.from(
+              `<svg width="${overlaySize}" height="${overlaySize}">
               <rect width="100%" height="100%" fill="none"/> 
-              <circle cx="${overlaySize / 2}" cy="${overlaySize / 2}" r="${overlaySize / 2}" fill="white" stroke="white"/>
+              <circle cx="${overlaySize / 2}" cy="${overlaySize / 2}" r="${
+                overlaySize / 2
+              }" fill="white" stroke="white"/>
             </svg>`
-          ),
-          blend: "dest-in",
-        }])
+            ),
+            blend: "dest-in",
+          },
+        ])
         .png()
         .toBuffer();
 
@@ -155,10 +171,8 @@ async function processImagesFromFolder(inputDir, overlayDir, outputBaseDir, over
   }
 }
 
-
 async function main() {
   // Đường dẫn tới file chứa các URL
-
 
   const filePath = "./urls.txt";
   const savePath = "./overlays"; // Thư mục lưu video tải về
@@ -168,8 +182,13 @@ async function main() {
 
   // Gọi hàm tải video
   await downloadVideos(filePath, savePath);
-  await convertCodec(savePath);
-  await processImagesFromFolder(savePath, overlayDir, outputBaseDir, overlaySize);
+  // await convertCodec(savePath);
+  await processImagesFromFolder(
+    savePath,
+    overlayDir,
+    outputBaseDir,
+    overlaySize
+  );
 }
 
 main(); // Chạy chương trình main() khi chương trình chạy đầu tiên

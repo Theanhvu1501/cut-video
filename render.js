@@ -2,6 +2,7 @@ import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
+import sharp from "sharp";
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 // Lấy số ngày và số video từ tham số dòng lệnh
@@ -39,6 +40,7 @@ try {
 const overlayFolder = "./overlays"; // Thư mục chứa các video overlay
 const backgroundFolder = "./backgrounds"; // Thư mục chứa các thư mục nền (folder_1, folder_2, ...)
 const outputFolder = "./done"; // Thư mục xuất file
+const avatarFolder = "./images"; // Thư mục chứa các ảnh avatar
 
 // Tạo thư mục output nếu chưa tồn tại
 if (!fs.existsSync(outputFolder)) {
@@ -69,8 +71,38 @@ const calculateStartIndex = (folderIndex, day, totalVideos) => {
   );
 };
 
+// Thêm hàm xử lý avatar thành hình tròn
+const createCircularAvatar = async (avatarPath, size = 100) => {
+  const tempPath = avatarPath.replace(".jpg", "_circular.png");
+
+  await sharp(avatarPath)
+    .resize(size, size)
+    .composite([
+      {
+        input: Buffer.from(
+          `<svg><circle cx="${size / 2}" cy="${size / 2}" r="${
+            size / 2
+          }" fill="rgba(255, 255, 255, 0.5)" /></svg>`
+        ),
+        blend: "dest-in",
+      },
+    ])
+    .png()
+    .toFile(tempPath);
+
+  return tempPath;
+};
+
 // Hàm xử lý từng cặp overlay và background
-const processVideo = (inputOverlay, inputBackground, outputPath) => {
+const processVideo = async (
+  inputOverlay,
+  inputBackground,
+  outputPath,
+  avatarPath
+) => {
+  // Tạo avatar hình tròn trước
+  const circularAvatarPath = await createCircularAvatar(avatarPath);
+
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
 
@@ -83,18 +115,21 @@ const processVideo = (inputOverlay, inputBackground, outputPath) => {
       const durationOverlay = metadata.format.duration;
       ffmpeg(inputBackground)
         .input(inputOverlay)
-        // .inputOptions("-ss 6") // Cat 11s daudau
-        .inputOptions("-t", durationOverlay) // Cắt video nền theo độ dài video overlay
+        .input(circularAvatarPath)
+        .inputOptions("-t", durationOverlay)
         .complexFilter([
-          "[1:v]scale=1280:720,crop=1280:190:0:490,eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0,format=yuva420p,colorchannelmixer=aa=0.8[overlay_video];" +
-            "[0:v][overlay_video]overlay=0:H-h[combined_video];" +
-            "[1:a]volume=1.0[overlay_audio]",
+          "[1:v]scale=1280:720,crop=1280:190:0:490[cropped]",
+          "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]",
+          "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]",
+          "[0:v][overlay_video]overlay=0:H-h[temp1]",
+          "[temp1][2:v]overlay=W-w-10:10[combined_video]",
+          "[1:a]volume=1.0[overlay_audio]",
         ])
-        .outputOptions("-preset", "ultrafast") // Tối ưu tốc độ xử lý
-        .outputOptions("-t", durationOverlay) // Cắt video đầu ra sao cho độ dài bằng video overlay
+        .outputOptions("-preset", "ultrafast")
+        .outputOptions("-t", durationOverlay)
         .audioCodec("aac")
-        .map("[combined_video]") // Lấy video stream đã xử lý
-        .map("[overlay_audio]") // Lấy audio stream từ video overlay
+        .map("[combined_video]")
+        .map("[overlay_audio]")
         .on("end", () => {
           const endTime = Date.now();
           console.log(
@@ -103,10 +138,16 @@ const processVideo = (inputOverlay, inputBackground, outputPath) => {
               1000
             ).toFixed(2)} giây.`
           );
+          // Xóa file avatar tạm
+          fs.unlinkSync(circularAvatarPath);
           resolve();
         })
         .on("error", (err) => {
           console.error("Lỗi khi xử lý video:", err.message);
+          // Xóa file avatar tạm nếu có lỗi
+          if (fs.existsSync(circularAvatarPath)) {
+            fs.unlinkSync(circularAvatarPath);
+          }
           reject(err);
         })
         .save(outputPath);
@@ -122,6 +163,12 @@ const processAllVideos = async () => {
   for (let i = 0; i < backgroundFolders.length; i++) {
     const folderName = `${i + 1}`;
     const groupFolder = path.join(outputFolder, folderName);
+    const avatarPath = path.join(avatarFolder, `${folderName}.jpg`);
+
+    if (!fs.existsSync(avatarPath)) {
+      console.error(`Không tìm thấy avatar: ${avatarPath}`);
+      continue;
+    }
 
     if (!fs.existsSync(groupFolder)) {
       fs.mkdirSync(groupFolder, { recursive: true });
@@ -150,7 +197,7 @@ const processAllVideos = async () => {
 
       console.log(`Đang xử lý overlay: ${overlay} với nền: ${background}`);
       try {
-        await processVideo(overlay, background, outputPath);
+        await processVideo(overlay, background, outputPath, avatarPath);
       } catch (error) {
         console.error("Lỗi khi xử lý:", error.message);
       }

@@ -8,6 +8,34 @@ import youtubedl from "youtube-dl-exec"; // Tải video từ YouTube
 
 // Cấu hình FFmpeg cho fluent-ffmpeg
 ffmpegFluent.setFfmpegPath(ffmpeg.path);
+
+const generateUserAgent = () => {
+  const browsers = [
+    { name: "Chrome", versions: ["119.0.0.0", "120.0.0.0", "121.0.0.0"] },
+    { name: "Firefox", versions: ["120.0", "121.0", "122.0"] },
+    { name: "Edge", versions: ["119.0.0.0", "120.0.0.0", "121.0.0.0"] },
+  ];
+
+  const os = [
+    "Windows NT 10.0; Win64; x64",
+    "Macintosh; Intel Mac OS X 10_15_7",
+    "X11; Linux x86_64",
+  ];
+
+  const randomBrowser = browsers[Math.floor(Math.random() * browsers.length)];
+  const randomOS = os[Math.floor(Math.random() * os.length)];
+  const randomVersion =
+    randomBrowser.versions[
+      Math.floor(Math.random() * randomBrowser.versions.length)
+    ];
+
+  if (randomBrowser.name === "Chrome" || randomBrowser.name === "Edge") {
+    return `Mozilla/5.0 (${randomOS}) AppleWebKit/537.36 (KHTML, like Gecko) ${randomBrowser.name}/${randomVersion} Safari/537.36`;
+  } else {
+    return `Mozilla/5.0 (${randomOS}; rv:${randomVersion}) Gecko/20100101 ${randomBrowser.name}/${randomVersion}`;
+  }
+};
+
 // Hàm tải video YouTube với định dạng MP4
 const downloadVideo = async (url, outputPath) => {
   try {
@@ -18,6 +46,8 @@ const downloadVideo = async (url, outputPath) => {
       mergeOutputFormat: "mp4",
       writeThumbnail: true,
       convertThumbnails: "jpg",
+      userAgent: generateUserAgent(),
+      retries: 3,
     });
     console.log(`Tải video từ ${url} thành công dưới định dạng MP4!`);
   } catch (error) {
@@ -32,7 +62,7 @@ const downloadVideos = async (filePath, savePath) => {
   // Đọc file chứa danh sách URL
   const urls = fs.readFileSync(filePath, "utf-8").split("\n").filter(Boolean); // Tách từng dòng và loại bỏ dòng trống
 
-  const limit = pLimit(3); // Giới hạn tối đa 3 video chạy song song
+  const limit = pLimit(2); // Giới hạn tối đa 3 video chạy song song
 
   // Lặp qua từng URL và gọi hàm tải video
   const downloadPromises = urls.map((url) =>

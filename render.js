@@ -41,6 +41,7 @@ const overlayFolder = "./overlays"; // Thư mục chứa các video overlay
 const backgroundFolder = "./backgrounds"; // Thư mục chứa các thư mục nền (folder_1, folder_2, ...)
 const outputFolder = "./done"; // Thư mục xuất file
 const avatarFolder = "./images"; // Thư mục chứa các ảnh avatar
+const snowOverlay = "./snow.mov";
 
 // Tạo thư mục output nếu chưa tồn tại
 if (!fs.existsSync(outputFolder)) {
@@ -116,13 +117,15 @@ const processVideo = async (
       ffmpeg(inputBackground)
         .input(inputOverlay)
         .input(circularAvatarPath)
+        .input(snowOverlay)
         .inputOptions("-t", durationOverlay)
         .complexFilter([
           "[1:v]scale=1280:720,crop=1280:190:0:490[cropped]",
           "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]",
           "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]",
           "[0:v][overlay_video]overlay=0:H-h[temp1]",
-          "[temp1][2:v]overlay=W-w-10:10[combined_video]",
+          "[temp1][2:v]overlay=W-w-10:10[temp2]",
+          "[temp2][3:v]overlay=0:0:format=auto[combined_video]", // <- lớp tuyết
           "[1:a]volume=1.0[overlay_audio]",
         ])
         .outputOptions("-preset", "ultrafast")

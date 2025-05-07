@@ -47,10 +47,10 @@ const imageBackgroundFolder = "./image_backgrounds"; // Thư mục chứa các h
 const outputFolder = "./done"; // Thư mục xuất file
 const avatarFolder = "./images"; // Thư mục chứa các ảnh avatar
 const snowOverlay = "./snow1.mov";
-const useChromaKey = true;
-const color = "4887EE";
-const height = 190;
-const y_offset = 490;
+const useChromaKey = false;
+const color = "4887EE"; // màu chroma key useChromaKey = true
+const height = 190; // chiều cao của phần video cần cắt.
+const y_offset = 490; // vị trí cắt từ trên xuống dưới video gốc
 
 // Tạo thư mục nếu chưa tồn tại
 if (!fs.existsSync(outputFolder)) {

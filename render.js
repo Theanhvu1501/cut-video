@@ -47,7 +47,7 @@ const imageBackgroundFolder = "./image_backgrounds"; // Thư mục chứa các h
 const outputFolder = "./done"; // Thư mục xuất file
 const avatarFolder = "./images"; // Thư mục chứa các ảnh avatar
 const snowOverlay = "./snow1.mov";
-const useChromaKey = false;
+const useChromaKey = true;
 const color = "4887EE"; // màu chroma key useChromaKey = true
 const height = 190; // chiều cao của phần video cần cắt.
 const y_offset = 490; // vị trí cắt từ trên xuống dưới video gốc
@@ -79,16 +79,20 @@ const backgroundFolders = fs
     fs.lstatSync(path.join(backgroundFolder, folder)).isDirectory()
   );
 
-// Lấy danh sách hình ảnh background
-const imageBackgroundFiles = fs.existsSync(imageBackgroundFolder)
-  ? getFilesFromFolder(imageBackgroundFolder, [".jpg", ".jpeg", ".png"])
+// Lấy danh sách thư mục con trong image_backgrounds
+const imageBackgroundFolders = fs.existsSync(imageBackgroundFolder)
+  ? fs
+      .readdirSync(imageBackgroundFolder)
+      .filter((folder) =>
+        fs.lstatSync(path.join(imageBackgroundFolder, folder)).isDirectory()
+      )
   : [];
 
 // Tạo thư mục image_backgrounds nếu chưa tồn tại
 if (!fs.existsSync(imageBackgroundFolder)) {
   fs.mkdirSync(imageBackgroundFolder, { recursive: true });
   console.log(
-    `Đã tạo thư mục ${imageBackgroundFolder}. Vui lòng thêm hình ảnh background vào thư mục này.`
+    `Đã tạo thư mục ${imageBackgroundFolder}. Vui lòng thêm các thư mục con (1, 2, 3...) và hình ảnh background vào các thư mục này.`
   );
 }
 // endregion
@@ -221,14 +225,17 @@ const processVideo = async (
 // region ========== 9. Xử lý toàn bộ video ==========
 const processAllVideos = async () => {
   const totalOverlays = overlayFiles.length;
-  const totalImageBackgrounds = imageBackgroundFiles.length;
+  const totalImageBackgroundFolders = imageBackgroundFolders.length;
   const totalVideoBackgrounds = backgroundFolders.length;
-  const useImageBackground = totalImageBackgrounds > 0;
+  const useImageBackground = totalImageBackgroundFolders > 0;
+
   const totalBackgrounds = useImageBackground
-    ? totalImageBackgrounds
+    ? totalImageBackgroundFolders
     : totalVideoBackgrounds;
   if (useImageBackground) {
-    console.log(`Sử dụng ${totalImageBackgrounds} hình ảnh làm background.`);
+    console.log(
+      `Sử dụng hình ảnh từ ${totalImageBackgroundFolders} thư mục làm background.`
+    );
   }
 
   // Duyệt qua từng folder nền
@@ -248,12 +255,26 @@ const processAllVideos = async () => {
 
     // Lấy danh sách background (video hoặc hình ảnh)
     let backgroundFiles = [];
-    let totalBackgrounds = 0;
+    let totalBackgroundsForFolder = 0;
 
     if (useImageBackground) {
-      // Sử dụng hình ảnh làm background
-      backgroundFiles = imageBackgroundFiles;
-      totalBackgrounds = totalImageBackgrounds;
+      // Tìm thư mục con tương ứng trong image_backgrounds
+      const imageBackgroundSubfolder =
+        imageBackgroundFolders.find((folder) => folder === folderName) ||
+        imageBackgroundFolders[0]; // Sử dụng folder đầu tiên nếu không tìm thấy
+
+      if (imageBackgroundSubfolder) {
+        const imageBackgroundFolderPath = path.join(
+          imageBackgroundFolder,
+          imageBackgroundSubfolder
+        );
+        backgroundFiles = getFilesFromFolder(imageBackgroundFolderPath, [
+          ".jpg",
+          ".jpeg",
+          ".png",
+        ]);
+        totalBackgroundsForFolder = backgroundFiles.length;
+      }
     } else {
       // Sử dụng video làm background
       const backgroundFolderPath = path.join(
@@ -261,10 +282,10 @@ const processAllVideos = async () => {
         backgroundFolders[i]
       );
       backgroundFiles = getFilesFromFolder(backgroundFolderPath);
-      totalBackgrounds = backgroundFiles.length;
+      totalBackgroundsForFolder = backgroundFiles.length;
     }
 
-    if (totalBackgrounds === 0) {
+    if (totalBackgroundsForFolder === 0) {
       console.error(`Không có file background nào cho folder ${folderName}`);
       continue;
     }
@@ -275,7 +296,11 @@ const processAllVideos = async () => {
     // Lấy số video từ vị trí bắt đầu
     for (let j = 0; j < videosPerFolder; j++) {
       const overlayIndex = (startIndex + j) % totalOverlays; // Đảm bảo không vượt quá số video overlay
-      const backgroundIndex = (startIndex + j) % totalBackgrounds; // Đảm bảo không vượt quá số video nền
+
+      // Chọn ngẫu nhiên một background nếu sử dụng hình ảnh
+      const backgroundIndex = useImageBackground
+        ? Math.floor(Math.random() * totalBackgroundsForFolder)
+        : (startIndex + j) % totalBackgroundsForFolder;
 
       const overlay = overlayFiles[overlayIndex];
       const background = backgroundFiles[backgroundIndex];

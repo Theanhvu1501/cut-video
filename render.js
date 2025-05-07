@@ -47,6 +47,10 @@ const imageBackgroundFolder = "./image_backgrounds"; // Thư mục chứa các h
 const outputFolder = "./done"; // Thư mục xuất file
 const avatarFolder = "./images"; // Thư mục chứa các ảnh avatar
 const snowOverlay = "./snow1.mov";
+const useChromaKey = true;
+const color = "4887EE";
+const height = 190;
+const y_offset = 490;
 
 // Tạo thư mục nếu chưa tồn tại
 if (!fs.existsSync(outputFolder)) {
@@ -122,6 +126,34 @@ const createCircularAvatar = async (avatarPath, size = 100) => {
 // endregion
 
 // region ========== 8. Xử lý video ==========
+const complexFilter = (isImage) => {
+  const chromaKeyFilter = useChromaKey
+    ? `[1:v]scale=1280:720,colorkey=0x${color}:0.3:0.1,format=yuva420p[overlay_video]`
+    : `[1:v]scale=1280:720,crop=1280:${height}:0:${y_offset}[cropped]`;
+  const filter = [
+    isImage
+      ? ["[0:v]scale=1280:720,setsar=1[bg]", chromaKeyFilter].join(";")
+      : chromaKeyFilter,
+  ];
+  if (!useChromaKey) {
+    filter.push(
+      "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]"
+    );
+    filter.push(
+      "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]"
+    );
+  }
+  return [
+    filter.join(";"),
+    isImage
+      ? "[bg][overlay_video]overlay=0:H-h[temp1]"
+      : "[0:v][overlay_video]overlay=0:H-h[temp1]",
+    "[temp1][2:v]overlay=W-w-10:10[temp2]",
+    "[temp2][3:v]overlay=0:0:format=auto[combined_video]",
+    "[1:a]volume=1.0[overlay_audio]",
+  ];
+};
+
 const processVideo = async (
   inputOverlay,
   inputBackground,
@@ -157,22 +189,7 @@ const processVideo = async (
         .input(circularAvatarPath)
         .input(snowOverlay)
         .inputOptions("-t", duration)
-        .complexFilter([
-          isImage
-            ? [
-                "[0:v]scale=1280:720,setsar=1[bg]",
-                "[1:v]scale=1280:720,crop=1280:190:0:490[cropped]",
-              ].join(";")
-            : "[1:v]scale=1280:720,crop=1280:190:0:490[cropped]",
-          "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]",
-          "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]",
-          isImage
-            ? "[bg][overlay_video]overlay=0:H-h[temp1]"
-            : "[0:v][overlay_video]overlay=0:H-h[temp1]",
-          "[temp1][2:v]overlay=W-w-10:10[temp2]",
-          "[temp2][3:v]overlay=0:0:format=auto[combined_video]",
-          "[1:a]volume=1.0[overlay_audio]",
-        ])
+        .complexFilter(complexFilter(isImage))
         .outputOptions("-preset", "ultrafast")
         .outputOptions("-t", duration)
         .audioCodec("aac")

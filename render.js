@@ -1,10 +1,11 @@
 import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
+import { spawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
+import { fileURLToPath } from "url";
 ffmpeg.setFfmpegPath(ffmpegPath);
-
 // region ========== 1. Đọc tham số dòng lệnh ==========
 const args = process.argv.slice(2);
 if (args.length < 2) {
@@ -51,6 +52,10 @@ const useChromaKey = true;
 const color = "4887EE"; // màu chroma key useChromaKey = true
 const height = 190; // chiều cao của phần video cần cắt.
 const y_offset = 490; // vị trí cắt từ trên xuống dưới video gốc
+const ipList = "./vps.txt";
+const useAutoUploadVps = true;
+const __filename = fileURLToPath(import.meta.url); // chuyển URL thành đường dẫn thực tế
+const __dirname = path.dirname(__filename); // lấy thư mục chứa file
 
 // Tạo thư mục nếu chưa tồn tại
 if (!fs.existsSync(outputFolder)) {
@@ -69,6 +74,29 @@ const getFilesFromFolder = (folder, fileTypes = [".mp4"]) => {
     .sort((a, b) => a.localeCompare(b)) // Sắp xếp theo tên file
     .map((file) => path.join(folder, file));
 };
+
+// Đọc danh sách IP từ file
+const readIpList = () => {
+  try {
+    if (!fs.existsSync(ipList)) {
+      console.warn(`⚠️ Không tìm thấy file IP: ${ipList}`);
+      return [];
+    }
+
+    const content = fs.readFileSync(ipList, "utf-8");
+    const ips = content
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#"));
+
+    console.log(`📋 Đã đọc ${ips.length} IP từ file ${ipList}`);
+    return ips;
+  } catch (error) {
+    console.error(`❌ Lỗi khi đọc file IP: ${error.message}`);
+    return [];
+  }
+};
+
 // endregion
 
 // region ========== 5. Danh sách file ==========
@@ -321,9 +349,28 @@ const processAllVideos = async () => {
         console.error("Lỗi khi xử lý:", error.message);
       }
     }
+
+    uploadVps(i, folderName);
   }
 
   console.log("Đã xử lý xong toàn bộ video.");
+};
+// endregion
+
+// region ========== 11. Upload VPS ==========
+const uploadVps = (index, folderName) => {
+  if (!useAutoUploadVps) return;
+  // Đọc danh sách IP
+  const vpsList = readIpList();
+  const vpsName = vpsList[index];
+  const currentFolderUpload = path.join(__dirname, outputFolder, folderName);
+  const echoInfo = `echo Uploading ${currentFolderUpload} to VPS ${vpsName} &&`;
+  console.log(`Đang upload folder ${currentFolderUpload} lên VPS ${vpsName}`);
+  const cmd = `${echoInfo} rclone copy ${currentFolderUpload} ${vpsName}:/  --transfers 16 --checkers 8 --progress`;
+  spawn("cmd.exe", ["/c", "start", "cmd.exe", "/k", cmd], {
+    detached: true,
+    stdio: "ignore",
+  }).unref();
 };
 // endregion
 

@@ -18,6 +18,8 @@ const downloadVideo = async (url, outputPath) => {
       mergeOutputFormat: "mp4",
       writeThumbnail: true,
       convertThumbnails: "jpg",
+      cookies: "./cookies.txt",
+      addHeader: ["referer:youtube.com", "user-agent:googlebot"],
     });
     console.log(`Tải video từ ${url} thành công dưới định dạng MP4!`);
   } catch (error) {

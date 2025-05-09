@@ -50,6 +50,7 @@ const avatarFolder = "./images"; // Thư mục chứa các ảnh avatar
 const snowOverlay = "./snow1.mov";
 const useChromaKey = true;
 const color = "4887EE"; // màu chroma key useChromaKey = true
+const chromaKeyFile = "./chromaKey.txt";
 const height = 190; // chiều cao của phần video cần cắt.
 const y_offset = 490; // vị trí cắt từ trên xuống dưới video gốc
 const ipList = "./vps.txt";
@@ -119,6 +120,46 @@ const imageBackgroundFolders = fs.existsSync(imageBackgroundFolder)
       )
   : [];
 
+// Đọc danh sách màu chroma key từ file
+const readChromaKeyColors = () => {
+  const colors = [];
+
+  try {
+    if (fs.existsSync(chromaKeyFile)) {
+      const content = fs.readFileSync(chromaKeyFile, "utf-8");
+      const lines = content
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith("#")); // Bỏ qua dòng trống và comment
+
+      // Kiểm tra định dạng màu hợp lệ (mã hex 6 ký tự)
+      for (const line of lines) {
+        if (/^[0-9A-Fa-f]{6}$/.test(line)) {
+          colors.push(line);
+        } else {
+          console.warn(
+            `Định dạng màu không hợp lệ trong file ${chromaKeyFile}: ${line}, sẽ bỏ qua`
+          );
+        }
+      }
+
+      console.log(
+        `Đã đọc ${colors.length} màu chroma key từ file ${chromaKeyFile}`
+      );
+    } else {
+      console.log(
+        `Không tìm thấy file ${chromaKeyFile}, sẽ sử dụng màu mặc định: #${color}`
+      );
+    }
+  } catch (error) {
+    console.error(`Lỗi khi đọc file ${chromaKeyFile}: ${error.message}`);
+  }
+
+  return colors;
+};
+// Đọc danh sách màu từ file
+const chromaKeyColors = readChromaKeyColors();
+
 // Tạo thư mục image_backgrounds nếu chưa tồn tại
 if (!fs.existsSync(imageBackgroundFolder)) {
   fs.mkdirSync(imageBackgroundFolder, { recursive: true });
@@ -161,9 +202,18 @@ const createCircularAvatar = async (avatarPath, size = 100) => {
 // endregion
 
 // region ========== 8. Xử lý video ==========
-const complexFilter = (isImage) => {
+const complexFilter = (isImage, inputOverlay) => {
+  // Xác định index của video overlay trong danh sách
+  const overlayIndex = overlayFiles.findIndex((file) => file === inputOverlay);
+
+  // Lấy màu chroma key tương ứng với index của video, hoặc màu mặc định nếu không có
+  const videoColor =
+    overlayIndex >= 0 && overlayIndex < chromaKeyColors.length
+      ? chromaKeyColors[overlayIndex]
+      : color;
+
   const chromaKeyFilter = useChromaKey
-    ? `[1:v]scale=1280:720,colorkey=0x${color}:0.3:0.1,format=yuva420p[overlay_video]`
+    ? `[1:v]scale=1280:720,colorkey=0x${videoColor}:0.3:0.1,format=yuva420p[overlay_video]`
     : `[1:v]scale=1280:720,crop=1280:${height}:0:${y_offset}[cropped]`;
   const filter = [
     isImage
@@ -224,7 +274,7 @@ const processVideo = async (
         .input(circularAvatarPath)
         .input(snowOverlay)
         .inputOptions("-t", duration)
-        .complexFilter(complexFilter(isImage))
+        .complexFilter(complexFilter(isImage, inputOverlay))
         .outputOptions("-preset", "ultrafast")
         .outputOptions("-t", duration)
         .audioCodec("aac")

@@ -273,6 +273,7 @@ const processVideo = async (
         .input(inputOverlay)
         .input(circularAvatarPath)
         .input(snowOverlay)
+        .inputOptions(["-stream_loop", "-1"])
         .inputOptions("-t", duration)
         .complexFilter(complexFilter(isImage, inputOverlay))
         .outputOptions("-preset", "ultrafast")

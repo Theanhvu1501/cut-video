@@ -53,7 +53,7 @@ const color = "4887EE"; // màu chroma key useChromaKey = true
 const height = 190; // chiều cao của phần video cần cắt.
 const y_offset = 490; // vị trí cắt từ trên xuống dưới video gốc
 const ipList = "./vps.txt";
-const useAutoUploadVps = true;
+const useAutoUploadVps = false;
 const __filename = fileURLToPath(import.meta.url); // chuyển URL thành đường dẫn thực tế
 const __dirname = path.dirname(__filename); // lấy thư mục chứa file
 

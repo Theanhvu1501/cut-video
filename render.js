@@ -58,9 +58,12 @@ const __filename = fileURLToPath(import.meta.url); // chuyển URL thành đư�
 const __dirname = path.dirname(__filename); // lấy thư mục chứa file
 
 // Tạo thư mục nếu chưa tồn tại
-if (!fs.existsSync(outputFolder)) {
-  fs.mkdirSync(outputFolder, { recursive: true });
+if (fs.existsSync(outputFolder)) {
+  console.log(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`);
+  fs.rmSync(outputFolder, { recursive: true, force: true });
 }
+
+fs.mkdirSync(outputFolder, { recursive: true });
 // endregion
 
 // region ========== 4. Tiện ích đọc file ==========

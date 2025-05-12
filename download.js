@@ -182,6 +182,14 @@ async function main() {
   const outputBaseDir = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
   const overlaySize = 125;
 
+  // Tạo thư mục nếu chưa tồn tại
+  if (fs.existsSync(savePath)) {
+    console.log(`Thư mục ${savePath} đã tồn tại, đang xóa...`);
+    fs.rmSync(savePath, { recursive: true, force: true });
+  }
+
+  fs.mkdirSync(savePath, { recursive: true });
+
   // Gọi hàm tải video
   await downloadVideos(filePath, savePath);
   // await convertCodec(savePath);

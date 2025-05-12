@@ -75,7 +75,13 @@ const getFilesFromFolder = (folder, fileTypes = [".mp4"]) => {
       const ext = path.extname(file).toLowerCase();
       return fileTypes.includes(ext);
     })
-    .sort((a, b) => a.localeCompare(b)) // Sắp xếp theo tên file
+    .sort((a, b) => {
+      // Sắp xếp theo thứ tự tự nhiên (natural sort)
+      return a.localeCompare(b, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    })
     .map((file) => path.join(folder, file));
 };
 

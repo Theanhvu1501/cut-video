@@ -173,6 +173,24 @@ async function processImagesFromFolder(
   }
 }
 
+const fixFileNames = (directory) => {
+  const files = fs.readdirSync(directory);
+
+  for (const file of files) {
+    if (file.includes("？")) {
+      const oldPath = path.join(directory, file);
+      const newPath = path.join(directory, file.replace(/？/g, "?"));
+
+      try {
+        fs.renameSync(oldPath, newPath);
+        console.log(`Đã sửa tên file: ${file} -> ${file.replace(/？/g, "?")}`);
+      } catch (error) {
+        console.error(`Lỗi khi đổi tên file ${file}: ${error.message}`);
+      }
+    }
+  }
+};
+
 async function main() {
   // Đường dẫn tới file chứa các URL
 
@@ -189,6 +207,9 @@ async function main() {
   }
 
   fs.mkdirSync(savePath, { recursive: true });
+
+  console.log("Đang sửa tên file có chứa ký tự ？...");
+  fixFileNames(savePath);
 
   // Gọi hàm tải video
   await downloadVideos(filePath, savePath);

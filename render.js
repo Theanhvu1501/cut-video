@@ -422,7 +422,7 @@ const uploadVps = (index, folderName) => {
   if (!useAutoUploadVps) return;
   // Đọc danh sách IP
   const vpsList = readIpList();
-  const vpsName = vpsList[index]?.split(":")[1];
+  const vpsName = vpsList[index];
   const currentFolderUpload = path.join(__dirname, outputFolder);
   const echoInfo = `echo Uploading ${currentFolderUpload} to VPS ${vpsName} &&`;
   console.log(`Đang upload folder ${currentFolderUpload} lên VPS ${vpsName}`);

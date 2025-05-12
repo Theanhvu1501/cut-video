@@ -423,14 +423,21 @@ const uploadVps = (index, folderName) => {
   // Đọc danh sách IP
   const vpsList = readIpList();
   const vpsName = vpsList[index];
-  const currentFolderUpload = path.join(__dirname, outputFolder, folderName);
+  const currentFolderUpload = path.join(__dirname, outputFolder);
   const echoInfo = `echo Uploading ${currentFolderUpload} to VPS ${vpsName} &&`;
   console.log(`Đang upload folder ${currentFolderUpload} lên VPS ${vpsName}`);
-  const cmd = `${echoInfo} rclone copy ${currentFolderUpload} ${vpsName}:/  --transfers 16 --checkers 8 --progress`;
+
+  // Tạo lệnh rclone với dấu ngoặc kép cho các đường dẫn
+  const rcloneCmd = `rclone copy "${currentFolderUpload}" "${vpsName}:/" --include "${folderName}/**" --transfers 16 --checkers 8 --progress`;
+  const cmd = `${echoInfo} ${rcloneCmd}`;
+  // Sử dụng spawn để mở cửa sổ CMD mới và chạy lệnh
   spawn("cmd.exe", ["/c", "start", "cmd.exe", "/k", cmd], {
     detached: true,
     stdio: "ignore",
+    windowsVerbatimArguments: true,
   }).unref();
+
+  console.log(`Đã bắt đầu upload folder ${folderName} lên VPS ${vpsName}`);
 };
 // endregion
 

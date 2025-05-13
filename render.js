@@ -2,6 +2,8 @@ import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import { spawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
+import os from "os";
+import pLimit from "p-limit";
 import path from "path";
 import sharp from "sharp";
 import { fileURLToPath } from "url";
@@ -48,6 +50,10 @@ const updateProgress = () => {
     );
   }
 };
+
+// Cache cho avatar và metadata
+const avatarCache = new Map();
+const metadataCache = new Map();
 
 // region ========== 1. Đọc tham số dòng lệnh ==========
 const args = process.argv.slice(2);
@@ -231,7 +237,19 @@ const calculateStartIndex = (folderIndex, day, totalVideos) => {
 
 // region ========== 7. Tạo avatar hình tròn ==========
 const createCircularAvatar = async (avatarPath, size = 100) => {
-  const tempPath = avatarPath.replace(".jpg", "_circular.png");
+  // Kiểm tra cache trước
+  const cacheKey = `${avatarPath}_${size}`;
+  if (avatarCache.has(cacheKey)) {
+    return avatarCache.get(cacheKey);
+  }
+
+  const tempPath = avatarPath.replace(".jpg", `_circular_${size}.png`);
+
+  // Kiểm tra nếu file đã tồn tại
+  if (fs.existsSync(tempPath)) {
+    avatarCache.set(cacheKey, tempPath);
+    return tempPath;
+  }
 
   await sharp(avatarPath)
     .resize(size, size)
@@ -248,11 +266,80 @@ const createCircularAvatar = async (avatarPath, size = 100) => {
     .png()
     .toFile(tempPath);
 
+  avatarCache.set(cacheKey, tempPath);
   return tempPath;
 };
 // endregion
 
 // region ========== 8. Xử lý video ==========
+// Thêm cấu hình tối ưu
+const CONFIG = {
+  // Cấu hình FFmpeg
+  ffmpeg: {
+    preset: "veryfast", // Preset encoding (ultrafast, superfast, veryfast, faster, fast, medium)
+    crf: 23, // Chất lượng video (18-28, thấp hơn = chất lượng cao hơn)
+    threads: 0, // 0 = tự động sử dụng tất cả thread
+    audioBitrate: "128k", // Bitrate audio
+    timeout: 15 * 60 * 1000, // Timeout xử lý video (15 phút)
+  },
+  // Cấu hình xử lý
+  processing: {
+    maxConcurrent: Math.max(1, os.cpus().length - 1), // Số luồng xử lý tối đa
+    useHardwareAcceleration: true, // Sử dụng GPU để tăng tốc
+    cleanupTempFiles: true, // Xóa file tạm sau khi hoàn thành
+  },
+};
+
+// Kiểm tra và sử dụng hardware acceleration
+const useHardwareAcceleration = () => {
+  if (!CONFIG.processing.useHardwareAcceleration) return [];
+
+  try {
+    const platform = process.platform;
+    if (platform === "win32") {
+      // Windows: thử dùng NVIDIA NVENC trước, nếu không có thì dùng Intel QSV, cuối cùng là auto
+      return ["-hwaccel", "auto", "-hwaccel_output_format", "yuv420p"];
+    } else if (platform === "darwin") {
+      // macOS: sử dụng VideoToolbox
+      return ["-hwaccel", "videotoolbox"];
+    } else {
+      // Linux: thử dùng VAAPI
+      return ["-hwaccel", "vaapi", "-hwaccel_output_format", "yuv420p"];
+    }
+  } catch (error) {
+    log(
+      `Không thể sử dụng hardware acceleration: ${error.message}`,
+      LOG_LEVEL.WARN
+    );
+    return [];
+  }
+};
+
+// Lấy metadata của video (độ dài)
+const getVideoMetadata = async (videoPath) => {
+  if (metadataCache.has(videoPath)) {
+    return metadataCache.get(videoPath);
+  }
+
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        log(`Lỗi khi lấy metadata video: ${err.message}`, LOG_LEVEL.ERROR);
+        return reject(err);
+      }
+
+      const result = {
+        duration: metadata.format.duration,
+        width: metadata.streams[0].width,
+        height: metadata.streams[0].height,
+      };
+
+      metadataCache.set(videoPath, result);
+      resolve(result);
+    });
+  });
+};
+
 const complexFilter = (isImage, inputOverlay) => {
   const overlayIndex = overlayFiles.findIndex((file) => file === inputOverlay);
   const videoColor =
@@ -297,8 +384,13 @@ const processVideo = async (
   // Tạo avatar hình tròn trước
   const circularAvatarPath = await createCircularAvatar(avatarPath);
 
+  // Lấy metadata của video overlay
+  const metadata = await getVideoMetadata(inputOverlay);
+  const duration = metadata.duration;
+
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
+    let ffmpegProcess = null;
 
     // Thêm timeout để tránh bị treo quá lâu
     const timeout = setTimeout(() => {
@@ -306,84 +398,125 @@ const processVideo = async (
         `⚠️ Quá thời gian xử lý video: ${path.basename(outputPath)}`,
         LOG_LEVEL.WARN
       );
-      if (fs.existsSync(circularAvatarPath)) fs.unlinkSync(circularAvatarPath);
+
+      // Cố gắng kill process nếu còn tồn tại
+      if (ffmpegProcess && ffmpegProcess.kill) {
+        try {
+          ffmpegProcess.kill("SIGKILL");
+          log(
+            `Đã dừng process ffmpeg cho ${path.basename(outputPath)}`,
+            LOG_LEVEL.DEBUG
+          );
+        } catch (e) {
+          log(`Không thể dừng process: ${e.message}`, LOG_LEVEL.ERROR);
+        }
+      }
+
       processedVideos++;
       errorVideos++;
       updateProgress();
       resolve(); // Vẫn resolve để tiếp tục với video khác
-    }, 1800000); // 5 phút timeout
+    }, CONFIG.ffmpeg.timeout);
 
-    ffmpeg.ffprobe(inputOverlay, (err, metadata) => {
-      if (err) {
+    // Kiểm tra nếu background là hình ảnh
+    const isImage =
+      useImageBackground ||
+      [".jpg", ".jpeg", ".png"].includes(
+        path.extname(inputBackground).toLowerCase()
+      );
+
+    // Sử dụng hardware acceleration và tối ưu cài đặt
+    const base = isImage
+      ? ffmpeg()
+          .input(inputBackground)
+          .loop(1)
+          .inputOptions(useHardwareAcceleration())
+      : ffmpeg(inputBackground).inputOptions(useHardwareAcceleration());
+
+    ffmpegProcess = base
+      .input(inputOverlay)
+      .input(circularAvatarPath)
+      .input(snowOverlay)
+      .inputOptions(["-stream_loop", "-1"])
+      .inputOptions("-t", duration)
+      .complexFilter(complexFilter(isImage, inputOverlay))
+      .outputOptions(`-preset ${CONFIG.ffmpeg.preset}`)
+      .outputOptions(`-crf ${CONFIG.ffmpeg.crf}`)
+      .outputOptions(`-threads ${CONFIG.ffmpeg.threads}`)
+      .outputOptions("-t", duration)
+      .audioCodec("aac")
+      .audioBitrate(CONFIG.ffmpeg.audioBitrate)
+      .outputOptions("-movflags +faststart") // Tối ưu cho streaming
+      .map("[combined_video]")
+      .map("[overlay_audio]")
+      .on("progress", (progress) => {
+        if (progress.percent) {
+          // Cập nhật tiến độ chi tiết hơn
+          const percent = Math.round(progress.percent * 100) / 100;
+          process.stdout.write(
+            `\rĐang xử lý ${path.basename(outputPath)}: ${percent}%`
+          );
+        }
+      })
+      .on("end", () => {
+        clearTimeout(timeout);
+        const endTime = Date.now();
+        const processingTime = ((endTime - startTime) / 1000).toFixed(2);
         log(
-          `Lỗi khi lấy metadata video overlay: ${err.message}`,
+          `✅ Video ${path.basename(
+            outputPath
+          )} hoàn thành trong ${processingTime}s`,
+          LOG_LEVEL.DEBUG
+        );
+
+        // Xóa file tạm nếu được cấu hình
+        if (
+          CONFIG.processing.cleanupTempFiles &&
+          !circularAvatarPath.includes("_circular_")
+        ) {
+          try {
+            fs.unlinkSync(circularAvatarPath);
+            log(
+              `Đã xóa file tạm: ${path.basename(circularAvatarPath)}`,
+              LOG_LEVEL.DEBUG
+            );
+          } catch (e) {
+            // Bỏ qua lỗi khi xóa file
+          }
+        }
+
+        processedVideos++;
+        updateProgress();
+        resolve();
+      })
+      .on("error", (error) => {
+        clearTimeout(timeout);
+        log(
+          `❌ Lỗi khi xử lý video ${path.basename(outputPath)}: ${
+            error.message
+          }`,
           LOG_LEVEL.ERROR
         );
-        clearTimeout(timeout);
-        if (fs.existsSync(circularAvatarPath))
-          fs.unlinkSync(circularAvatarPath);
+
+        // Xóa file output nếu tồn tại (có thể bị hỏng)
+        if (fs.existsSync(outputPath)) {
+          try {
+            fs.unlinkSync(outputPath);
+            log(
+              `Đã xóa file output bị lỗi: ${path.basename(outputPath)}`,
+              LOG_LEVEL.DEBUG
+            );
+          } catch (e) {
+            // Bỏ qua lỗi khi xóa file
+          }
+        }
+
         processedVideos++;
         errorVideos++;
         updateProgress();
-        return reject(err);
-      }
-
-      const duration = metadata.format.duration;
-
-      // Kiểm tra nếu background là hình ảnh
-      const isImage =
-        useImageBackground ||
-        [".jpg", ".jpeg", ".png"].includes(
-          path.extname(inputBackground).toLowerCase()
-        );
-      const base = isImage
-        ? ffmpeg().input(inputBackground).loop(1)
-        : ffmpeg(inputBackground);
-      base
-        .input(inputOverlay)
-        .input(circularAvatarPath)
-        .input(snowOverlay)
-        .inputOptions(["-stream_loop", "-1"])
-        .inputOptions("-t", duration)
-        .complexFilter(complexFilter(isImage, inputOverlay))
-        .outputOptions("-preset", "ultrafast")
-        .outputOptions("-t", duration)
-        .audioCodec("aac")
-        .map("[combined_video]")
-        .map("[overlay_audio]")
-        .on("end", () => {
-          clearTimeout(timeout);
-          const endTime = Date.now();
-          log(
-            `✅ Video ${path.basename(outputPath)} hoàn thành trong ${(
-              (endTime - startTime) /
-              1000
-            ).toFixed(2)}s`,
-            LOG_LEVEL.DEBUG
-          );
-          if (fs.existsSync(circularAvatarPath))
-            fs.unlinkSync(circularAvatarPath);
-          processedVideos++;
-          updateProgress();
-          resolve();
-        })
-        .on("error", (error) => {
-          clearTimeout(timeout);
-          log(
-            `❌ Lỗi khi xử lý video ${path.basename(outputPath)}: ${
-              error.message
-            }`,
-            LOG_LEVEL.ERROR
-          );
-          if (fs.existsSync(circularAvatarPath))
-            fs.unlinkSync(circularAvatarPath);
-          processedVideos++;
-          errorVideos++;
-          updateProgress();
-          reject(error);
-        })
-        .save(outputPath);
-    });
+        reject(error);
+      })
+      .save(outputPath);
   });
 };
 // endregion
@@ -391,8 +524,15 @@ const processVideo = async (
 // region ========== 9. Xử lý toàn bộ video ==========
 const processAllVideos = async () => {
   const startTime = Date.now();
+  let completedFolders = 0;
 
   try {
+    // Kiểm tra và tạo thư mục cache nếu chưa tồn tại
+    const cacheDir = path.join(__dirname, ".cache");
+    if (!fs.existsSync(cacheDir)) {
+      fs.mkdirSync(cacheDir, { recursive: true });
+    }
+
     const totalOverlays = overlayFiles.length;
     if (totalOverlays === 0) {
       log(
@@ -434,6 +574,16 @@ const processAllVideos = async () => {
     // Tính tổng số video sẽ xử lý
     totalVideosToProcess = totalBackgrounds * videosPerFolder;
     log(`Tổng số video sẽ xử lý: ${totalVideosToProcess}`, LOG_LEVEL.INFO);
+
+    // Sử dụng p-limit để giới hạn số lượng xử lý đồng thời
+    const limit = pLimit(CONFIG.processing.maxConcurrent);
+    log(
+      `Sử dụng tối đa ${CONFIG.processing.maxConcurrent} luồng xử lý song song`,
+      LOG_LEVEL.INFO
+    );
+
+    // Mảng chứa tất cả các promise
+    const tasks = [];
 
     // Duyệt qua từng folder nền
     for (let i = 0; i < totalBackgrounds; i++) {
@@ -506,45 +656,100 @@ const processAllVideos = async () => {
       // Tính vị trí bắt đầu cho ngày hiện tại
       const startIndex = calculateStartIndex(i, currentDay, totalOverlays);
 
-      // Lấy số video từ vị trí bắt đầu
-      for (let j = 0; j < videosPerFolder; j++) {
-        const overlayIndex = (startIndex + j) % totalOverlays;
-        const backgroundIndex = useImageBackground
-          ? Math.floor(Math.random() * totalBackgroundsForFolder)
-          : (startIndex + j) % totalBackgroundsForFolder;
+      // Tạo một promise để xử lý tất cả video trong folder này
+      const folderPromise = (async () => {
+        const folderTasks = [];
 
-        const overlay = overlayFiles[overlayIndex];
-        const background = backgroundFiles[backgroundIndex];
+        // Lấy số video từ vị trí bắt đầu
+        for (let j = 0; j < videosPerFolder; j++) {
+          const overlayIndex = (startIndex + j) % totalOverlays;
+          const backgroundIndex = useImageBackground
+            ? Math.floor(Math.random() * totalBackgroundsForFolder)
+            : (startIndex + j) % totalBackgroundsForFolder;
 
-        const overlayFileName = path.basename(overlay, path.extname(overlay));
-        const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
+          const overlay = overlayFiles[overlayIndex];
+          const background = backgroundFiles[backgroundIndex];
 
-        log(
-          `🎬 Video ${j + 1}/${videosPerFolder}: ${path.basename(overlay)}`,
-          LOG_LEVEL.DEBUG
-        );
+          const overlayFileName = path.basename(overlay, path.extname(overlay));
+          const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
 
-        try {
-          await processVideo(
-            overlay,
-            background,
-            outputPath,
-            avatarPath,
-            useImageBackground
+          log(
+            `🎬 Video ${j + 1}/${videosPerFolder}: ${path.basename(overlay)}`,
+            LOG_LEVEL.DEBUG
           );
-        } catch (error) {
-          // Lỗi đã được xử lý trong hàm processVideo
+
+          // Thêm task vào danh sách, sử dụng p-limit để giới hạn số lượng xử lý đồng thời
+          folderTasks.push(
+            limit(() =>
+              processVideo(
+                overlay,
+                background,
+                outputPath,
+                avatarPath,
+                useImageBackground
+              ).catch((error) => {
+                // Lỗi đã được xử lý trong hàm processVideo
+                log(
+                  `Không thể xử lý video: ${path.basename(overlay)}`,
+                  LOG_LEVEL.ERROR
+                );
+              })
+            )
+          );
+        }
+
+        // Chờ tất cả video trong folder này hoàn thành
+        await Promise.all(folderTasks);
+
+        // Upload lên VPS nếu được cấu hình
+        if (useAutoUploadVps) {
+          uploadVps(i, folderName);
+        }
+
+        completedFolders++;
+        log(
+          `✅ Đã hoàn thành folder ${folderName} (${completedFolders}/${totalBackgrounds})`,
+          LOG_LEVEL.INFO
+        );
+      })();
+
+      tasks.push(folderPromise);
+    }
+
+    // Chờ tất cả các folder hoàn thành
+    await Promise.all(tasks);
+
+    // Dọn dẹp cache avatar
+    if (CONFIG.processing.cleanupTempFiles) {
+      for (const [key, tempPath] of avatarCache.entries()) {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+          log(`Đã xóa file cache: ${tempPath}`, LOG_LEVEL.DEBUG);
         }
       }
-
-      uploadVps(i, folderName);
     }
+
+    avatarCache.clear();
+    metadataCache.clear();
 
     const endTime = Date.now();
     const totalTime = ((endTime - startTime) / 1000 / 60).toFixed(2);
+    const averageTimePerVideo = (
+      (endTime - startTime) /
+      1000 /
+      totalVideosToProcess
+    ).toFixed(2);
 
     log("\n", LOG_LEVEL.INFO); // Xuống dòng sau khi hiển thị
     log(`✅ Hoàn thành! Tổng thời gian: ${totalTime} phút`, LOG_LEVEL.INFO);
+    log(
+      `📊 Thống kê: ${processedVideos} video đã xử lý, ${errorVideos} lỗi`,
+      LOG_LEVEL.INFO
+    );
+    log(
+      `⏱️ Thời gian trung bình: ${averageTimePerVideo} giây/video`,
+      LOG_LEVEL.INFO
+    );
   } catch (error) {
     log(`❌ Lỗi khi xử lý toàn bộ video: ${error.message}`, LOG_LEVEL.ERROR);
   }
@@ -554,24 +759,40 @@ const processAllVideos = async () => {
 // region ========== 11. Upload VPS ==========
 const uploadVps = (index, folderName) => {
   if (!useAutoUploadVps) return;
+
   // Đọc danh sách IP
   const vpsList = readIpList();
-  const vpsName = vpsList[index];
+  if (vpsList.length === 0) {
+    log(`Không có VPS nào để upload folder ${folderName}`, LOG_LEVEL.WARN);
+    return;
+  }
+
+  // Lấy VPS tương ứng với index, hoặc VPS đầu tiên nếu không có
+  const vpsName = vpsList[index % vpsList.length];
   const currentFolderUpload = path.join(__dirname, outputFolder);
-  const echoInfo = `echo Uploading ${currentFolderUpload} to VPS ${vpsName} &&`;
-  console.log(`Đang upload folder ${currentFolderUpload} lên VPS ${vpsName}`);
+
+  log(`Đang upload folder ${folderName} lên VPS ${vpsName}`, LOG_LEVEL.INFO);
 
   // Tạo lệnh rclone với dấu ngoặc kép cho các đường dẫn
   const rcloneCmd = `rclone copy "${currentFolderUpload}" "${vpsName}:/" --include "${folderName}/**" --transfers 16 --checkers 8 --progress`;
-  const cmd = `${echoInfo} ${rcloneCmd} && exit`;
-  // Sử dụng spawn để mở cửa sổ CMD mới và chạy lệnh
-  spawn("cmd.exe", ["/c", "start", "cmd.exe", "/c", cmd], {
-    detached: true,
-    stdio: "ignore",
-    windowsVerbatimArguments: true,
-  }).unref();
+  const cmd = `echo Uploading ${currentFolderUpload} to VPS ${vpsName} && ${rcloneCmd} && exit`;
 
-  console.log(`Đã bắt đầu upload folder ${folderName} lên VPS ${vpsName}`);
+  // Sử dụng spawn để mở cửa sổ CMD mới và chạy lệnh
+  const uploadProcess = spawn(
+    "cmd.exe",
+    ["/c", "start", "cmd.exe", "/c", cmd],
+    {
+      detached: true,
+      stdio: "ignore",
+      windowsVerbatimArguments: true,
+    }
+  );
+
+  uploadProcess.unref();
+  log(
+    `Đã bắt đầu upload folder ${folderName} lên VPS ${vpsName}`,
+    LOG_LEVEL.INFO
+  );
 };
 // endregion
 

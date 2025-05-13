@@ -6,6 +6,49 @@ import path from "path";
 import sharp from "sharp";
 import { fileURLToPath } from "url";
 ffmpeg.setFfmpegPath(ffmpegPath);
+
+// Thêm hệ thống log tối ưu
+const LOG_LEVEL = {
+  ERROR: 0, // Chỉ log lỗi
+  WARN: 1, // Log lỗi và cảnh báo
+  INFO: 2, // Log thông tin quan trọng
+  DEBUG: 3, // Log chi tiết
+};
+
+const currentLogLevel = LOG_LEVEL.INFO; // Mặc định chỉ log thông tin quan trọng
+const logFile = "./render.log";
+
+// Hàm log với kiểm soát mức độ
+const log = (message, level = LOG_LEVEL.INFO) => {
+  if (level <= currentLogLevel) {
+    // Log ra console cho thông tin quan trọng
+    console.log(message);
+  }
+
+  // Luôn ghi tất cả log vào file để debug sau này
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}\n`;
+  try {
+    fs.appendFileSync(logFile, logMessage);
+  } catch (error) {
+    console.error(`Lỗi khi ghi log: ${error.message}`);
+  }
+};
+
+// Hiển thị tiến độ xử lý
+let totalVideosToProcess = 0;
+let processedVideos = 0;
+let errorVideos = 0;
+
+const updateProgress = () => {
+  if (totalVideosToProcess > 0) {
+    const percent = Math.round((processedVideos / totalVideosToProcess) * 100);
+    process.stdout.write(
+      `\rTiến độ: ${processedVideos}/${totalVideosToProcess} videos (${percent}%) - Lỗi: ${errorVideos}`
+    );
+  }
+};
+
 // region ========== 1. Đọc tham số dòng lệnh ==========
 const args = process.argv.slice(2);
 if (args.length < 2) {
@@ -26,41 +69,43 @@ if (isNaN(videosPerFolder) || videosPerFolder <= 0) {
   console.error("Số video mỗi folder phải là một số nguyên dương.");
   process.exit(1);
 }
-
 // endregion
 
 // region ========== 2. Ghi currentDay vào file ==========
-const currentDayFile = "./currentDay.txt"; // Đường dẫn file để lưu currentDay
+const currentDayFile = "./currentDay.txt";
 try {
   fs.writeFileSync(currentDayFile, currentDay.toString(), {
     encoding: "utf-8",
   });
-  console.log(`Đã lưu currentDay (${currentDay}) vào file: ${currentDayFile}`);
+  log(
+    `Đã lưu currentDay (${currentDay}) vào file: ${currentDayFile}`,
+    LOG_LEVEL.INFO
+  );
 } catch (error) {
-  console.error("Lỗi khi ghi currentDay vào file:", error.message);
+  log(`Lỗi khi ghi currentDay vào file: ${error.message}`, LOG_LEVEL.ERROR);
 }
 // endregion
 
 // region ========== 3. Đường dẫn & thư mục ==========
-const overlayFolder = "./overlays"; // Thư mục chứa các video overlay
-const backgroundFolder = "./backgrounds"; // Thư mục chứa các thư mục nền (folder_1, folder_2, ...)
-const imageBackgroundFolder = "./image_backgrounds"; // Thư mục chứa các hình ảnh làm nền
-const outputFolder = "./done"; // Thư mục xuất file
-const avatarFolder = "./images"; // Thư mục chứa các ảnh avatar
+const overlayFolder = "./overlays";
+const backgroundFolder = "./backgrounds";
+const imageBackgroundFolder = "./image_backgrounds";
+const outputFolder = "./done";
+const avatarFolder = "./images";
 const snowOverlay = "./snow1.mov";
 const useChromaKey = true;
-const color = "4887EE"; // màu chroma key useChromaKey = true
+const color = "4887EE";
 const chromaKeyFile = "./chromaKey.txt";
-const height = 190; // chiều cao của phần video cần cắt.
-const y_offset = 490; // vị trí cắt từ trên xuống dưới video gốc
+const height = 190;
+const y_offset = 490;
 const ipList = "./vps.txt";
 const useAutoUploadVps = false;
-const __filename = fileURLToPath(import.meta.url); // chuyển URL thành đường dẫn thực tế
-const __dirname = path.dirname(__filename); // lấy thư mục chứa file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Tạo thư mục nếu chưa tồn tại
 if (fs.existsSync(outputFolder)) {
-  console.log(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`);
+  log(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`, LOG_LEVEL.INFO);
   fs.rmSync(outputFolder, { recursive: true, force: true });
 }
 
@@ -76,7 +121,6 @@ const getFilesFromFolder = (folder, fileTypes = [".mp4"]) => {
       return fileTypes.includes(ext);
     })
     .sort((a, b) => {
-      // Sắp xếp theo thứ tự tự nhiên (natural sort)
       return a.localeCompare(b, undefined, {
         numeric: true,
         sensitivity: "base",
@@ -89,7 +133,7 @@ const getFilesFromFolder = (folder, fileTypes = [".mp4"]) => {
 const readIpList = () => {
   try {
     if (!fs.existsSync(ipList)) {
-      console.warn(`⚠️ Không tìm thấy file IP: ${ipList}`);
+      log(`⚠️ Không tìm thấy file IP: ${ipList}`, LOG_LEVEL.WARN);
       return [];
     }
 
@@ -99,14 +143,13 @@ const readIpList = () => {
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("#"));
 
-    console.log(`📋 Đã đọc ${ips.length} IP từ file ${ipList}`);
+    log(`Đã đọc ${ips.length} IP từ file ${ipList}`, LOG_LEVEL.DEBUG);
     return ips;
   } catch (error) {
-    console.error(`❌ Lỗi khi đọc file IP: ${error.message}`);
+    log(`❌ Lỗi khi đọc file IP: ${error.message}`, LOG_LEVEL.ERROR);
     return [];
   }
 };
-
 // endregion
 
 // region ========== 5. Danh sách file ==========
@@ -136,41 +179,44 @@ const readChromaKeyColors = () => {
       const lines = content
         .split("\n")
         .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith("#")); // Bỏ qua dòng trống và comment
+        .filter((line) => line && !line.startsWith("#"));
 
-      // Kiểm tra định dạng màu hợp lệ (mã hex 6 ký tự)
       for (const line of lines) {
         if (/^[0-9A-Fa-f]{6}$/.test(line)) {
           colors.push(line);
         } else {
-          console.warn(
-            `Định dạng màu không hợp lệ trong file ${chromaKeyFile}: ${line}, sẽ bỏ qua`
+          log(
+            `Định dạng màu không hợp lệ trong file ${chromaKeyFile}: ${line}`,
+            LOG_LEVEL.WARN
           );
         }
       }
 
-      console.log(
-        `Đã đọc ${colors.length} màu chroma key từ file ${chromaKeyFile}`
+      log(
+        `Đã đọc ${colors.length} màu chroma key từ file ${chromaKeyFile}`,
+        LOG_LEVEL.DEBUG
       );
     } else {
-      console.log(
-        `Không tìm thấy file ${chromaKeyFile}, sẽ sử dụng màu mặc định: #${color}`
+      log(
+        `Không tìm thấy file ${chromaKeyFile}, sẽ sử dụng màu mặc định: #${color}`,
+        LOG_LEVEL.DEBUG
       );
     }
   } catch (error) {
-    console.error(`Lỗi khi đọc file ${chromaKeyFile}: ${error.message}`);
+    log(`Lỗi khi đọc file ${chromaKeyFile}: ${error.message}`, LOG_LEVEL.ERROR);
   }
 
   return colors;
 };
-// Đọc danh sách màu từ file
+
 const chromaKeyColors = readChromaKeyColors();
 
 // Tạo thư mục image_backgrounds nếu chưa tồn tại
 if (!fs.existsSync(imageBackgroundFolder)) {
   fs.mkdirSync(imageBackgroundFolder, { recursive: true });
-  console.log(
-    `Đã tạo thư mục ${imageBackgroundFolder}. Vui lòng thêm các thư mục con (1, 2, 3...) và hình ảnh background vào các thư mục này.`
+  log(
+    `Đã tạo thư mục ${imageBackgroundFolder}. Vui lòng thêm các thư mục con (1, 2, 3...) và hình ảnh background.`,
+    LOG_LEVEL.INFO
   );
 }
 // endregion
@@ -204,15 +250,11 @@ const createCircularAvatar = async (avatarPath, size = 100) => {
 
   return tempPath;
 };
-
 // endregion
 
 // region ========== 8. Xử lý video ==========
 const complexFilter = (isImage, inputOverlay) => {
-  // Xác định index của video overlay trong danh sách
   const overlayIndex = overlayFiles.findIndex((file) => file === inputOverlay);
-
-  // Lấy màu chroma key tương ứng với index của video, hoặc màu mặc định nếu không có
   const videoColor =
     overlayIndex >= 0 && overlayIndex < chromaKeyColors.length
       ? chromaKeyColors[overlayIndex]
@@ -258,9 +300,31 @@ const processVideo = async (
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
 
+    // Thêm timeout để tránh bị treo quá lâu
+    const timeout = setTimeout(() => {
+      log(
+        `⚠️ Quá thời gian xử lý video: ${path.basename(outputPath)}`,
+        LOG_LEVEL.WARN
+      );
+      if (fs.existsSync(circularAvatarPath)) fs.unlinkSync(circularAvatarPath);
+      processedVideos++;
+      errorVideos++;
+      updateProgress();
+      resolve(); // Vẫn resolve để tiếp tục với video khác
+    }, 1800000); // 5 phút timeout
+
     ffmpeg.ffprobe(inputOverlay, (err, metadata) => {
       if (err) {
-        console.error("Lỗi khi lấy metadata video overlay:", err.message);
+        log(
+          `Lỗi khi lấy metadata video overlay: ${err.message}`,
+          LOG_LEVEL.ERROR
+        );
+        clearTimeout(timeout);
+        if (fs.existsSync(circularAvatarPath))
+          fs.unlinkSync(circularAvatarPath);
+        processedVideos++;
+        errorVideos++;
+        updateProgress();
         return reject(err);
       }
 
@@ -288,20 +352,34 @@ const processVideo = async (
         .map("[combined_video]")
         .map("[overlay_audio]")
         .on("end", () => {
+          clearTimeout(timeout);
           const endTime = Date.now();
-          console.log(
-            `Xử lý xong video: ${outputPath}. Thời gian: ${(
+          log(
+            `✅ Video ${path.basename(outputPath)} hoàn thành trong ${(
               (endTime - startTime) /
               1000
-            ).toFixed(2)} giây.`
+            ).toFixed(2)}s`,
+            LOG_LEVEL.DEBUG
           );
-          fs.unlinkSync(circularAvatarPath);
+          if (fs.existsSync(circularAvatarPath))
+            fs.unlinkSync(circularAvatarPath);
+          processedVideos++;
+          updateProgress();
           resolve();
         })
         .on("error", (error) => {
-          console.error("Lỗi khi xử lý video:", err.message);
+          clearTimeout(timeout);
+          log(
+            `❌ Lỗi khi xử lý video ${path.basename(outputPath)}: ${
+              error.message
+            }`,
+            LOG_LEVEL.ERROR
+          );
           if (fs.existsSync(circularAvatarPath))
             fs.unlinkSync(circularAvatarPath);
+          processedVideos++;
+          errorVideos++;
+          updateProgress();
           reject(error);
         })
         .save(outputPath);
@@ -312,108 +390,164 @@ const processVideo = async (
 
 // region ========== 9. Xử lý toàn bộ video ==========
 const processAllVideos = async () => {
-  const totalOverlays = overlayFiles.length;
-  const totalImageBackgroundFolders = imageBackgroundFolders.length;
-  const totalVideoBackgrounds = backgroundFolders.length;
-  const useImageBackground = totalImageBackgroundFolders > 0;
+  const startTime = Date.now();
 
-  const totalBackgrounds = useImageBackground
-    ? totalImageBackgroundFolders
-    : totalVideoBackgrounds;
-  if (useImageBackground) {
-    console.log(
-      `Sử dụng hình ảnh từ ${totalImageBackgroundFolders} thư mục làm background.`
+  try {
+    const totalOverlays = overlayFiles.length;
+    if (totalOverlays === 0) {
+      log(
+        "❌ Không tìm thấy video overlay nào trong thư mục overlays!",
+        LOG_LEVEL.ERROR
+      );
+      return;
+    }
+
+    const totalImageBackgroundFolders = imageBackgroundFolders.length;
+    const totalVideoBackgrounds = backgroundFolders.length;
+    const useImageBackground = totalImageBackgroundFolders > 0;
+
+    const totalBackgrounds = useImageBackground
+      ? totalImageBackgroundFolders
+      : totalVideoBackgrounds;
+
+    if (totalBackgrounds === 0) {
+      log("❌ Không tìm thấy thư mục background nào!", LOG_LEVEL.ERROR);
+      return;
+    }
+
+    log(
+      `🚀 Bắt đầu xử lý với ${totalOverlays} video overlay và ${totalBackgrounds} thư mục background`,
+      LOG_LEVEL.INFO
     );
-  }
-
-  // Duyệt qua từng folder nền
-  for (let i = 0; i < totalBackgrounds; i++) {
-    const folderName = `${i + 1}`;
-    const groupFolder = path.join(outputFolder, folderName);
-    const avatarPath = path.join(avatarFolder, `${folderName}.jpg`);
-
-    if (!fs.existsSync(avatarPath)) {
-      console.error(`Không tìm thấy avatar: ${avatarPath}`);
-      continue;
-    }
-
-    if (!fs.existsSync(groupFolder)) {
-      fs.mkdirSync(groupFolder, { recursive: true });
-    }
-
-    // Lấy danh sách background (video hoặc hình ảnh)
-    let backgroundFiles = [];
-    let totalBackgroundsForFolder = 0;
+    log(
+      `📅 Ngày hiện tại: ${currentDay}, Số video mỗi folder: ${videosPerFolder}`,
+      LOG_LEVEL.INFO
+    );
 
     if (useImageBackground) {
-      // Tìm thư mục con tương ứng trong image_backgrounds
-      const imageBackgroundSubfolder =
-        imageBackgroundFolders.find((folder) => folder === folderName) ||
-        imageBackgroundFolders[0]; // Sử dụng folder đầu tiên nếu không tìm thấy
+      log(
+        `Sử dụng hình ảnh làm background từ ${totalImageBackgroundFolders} thư mục`,
+        LOG_LEVEL.INFO
+      );
+    }
 
-      if (imageBackgroundSubfolder) {
-        const imageBackgroundFolderPath = path.join(
-          imageBackgroundFolder,
-          imageBackgroundSubfolder
+    // Tính tổng số video sẽ xử lý
+    totalVideosToProcess = totalBackgrounds * videosPerFolder;
+    log(`Tổng số video sẽ xử lý: ${totalVideosToProcess}`, LOG_LEVEL.INFO);
+
+    // Duyệt qua từng folder nền
+    for (let i = 0; i < totalBackgrounds; i++) {
+      const folderName = `${i + 1}`;
+      const groupFolder = path.join(outputFolder, folderName);
+      const avatarPath = path.join(avatarFolder, `${folderName}.jpg`);
+
+      if (!fs.existsSync(avatarPath)) {
+        log(`❌ Không tìm thấy avatar: ${avatarPath}`, LOG_LEVEL.ERROR);
+        // Bỏ qua folder này và cập nhật số lượng video đã xử lý
+        processedVideos += videosPerFolder;
+        errorVideos += videosPerFolder;
+        updateProgress();
+        continue;
+      }
+
+      if (!fs.existsSync(groupFolder)) {
+        fs.mkdirSync(groupFolder, { recursive: true });
+      }
+
+      // Lấy danh sách background (video hoặc hình ảnh)
+      let backgroundFiles = [];
+      let totalBackgroundsForFolder = 0;
+
+      if (useImageBackground) {
+        // Tìm thư mục con tương ứng trong image_backgrounds
+        const imageBackgroundSubfolder =
+          imageBackgroundFolders.find((folder) => folder === folderName) ||
+          imageBackgroundFolders[0]; // Sử dụng folder đầu tiên nếu không tìm thấy
+
+        if (imageBackgroundSubfolder) {
+          const imageBackgroundFolderPath = path.join(
+            imageBackgroundFolder,
+            imageBackgroundSubfolder
+          );
+          backgroundFiles = getFilesFromFolder(imageBackgroundFolderPath, [
+            ".jpg",
+            ".jpeg",
+            ".png",
+          ]);
+          totalBackgroundsForFolder = backgroundFiles.length;
+        }
+      } else {
+        // Sử dụng video làm background
+        const backgroundFolderPath = path.join(
+          backgroundFolder,
+          backgroundFolders[i]
         );
-        backgroundFiles = getFilesFromFolder(imageBackgroundFolderPath, [
-          ".jpg",
-          ".jpeg",
-          ".png",
-        ]);
+        backgroundFiles = getFilesFromFolder(backgroundFolderPath);
         totalBackgroundsForFolder = backgroundFiles.length;
       }
-    } else {
-      // Sử dụng video làm background
-      const backgroundFolderPath = path.join(
-        backgroundFolder,
-        backgroundFolders[i]
-      );
-      backgroundFiles = getFilesFromFolder(backgroundFolderPath);
-      totalBackgroundsForFolder = backgroundFiles.length;
-    }
 
-    if (totalBackgroundsForFolder === 0) {
-      console.error(`Không có file background nào cho folder ${folderName}`);
-      continue;
-    }
-
-    // Tính vị trí bắt đầu cho ngày hiện tại
-    const startIndex = calculateStartIndex(i, currentDay, totalOverlays);
-
-    // Lấy số video từ vị trí bắt đầu
-    for (let j = 0; j < videosPerFolder; j++) {
-      const overlayIndex = (startIndex + j) % totalOverlays; // Đảm bảo không vượt quá số video overlay
-
-      // Chọn ngẫu nhiên một background nếu sử dụng hình ảnh
-      const backgroundIndex = useImageBackground
-        ? Math.floor(Math.random() * totalBackgroundsForFolder)
-        : (startIndex + j) % totalBackgroundsForFolder;
-
-      const overlay = overlayFiles[overlayIndex];
-      const background = backgroundFiles[backgroundIndex];
-
-      const overlayFileName = path.basename(overlay, path.extname(overlay));
-      const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
-
-      console.log(`Đang xử lý overlay: ${overlay} với nền: ${background}`);
-      try {
-        await processVideo(
-          overlay,
-          background,
-          outputPath,
-          avatarPath,
-          useImageBackground
+      if (totalBackgroundsForFolder === 0) {
+        log(
+          `❌ Không có file background nào cho folder ${folderName}`,
+          LOG_LEVEL.ERROR
         );
-      } catch (error) {
-        console.error("Lỗi khi xử lý:", error.message);
+        // Bỏ qua folder này và cập nhật số lượng video đã xử lý
+        processedVideos += videosPerFolder;
+        errorVideos += videosPerFolder;
+        updateProgress();
+        continue;
       }
+
+      log(
+        `📁 Đang xử lý folder ${folderName} (${i + 1}/${totalBackgrounds})`,
+        LOG_LEVEL.INFO
+      );
+
+      // Tính vị trí bắt đầu cho ngày hiện tại
+      const startIndex = calculateStartIndex(i, currentDay, totalOverlays);
+
+      // Lấy số video từ vị trí bắt đầu
+      for (let j = 0; j < videosPerFolder; j++) {
+        const overlayIndex = (startIndex + j) % totalOverlays;
+        const backgroundIndex = useImageBackground
+          ? Math.floor(Math.random() * totalBackgroundsForFolder)
+          : (startIndex + j) % totalBackgroundsForFolder;
+
+        const overlay = overlayFiles[overlayIndex];
+        const background = backgroundFiles[backgroundIndex];
+
+        const overlayFileName = path.basename(overlay, path.extname(overlay));
+        const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
+
+        log(
+          `🎬 Video ${j + 1}/${videosPerFolder}: ${path.basename(overlay)}`,
+          LOG_LEVEL.DEBUG
+        );
+
+        try {
+          await processVideo(
+            overlay,
+            background,
+            outputPath,
+            avatarPath,
+            useImageBackground
+          );
+        } catch (error) {
+          // Lỗi đã được xử lý trong hàm processVideo
+        }
+      }
+
+      uploadVps(i, folderName);
     }
 
-    uploadVps(i, folderName);
-  }
+    const endTime = Date.now();
+    const totalTime = ((endTime - startTime) / 1000 / 60).toFixed(2);
 
-  console.log("Đã xử lý xong toàn bộ video.");
+    log("\n", LOG_LEVEL.INFO); // Xuống dòng sau khi hiển thị
+    log(`✅ Hoàn thành! Tổng thời gian: ${totalTime} phút`, LOG_LEVEL.INFO);
+  } catch (error) {
+    log(`❌ Lỗi khi xử lý toàn bộ video: ${error.message}`, LOG_LEVEL.ERROR);
+  }
 };
 // endregion
 

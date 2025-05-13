@@ -99,7 +99,7 @@ const chromaKeyFile = "./chromaKey.txt";
 const height = 190;
 const y_offset = 490;
 const ipList = "./vps.txt";
-const useAutoUploadVps = false;
+const useAutoUploadVps = true;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -563,9 +563,9 @@ const uploadVps = (index, folderName) => {
 
   // Tạo lệnh rclone với dấu ngoặc kép cho các đường dẫn
   const rcloneCmd = `rclone copy "${currentFolderUpload}" "${vpsName}:/" --include "${folderName}/**" --transfers 16 --checkers 8 --progress`;
-  const cmd = `${echoInfo} ${rcloneCmd}`;
+  const cmd = `${echoInfo} ${rcloneCmd} && exit`;
   // Sử dụng spawn để mở cửa sổ CMD mới và chạy lệnh
-  spawn("cmd.exe", ["/c", "start", "cmd.exe", "/k", cmd], {
+  spawn("cmd.exe", ["/c", "start", "cmd.exe", "/c", cmd], {
     detached: true,
     stdio: "ignore",
     windowsVerbatimArguments: true,

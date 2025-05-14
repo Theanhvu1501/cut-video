@@ -97,6 +97,7 @@ const height = 190;
 const y_offset = 490;
 const ipList = "./vps.txt";
 const useAutoUploadVps = true;
+const maxConcurrentProcesses = 2;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -323,6 +324,11 @@ const processAllVideos = async () => {
     const totalVideoBackgrounds =
       combinedVideosFolders.length || backgroundFolders.length;
 
+    if (totalVideoBackgrounds === 0 && !hasCombinedVideos) {
+      log("❌ Không tìm thấy thư mục background nào!", LOG_LEVEL.ERROR);
+      return;
+    }
+
     log(
       `🚀 Bắt đầu xử lý với ${totalOverlays} video overlay và ${totalVideoBackgrounds} thư mục background`,
       LOG_LEVEL.INFO
@@ -333,12 +339,16 @@ const processAllVideos = async () => {
     );
 
     if (hasCombinedVideos) {
-      log(`Sử dụng video từ thư mục combined_videos`, LOG_LEVEL.INFO);
+      log(`Sử dụng video từ thư mục combined_videos nếu có`, LOG_LEVEL.INFO);
     }
 
     // Tính tổng số video sẽ xử lý
     totalVideosToProcess = totalVideoBackgrounds * videosPerFolder;
     log(`Tổng số video sẽ xử lý: ${totalVideosToProcess}`, LOG_LEVEL.INFO);
+    log(
+      `Xử lý tối đa ${maxConcurrentProcesses} video cùng lúc`,
+      LOG_LEVEL.INFO
+    );
 
     // Duyệt qua từng folder nền
     for (let i = 0; i < totalVideoBackgrounds; i++) {
@@ -405,6 +415,9 @@ const processAllVideos = async () => {
       // Tính vị trí bắt đầu cho ngày hiện tại
       const startIndex = calculateStartIndex(i, currentDay, totalOverlays);
 
+      // Chuẩn bị danh sách công việc
+      const tasks = [];
+
       // Lấy số video từ vị trí bắt đầu
       for (let j = 0; j < videosPerFolder; j++) {
         const overlayIndex = (startIndex + j) % totalOverlays;
@@ -419,15 +432,37 @@ const processAllVideos = async () => {
         const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
 
         log(
-          `🎬 Video ${j + 1}/${videosPerFolder}: ${path.basename(overlay)}`,
+          `🎬 Chuẩn bị video ${j + 1}/${videosPerFolder}: ${path.basename(
+            overlay
+          )}`,
           LOG_LEVEL.DEBUG
         );
 
-        try {
-          await processVideo(overlay, background, outputPath);
-        } catch (error) {
-          // Lỗi đã được xử lý trong hàm processVideo
-        }
+        tasks.push({
+          overlay,
+          background,
+          outputPath,
+        });
+      }
+
+      // Xử lý song song với giới hạn số lượng
+      const processBatch = async (batch) => {
+        return Promise.all(
+          batch.map((task) =>
+            processVideo(task.overlay, task.background, task.outputPath).catch(
+              (error) => {
+                // Lỗi đã được xử lý trong hàm processVideo
+                log(`Lỗi xử lý video: ${error.message}`, LOG_LEVEL.ERROR);
+              }
+            )
+          )
+        );
+      };
+
+      // Chia nhỏ công việc thành các batch
+      for (let k = 0; k < tasks.length; k += maxConcurrentProcesses) {
+        const batch = tasks.slice(k, k + maxConcurrentProcesses);
+        await processBatch(batch);
       }
 
       uploadVps(i, folderName);

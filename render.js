@@ -156,6 +156,11 @@ const backgroundFolders = fs
   .filter((folder) =>
     fs.lstatSync(path.join(backgroundFolder, folder)).isDirectory()
   );
+const combinedVideosFolders = fs
+  .readdirSync(combinedVideosFolder)
+  .filter((folder) =>
+    fs.lstatSync(path.join(combinedVideosFolder, folder)).isDirectory()
+  );
 
 // Đọc danh sách màu chroma key từ file
 const readChromaKeyColors = () => {
@@ -315,12 +320,8 @@ const processAllVideos = async () => {
     const hasCombinedVideos = fs.existsSync(combinedVideosFolder);
 
     // Lấy danh sách thư mục background
-    const totalVideoBackgrounds = backgroundFolders.length;
-
-    if (totalVideoBackgrounds === 0 && !hasCombinedVideos) {
-      log("❌ Không tìm thấy thư mục background nào!", LOG_LEVEL.ERROR);
-      return;
-    }
+    const totalVideoBackgrounds =
+      combinedVideosFolders.length || backgroundFolders.length;
 
     log(
       `🚀 Bắt đầu xử lý với ${totalOverlays} video overlay và ${totalVideoBackgrounds} thư mục background`,
@@ -332,7 +333,7 @@ const processAllVideos = async () => {
     );
 
     if (hasCombinedVideos) {
-      log(`Sử dụng video từ thư mục combined_videos nếu có`, LOG_LEVEL.INFO);
+      log(`Sử dụng video từ thư mục combined_videos`, LOG_LEVEL.INFO);
     }
 
     // Tính tổng số video sẽ xử lý

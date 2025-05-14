@@ -152,16 +152,6 @@ const readIpList = () => {
 
 // region ========== 5. Danh sách file ==========
 const overlayFiles = getFilesFromFolder(overlayFolder);
-const backgroundFolders = fs
-  .readdirSync(backgroundFolder)
-  .filter((folder) =>
-    fs.lstatSync(path.join(backgroundFolder, folder)).isDirectory()
-  );
-const combinedVideosFolders = fs
-  .readdirSync(combinedVideosFolder)
-  .filter((folder) =>
-    fs.lstatSync(path.join(combinedVideosFolder, folder)).isDirectory()
-  );
 
 // Đọc danh sách màu chroma key từ file
 const readChromaKeyColors = () => {
@@ -306,8 +296,9 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
 // region ========== 8. Xử lý toàn bộ video ==========
 const processAllVideos = async () => {
   const startTime = Date.now();
-
+  let totalVideoBackgrounds;
   try {
+    // 1. Kiểm tra video overlay
     const totalOverlays = overlayFiles.length;
     if (totalOverlays === 0) {
       log(
@@ -317,18 +308,33 @@ const processAllVideos = async () => {
       return;
     }
 
-    // Kiểm tra xem có thư mục combined_videos không
+    // 2. Xác định nguồn video background (combined_videos hoặc backgrounds)
     const hasCombinedVideos = fs.existsSync(combinedVideosFolder);
+    if (hasCombinedVideos) {
+      const combinedVideosFolders = fs
+        .readdirSync(combinedVideosFolder)
+        .filter((folder) =>
+          fs.lstatSync(path.join(combinedVideosFolder, folder)).isDirectory()
+        );
+      totalVideoBackgrounds = combinedVideosFolders.length;
+      log(`Sử dụng video từ thư mục combined_videos`, LOG_LEVEL.INFO);
+    } else {
+      const backgroundFolders = fs
+        .readdirSync(backgroundFolder)
+        .filter((folder) =>
+          fs.lstatSync(path.join(backgroundFolder, folder)).isDirectory()
+        );
+      totalVideoBackgrounds = backgroundFolders.length;
+      log(`Sử dụng video từ thư mục backgrounds`, LOG_LEVEL.INFO);
+    }
 
-    // Lấy danh sách thư mục background
-    const totalVideoBackgrounds =
-      combinedVideosFolders.length || backgroundFolders.length;
-
-    if (totalVideoBackgrounds === 0 && !hasCombinedVideos) {
+    // 3. Kiểm tra số lượng thư mục background
+    if (totalVideoBackgrounds === 0) {
       log("❌ Không tìm thấy thư mục background nào!", LOG_LEVEL.ERROR);
       return;
     }
 
+    // 4. Hiển thị thông tin tổng quan về quá trình xử lý
     log(
       `🚀 Bắt đầu xử lý với ${totalOverlays} video overlay và ${totalVideoBackgrounds} thư mục background`,
       LOG_LEVEL.INFO
@@ -338,11 +344,7 @@ const processAllVideos = async () => {
       LOG_LEVEL.INFO
     );
 
-    if (hasCombinedVideos) {
-      log(`Sử dụng video từ thư mục combined_videos nếu có`, LOG_LEVEL.INFO);
-    }
-
-    // Tính tổng số video sẽ xử lý
+    // 5. Tính tổng số video sẽ xử lý
     totalVideosToProcess = totalVideoBackgrounds * videosPerFolder;
     log(`Tổng số video sẽ xử lý: ${totalVideosToProcess}`, LOG_LEVEL.INFO);
     log(
@@ -350,29 +352,26 @@ const processAllVideos = async () => {
       LOG_LEVEL.INFO
     );
 
-    // Duyệt qua từng folder nền
+    // 6. Xử lý từng folder background
     for (let i = 0; i < totalVideoBackgrounds; i++) {
       const folderName = `${i + 1}`;
       const groupFolder = path.join(outputFolder, folderName);
 
-      // Kiểm tra xem có thư mục tương ứng trong combined_videos không
-      const combinedVideosFolderPath = path.join(
-        combinedVideosFolder,
-        folderName
-      );
-      const useCombinedVideos =
-        hasCombinedVideos && fs.existsSync(combinedVideosFolderPath);
-
+      // Tạo thư mục output nếu chưa tồn tại
       if (!fs.existsSync(groupFolder)) {
         fs.mkdirSync(groupFolder, { recursive: true });
       }
 
-      // Lấy danh sách background
+      // 7. Lấy danh sách file background
       let backgroundFiles = [];
       let totalBackgroundsForFolder = 0;
 
-      if (useCombinedVideos) {
+      if (hasCombinedVideos) {
         // Sử dụng video từ combined_videos
+        const combinedVideosFolderPath = path.join(
+          combinedVideosFolder,
+          folderName
+        );
         backgroundFiles = getFilesFromFolder(combinedVideosFolderPath);
         totalBackgroundsForFolder = backgroundFiles.length;
         log(
@@ -380,19 +379,17 @@ const processAllVideos = async () => {
           LOG_LEVEL.INFO
         );
       } else {
-        // Sử dụng video làm background từ backgrounds
-        const backgroundFolderPath = path.join(
-          backgroundFolder,
-          backgroundFolders[i]
-        );
-        backgroundFiles = getFilesFromFolder(backgroundFolderPath);
+        // Sử dụng video từ backgrounds
+        const backgroundsFolderPath = path.join(backgroundFolder, folderName);
+        backgroundFiles = getFilesFromFolder(backgroundsFolderPath);
         totalBackgroundsForFolder = backgroundFiles.length;
         log(
-          `Sử dụng ${totalBackgroundsForFolder} video từ thư mục backgrounds/${backgroundFolders[i]}`,
+          `Sử dụng ${totalBackgroundsForFolder} video từ thư mục backgrounds/${folderName}`,
           LOG_LEVEL.INFO
         );
       }
 
+      // 8. Kiểm tra số lượng file background
       if (totalBackgroundsForFolder === 0) {
         log(
           `❌ Không có file background nào cho folder ${folderName}`,
@@ -412,18 +409,18 @@ const processAllVideos = async () => {
         LOG_LEVEL.INFO
       );
 
-      // Tính vị trí bắt đầu cho ngày hiện tại
+      // 9. Tính vị trí bắt đầu cho ngày hiện tại
       const startIndex = calculateStartIndex(i, currentDay, totalOverlays);
 
-      // Chuẩn bị danh sách công việc
+      // 10. Chuẩn bị danh sách công việc
       const tasks = [];
 
-      // Lấy số video từ vị trí bắt đầu
+      // 11. Lấy số video từ vị trí bắt đầu
       for (let j = 0; j < videosPerFolder; j++) {
         const overlayIndex = (startIndex + j) % totalOverlays;
-        const backgroundIndex = useCombinedVideos
-          ? Math.floor(Math.random() * totalBackgroundsForFolder)
-          : (startIndex + j) % totalBackgroundsForFolder;
+        const backgroundIndex = Math.floor(
+          Math.random() * totalBackgroundsForFolder
+        );
 
         const overlay = overlayFiles[overlayIndex];
         const background = backgroundFiles[backgroundIndex];
@@ -445,7 +442,7 @@ const processAllVideos = async () => {
         });
       }
 
-      // Xử lý song song với giới hạn số lượng
+      // 12. Xử lý song song với giới hạn số lượng
       const processBatch = async (batch) => {
         return Promise.all(
           batch.map((task) =>
@@ -459,15 +456,17 @@ const processAllVideos = async () => {
         );
       };
 
-      // Chia nhỏ công việc thành các batch
+      // 13. Chia nhỏ công việc thành các batch
       for (let k = 0; k < tasks.length; k += maxConcurrentProcesses) {
         const batch = tasks.slice(k, k + maxConcurrentProcesses);
         await processBatch(batch);
       }
 
+      // 14. Upload lên VPS sau khi xử lý xong folder
       uploadVps(i, folderName);
     }
 
+    // 15. Hiển thị thông tin kết thúc
     const endTime = Date.now();
     const totalTime = ((endTime - startTime) / 1000 / 60).toFixed(2);
 

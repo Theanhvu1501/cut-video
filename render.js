@@ -90,13 +90,14 @@ const overlayFolder = "./overlays";
 const backgroundFolder = "./backgrounds";
 const combinedVideosFolder = "./combined_videos";
 const outputFolder = "./done";
+const introFolder = "./intro"; // Thêm đường dẫn đến thư mục intro
 const useChromaKey = true;
 const color = "4887EE";
 const chromaKeyFile = "./chromaKey.txt";
 const height = 190;
 const y_offset = 490;
 const ipList = "./vps.txt";
-const useAutoUploadVps = true;
+const useAutoUploadVps = false;
 const maxConcurrentProcesses = 2;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -108,6 +109,12 @@ if (fs.existsSync(outputFolder)) {
 }
 
 fs.mkdirSync(outputFolder, { recursive: true });
+
+// Tạo thư mục intro nếu chưa tồn tại
+if (!fs.existsSync(introFolder)) {
+  log(`Thư mục ${introFolder} chưa tồn tại, đang tạo...`, LOG_LEVEL.INFO);
+  fs.mkdirSync(introFolder, { recursive: true });
+}
 // endregion
 
 // region ========== 4. Tiện ích đọc file ==========
@@ -234,6 +241,95 @@ const complexFilter = (inputOverlay) => {
   ];
 };
 
+// Hàm ghép intro với video đã xử lý
+const addIntroToVideo = async (inputVideo, introVideo, outputPath) => {
+  return new Promise((resolve, reject) => {
+    const startTime = Date.now();
+
+    log(
+      `🎬 Đang ghép intro cho video: ${path.basename(outputPath)}`,
+      LOG_LEVEL.DEBUG
+    );
+
+    // Tạo file tạm để lưu danh sách file cần ghép
+    const tempListFile = path.join(
+      path.dirname(outputPath),
+      `_temp_list_${Date.now()}.txt`
+    );
+    const fileContent = `file '${introVideo.replace(
+      /\\/g,
+      "/"
+    )}'\nfile '${inputVideo.replace(/\\/g, "/")}'`;
+
+    try {
+      fs.writeFileSync(tempListFile, fileContent, "utf8");
+
+      const ffmpegCommand = ffmpeg()
+        .input(tempListFile)
+        .inputOptions(["-f", "concat", "-safe", "0"])
+        .outputOptions(["-c", "copy"]) // Sử dụng copy để tránh re-encode
+        .output(outputPath);
+
+      ffmpegCommand.on("end", () => {
+        const endTime = Date.now();
+        log(
+          `✅ Video với intro ${path.basename(outputPath)} hoàn thành trong ${(
+            (endTime - startTime) /
+            1000
+          ).toFixed(2)}s`,
+          LOG_LEVEL.DEBUG
+        );
+
+        // Đợi một chút trước khi xóa file tạm
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(tempListFile)) {
+              fs.unlinkSync(tempListFile);
+              log(`Đã xóa file tạm: ${tempListFile}`, LOG_LEVEL.DEBUG);
+            }
+          } catch (err) {
+            log(
+              `Không thể xóa file tạm ${tempListFile}: ${err.message}`,
+              LOG_LEVEL.WARN
+            );
+            // Tiếp tục xử lý mặc dù không xóa được file tạm
+          }
+          resolve();
+        }, 500); // Đợi 500ms
+      });
+
+      ffmpegCommand.on("error", (error) => {
+        log(
+          `❌ Lỗi khi ghép intro cho video ${path.basename(outputPath)}: ${
+            error.message
+          }`,
+          LOG_LEVEL.ERROR
+        );
+
+        // Đợi một chút trước khi xóa file tạm
+        setTimeout(() => {
+          try {
+            if (fs.existsSync(tempListFile)) {
+              fs.unlinkSync(tempListFile);
+            }
+          } catch (err) {
+            log(
+              `Không thể xóa file tạm ${tempListFile}: ${err.message}`,
+              LOG_LEVEL.WARN
+            );
+          }
+          reject(error);
+        }, 500); // Đợi 500ms
+      });
+
+      ffmpegCommand.run();
+    } catch (error) {
+      log(`❌ Lỗi khi tạo file tạm: ${error.message}`, LOG_LEVEL.ERROR);
+      reject(error);
+    }
+  });
+};
+
 const processVideo = async (inputOverlay, inputBackground, outputPath) => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
@@ -356,10 +452,15 @@ const processAllVideos = async () => {
     for (let i = 0; i < totalVideoBackgrounds; i++) {
       const folderName = `${i + 1}`;
       const groupFolder = path.join(outputFolder, folderName);
+      const tempFolder = path.join(outputFolder, `_temp_${folderName}`);
 
-      // Tạo thư mục output nếu chưa tồn tại
+      // Tạo thư mục output và temp nếu chưa tồn tại
       if (!fs.existsSync(groupFolder)) {
         fs.mkdirSync(groupFolder, { recursive: true });
+      }
+
+      if (!fs.existsSync(tempFolder)) {
+        fs.mkdirSync(tempFolder, { recursive: true });
       }
 
       // 7. Lấy danh sách file background
@@ -426,7 +527,7 @@ const processAllVideos = async () => {
         const background = backgroundFiles[backgroundIndex];
 
         const overlayFileName = path.basename(overlay, path.extname(overlay));
-        const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
+        const tempOutputPath = path.join(tempFolder, `${overlayFileName}.mp4`);
 
         log(
           `🎬 Chuẩn bị video ${j + 1}/${videosPerFolder}: ${path.basename(
@@ -438,7 +539,9 @@ const processAllVideos = async () => {
         tasks.push({
           overlay,
           background,
-          outputPath,
+          outputPath: tempOutputPath,
+          finalOutputPath: path.join(groupFolder, `${overlayFileName}.mp4`),
+          overlayIndex: j,
         });
       }
 
@@ -462,11 +565,60 @@ const processAllVideos = async () => {
         await processBatch(batch);
       }
 
-      // 14. Upload lên VPS sau khi xử lý xong folder
+      // 14. Thêm intro vào các video đã xử lý
+      const introVideo = path.join(introFolder, `${folderName}.mp4`);
+
+      if (fs.existsSync(introVideo)) {
+        log(
+          `✅ Đã tìm thấy intro cho folder ${folderName}: ${path.basename(
+            introVideo
+          )}`,
+          LOG_LEVEL.INFO
+        );
+
+        const addIntroTasks = tasks.map((task) => {
+          return addIntroToVideo(
+            task.outputPath,
+            introVideo,
+            task.finalOutputPath
+          );
+        });
+
+        await Promise.all(addIntroTasks);
+
+        log(
+          `✅ Intro đã được thêm vào tất cả các video trong folder ${folderName}`,
+          LOG_LEVEL.INFO
+        );
+      } else {
+        log(
+          `❌ Không tìm thấy intro cho folder ${folderName}: ${path.basename(
+            introVideo
+          )}`,
+          LOG_LEVEL.ERROR
+        );
+
+        // Nếu intro không tồn tại, di chuyển các video đã xử lý từ tempFolder sang groupFolder
+        tasks.forEach((task) => {
+          fs.renameSync(task.outputPath, task.finalOutputPath);
+        });
+
+        log(
+          `✅ Các video đã được di chuyển từ tempFolder sang groupFolder cho folder ${folderName}`,
+          LOG_LEVEL.INFO
+        );
+      }
+
+      // 15. Xóa thư mục tempFolder
+      fs.rmSync(tempFolder, { recursive: true });
+      log(`✅ Thư mục tempFolder đã được xóa: ${tempFolder}`, LOG_LEVEL.INFO);
+
+      // 16. Upload folder lên VPS
       uploadVps(i, folderName);
+      log(`✅ Đã bắt đầu upload folder ${folderName} lên VPS`, LOG_LEVEL.INFO);
     }
 
-    // 15. Hiển thị thông tin kết thúc
+    // 16. Hiển thị thông tin kết thúc
     const endTime = Date.now();
     const totalTime = ((endTime - startTime) / 1000 / 60).toFixed(2);
 

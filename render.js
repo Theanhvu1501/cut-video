@@ -236,7 +236,7 @@ const complexFilter = (inputOverlay) => {
 
   return [
     filter.join(";"),
-    "[0:v][overlay_video]overlay=0:H-h[combined_video]",
+    "[0:v][overlay_video]overlay=0:H-h:enable='gte(t,1)':format=auto,fade=t=in:st=0:d=2[combined_video]",
     "[1:a]volume=1.0[overlay_audio]",
   ];
 };

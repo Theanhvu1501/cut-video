@@ -502,7 +502,44 @@ const uploadVps = (index, folderName) => {
 };
 // endregion
 
+// region ========== 9.5 Xóa file trên VPS ==========
+const deleteVpsFiles = () => {
+  const vpsList = readIpList();
+  if (vpsList.length === 0) {
+    log(`Không tìm thấy danh sách VPS để xóa file`, LOG_LEVEL.WARN);
+    return;
+  }
+
+  // Lọc các VPS có tên khác nhau để tránh xóa trùng lặp
+  const uniqueVps = [...new Set(vpsList)];
+
+  log(`Bắt đầu xóa file trên ${uniqueVps.length} VPS...`, LOG_LEVEL.INFO);
+
+  for (const vpsName of uniqueVps) {
+    const deleteCmd = `rclone delete "${vpsName}:/" --rmdirs && exit`;
+
+    log(`Đang xóa file trên VPS ${vpsName}`, LOG_LEVEL.INFO);
+    try {
+      spawn("cmd.exe", ["/c", "start", "cmd.exe", "/c", deleteCmd], {
+        detached: true,
+        stdio: "ignore",
+        windowsVerbatimArguments: true,
+      }).unref();
+      log(`Đã xóa file trên VPS ${vpsName}`, LOG_LEVEL.INFO);
+    } catch (error) {
+      log(
+        `Lỗi khi xóa file trên VPS ${vpsName}: ${error.message}`,
+        LOG_LEVEL.ERROR
+      );
+    }
+  }
+
+  log(`Hoàn thành xóa file trên các VPS`, LOG_LEVEL.INFO);
+};
+// endregion
 // region ========== 10. Khởi chạy ==========
+// Xóa file trên VPS trước khi bắt đầu render
+deleteVpsFiles();
 processAllVideos().then(() => {
   console.log("🎉 Hoàn tất xử lý tất cả video.");
 });

@@ -504,6 +504,7 @@ const uploadVps = (index, folderName) => {
 
 // region ========== 9.5 Xóa file trên VPS ==========
 const deleteVpsFiles = () => {
+  if (!useAutoUploadVps) return;
   const vpsList = readIpList();
   if (vpsList.length === 0) {
     log(`Không tìm thấy danh sách VPS để xóa file`, LOG_LEVEL.WARN);

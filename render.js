@@ -246,87 +246,112 @@ const addIntroToVideo = async (inputVideo, introVideo, outputPath) => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
 
-    log(
-      `🎬 Đang ghép intro cho video: ${path.basename(outputPath)}`,
-      LOG_LEVEL.DEBUG
-    );
+    // Lấy độ dài của intro và video chính
+    ffmpeg.ffprobe(introVideo, (err, introMetadata) => {
+      if (err) {
+        log(`❌ Lỗi khi lấy metadata intro: ${err.message}`, LOG_LEVEL.ERROR);
+        return reject(err);
+      }
 
-    // Tạo file tạm để lưu danh sách file cần ghép
-    const tempListFile = path.join(
-      path.dirname(outputPath),
-      `_temp_list_${Date.now()}.txt`
-    );
-    const fileContent = `file '${introVideo.replace(
-      /\\/g,
-      "/"
-    )}'\nfile '${inputVideo.replace(/\\/g, "/")}'`;
+      ffmpeg.ffprobe(inputVideo, (err, videoMetadata) => {
+        if (err) {
+          log(`❌ Lỗi khi lấy metadata video: ${err.message}`, LOG_LEVEL.ERROR);
+          return reject(err);
+        }
 
-    try {
-      fs.writeFileSync(tempListFile, fileContent, "utf8");
+        const introDuration = introMetadata.format.duration;
+        const videoDuration = videoMetadata.format.duration;
+        const totalDuration = introDuration + videoDuration;
 
-      const ffmpegCommand = ffmpeg()
-        .input(tempListFile)
-        .inputOptions(["-f", "concat", "-safe", "0"])
-        .outputOptions(["-c", "copy"]) // Sử dụng copy để tránh re-encode
-        .output(outputPath);
-
-      ffmpegCommand.on("end", () => {
-        const endTime = Date.now();
         log(
-          `✅ Video với intro ${path.basename(outputPath)} hoàn thành trong ${(
-            (endTime - startTime) /
-            1000
-          ).toFixed(2)}s`,
+          `🎬 Đang ghép intro (${introDuration.toFixed(
+            2
+          )}s) với video (${videoDuration.toFixed(2)}s): ${path.basename(
+            outputPath
+          )}`,
           LOG_LEVEL.DEBUG
         );
 
-        // Đợi một chút trước khi xóa file tạm
-        setTimeout(() => {
-          try {
-            if (fs.existsSync(tempListFile)) {
-              fs.unlinkSync(tempListFile);
-              log(`Đã xóa file tạm: ${tempListFile}`, LOG_LEVEL.DEBUG);
-            }
-          } catch (err) {
-            log(
-              `Không thể xóa file tạm ${tempListFile}: ${err.message}`,
-              LOG_LEVEL.WARN
-            );
-            // Tiếp tục xử lý mặc dù không xóa được file tạm
-          }
-          resolve();
-        }, 500); // Đợi 500ms
-      });
-
-      ffmpegCommand.on("error", (error) => {
-        log(
-          `❌ Lỗi khi ghép intro cho video ${path.basename(outputPath)}: ${
-            error.message
-          }`,
-          LOG_LEVEL.ERROR
+        // Tạo file tạm để lưu danh sách file cần ghép
+        const tempListFile = path.join(
+          path.dirname(outputPath),
+          `_temp_list_${Date.now()}.txt`
         );
+        const fileContent = `file '${introVideo.replace(
+          /\\/g,
+          "/"
+        )}'\nfile '${inputVideo.replace(/\\/g, "/")}'`;
 
-        // Đợi một chút trước khi xóa file tạm
-        setTimeout(() => {
-          try {
-            if (fs.existsSync(tempListFile)) {
-              fs.unlinkSync(tempListFile);
-            }
-          } catch (err) {
+        try {
+          fs.writeFileSync(tempListFile, fileContent, "utf8");
+
+          const ffmpegCommand = ffmpeg()
+            .input(tempListFile)
+            .inputOptions(["-f", "concat", "-safe", "0"])
+            .outputOptions(["-c", "copy"]) // Vẫn giữ copy để tốc độ nhanh
+            .outputOptions(["-t", totalDuration.toString()]) // Thêm tùy chọn -t để đặt độ dài chính xác
+            .output(outputPath);
+
+          ffmpegCommand.on("end", () => {
+            const endTime = Date.now();
             log(
-              `Không thể xóa file tạm ${tempListFile}: ${err.message}`,
-              LOG_LEVEL.WARN
+              `✅ Video với intro ${path.basename(
+                outputPath
+              )} hoàn thành trong ${((endTime - startTime) / 1000).toFixed(
+                2
+              )}s`,
+              LOG_LEVEL.DEBUG
             );
-          }
-          reject(error);
-        }, 500); // Đợi 500ms
-      });
 
-      ffmpegCommand.run();
-    } catch (error) {
-      log(`❌ Lỗi khi tạo file tạm: ${error.message}`, LOG_LEVEL.ERROR);
-      reject(error);
-    }
+            // Đợi một chút trước khi xóa file tạm
+            setTimeout(() => {
+              try {
+                if (fs.existsSync(tempListFile)) {
+                  fs.unlinkSync(tempListFile);
+                  log(`Đã xóa file tạm: ${tempListFile}`, LOG_LEVEL.DEBUG);
+                }
+              } catch (err) {
+                log(
+                  `Không thể xóa file tạm ${tempListFile}: ${err.message}`,
+                  LOG_LEVEL.WARN
+                );
+                // Tiếp tục xử lý mặc dù không xóa được file tạm
+              }
+              resolve();
+            }, 500); // Đợi 500ms
+          });
+
+          ffmpegCommand.on("error", (error) => {
+            log(
+              `❌ Lỗi khi ghép intro cho video ${path.basename(outputPath)}: ${
+                error.message
+              }`,
+              LOG_LEVEL.ERROR
+            );
+
+            // Đợi một chút trước khi xóa file tạm
+            setTimeout(() => {
+              try {
+                if (fs.existsSync(tempListFile)) {
+                  fs.unlinkSync(tempListFile);
+                }
+              } catch (err) {
+                log(
+                  `Không thể xóa file tạm ${tempListFile}: ${err.message}`,
+                  LOG_LEVEL.WARN
+                );
+              }
+              reject(error);
+            }, 500); // Đợi 500ms
+          });
+
+          ffmpegCommand.run();
+        } catch (error) {
+          log(`❌ Lỗi khi tạo file tạm: ${error.message}`, LOG_LEVEL.ERROR);
+          reject(error);
+        }
+      });
+    });
   });
 };
 

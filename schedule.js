@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
+import { Client, EmbedBuilder, GatewayIntentBits } from "discord.js";
 import fs from "fs";
-import TelegramBot from "node-telegram-bot-api";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -17,38 +17,139 @@ const CONFIG = {
   renderScript: path.join(__dirname, "render.js"),
   videosPerFolder: 2, // Số video mỗi folder, thay đổi theo nhu cầu
   logFile: path.join(__dirname, "schedule.log"),
-  telegram: {
-    token: "6371688043:AAF8zyBpv-EP70012a8YuPU7lpL3ppoVfKM", // Thay thế bằng token của bot Telegram của bạn
-    chatId: "-4242127506", // Thay thế bằng chat ID của bạn hoặc nhóm
-    enabled: true, // Bật/tắt tính năng gửi tin nhắn Telegram
+  discord: {
+    token: "token", // Thay thế bằng token của bot Discord của bạn
+    channelId: "chat_id", // Thay thế bằng ID kênh Discord
+    enabled: true, // Bật/tắt tính năng gửi tin nhắn Discord
   },
 };
 
-// Khởi tạo bot Telegram nếu được bật
-let bot = null;
-if (
-  CONFIG.telegram.enabled &&
-  CONFIG.telegram.token &&
-  CONFIG.telegram.chatId
-) {
+// Khởi tạo bot Discord nếu được bật
+let discordClient = null;
+if (CONFIG.discord.enabled && CONFIG.discord.token) {
   try {
-    bot = new TelegramBot(CONFIG.telegram.token, { polling: false });
+    discordClient = new Client({
+      intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+    });
+
+    discordClient.login(CONFIG.discord.token);
+
+    discordClient.on("ready", () => {
+      log(`✅ Discord Bot đã sẵn sàng với tên ${discordClient.user.tag}`);
+    });
   } catch (error) {
-    console.error(`Lỗi khởi tạo Telegram Bot: ${error.message}`);
+    console.error(`Lỗi khởi tạo Discord Bot: ${error.message}`);
   }
 }
 
-// Hàm gửi tin nhắn qua Telegram
-const sendTelegramMessage = async (message) => {
-  if (!bot || !CONFIG.telegram.enabled) return;
+// Hàm gửi tin nhắn qua Discord
+const sendDiscordMessage = async (message) => {
+  if (!discordClient || !CONFIG.discord.enabled) return;
 
   try {
-    await bot.sendMessage(CONFIG.telegram.chatId, message, {
-      parse_mode: "HTML",
-    });
-    console.log("✅ Đã gửi tin nhắn Telegram");
+    // Kiểm tra xem bot đã sẵn sàng chưa
+    if (!discordClient.isReady()) {
+      log(`⚠️ Discord Bot chưa sẵn sàng, đang chờ kết nối...`);
+      // Đợi bot sẵn sàng
+      await new Promise((resolve) => {
+        const checkReady = () => {
+          if (discordClient.isReady()) {
+            resolve();
+          } else {
+            setTimeout(checkReady, 1000);
+          }
+        };
+        checkReady();
+      });
+    }
+
+    log(`🔍 Đang tìm kênh Discord với ID: ${CONFIG.discord.channelId}`);
+
+    // Liệt kê các kênh mà bot có thể truy cập
+    const availableChannels = discordClient.channels.cache.map(
+      (channel) => `${channel.name} (${channel.id})`
+    );
+    log(
+      `📋 Các kênh có sẵn: ${
+        availableChannels.join(", ") || "Không có kênh nào"
+      }`
+    );
+
+    // Thử lấy kênh từ cache trước
+    let channel = discordClient.channels.cache.get(CONFIG.discord.channelId);
+
+    // Nếu không có trong cache, thử fetch
+    if (!channel) {
+      try {
+        channel = await discordClient.channels.fetch(CONFIG.discord.channelId);
+        log(`✅ Đã fetch được kênh: ${channel.name}`);
+      } catch (fetchError) {
+        log(`❌ Không thể fetch kênh: ${fetchError.message}`);
+        throw new Error(
+          `Không tìm thấy kênh với ID: ${CONFIG.discord.channelId}. Lỗi: ${fetchError.message}`
+        );
+      }
+    }
+
+    if (!channel) {
+      throw new Error(
+        `Không tìm thấy kênh với ID: ${CONFIG.discord.channelId}`
+      );
+    }
+
+    // Kiểm tra quyền gửi tin nhắn
+    if (!channel.permissionsFor(discordClient.user).has("SendMessages")) {
+      throw new Error(
+        `Bot không có quyền gửi tin nhắn trong kênh ${channel.name}`
+      );
+    }
+
+    // Tạo embed message
+    const embed = new EmbedBuilder()
+      .setColor(
+        message.includes("CẢNH BÁO")
+          ? 0xffa500
+          : message.includes("LỖI")
+          ? 0xff0000
+          : 0x00ff00
+      )
+      .setTitle(
+        message.includes("CẢNH BÁO")
+          ? "⚠️ CẢNH BÁO"
+          : message.includes("LỖI")
+          ? "❌ LỖI"
+          : "✅ THÀNH CÔNG"
+      )
+      .setDescription(message.replace(/<b>|<\/b>/g, ""))
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+    log(`✅ Đã gửi tin nhắn Discord đến kênh ${channel.name}`);
   } catch (error) {
-    console.error(`❌ Lỗi khi gửi tin nhắn Telegram: ${error.message}`);
+    log(`❌ Lỗi khi gửi tin nhắn Discord: ${error.message}`);
+
+    // Thêm thông tin debug
+    if (discordClient) {
+      log(
+        `🤖 Bot đang đăng nhập với tên: ${
+          discordClient.user?.tag || "Chưa đăng nhập"
+        }`
+      );
+      log(
+        `🔌 Trạng thái kết nối: ${
+          discordClient.isReady() ? "Đã sẵn sàng" : "Chưa sẵn sàng"
+        }`
+      );
+
+      const guilds = discordClient.guilds.cache.map(
+        (g) => `${g.name} (${g.id})`
+      );
+      log(
+        `🏠 Các server bot đang tham gia: ${
+          guilds.join(", ") || "Không có server nào"
+        }`
+      );
+    }
   }
 };
 
@@ -176,15 +277,15 @@ const main = async () => {
 
     // Gửi cảnh báo nếu sắp hết ngày
     if (remainingDays <= 2 && remainingDays >= 0) {
-      const warningMessage = `⚠️ <b>CẢNH BÁO</b>: Chỉ còn ${remainingDays} ngày nữa là hết background!\nNgày hiện tại: ${currentDay}/${totalBackgrounds}`;
-      await sendTelegramMessage(warningMessage);
+      const warningMessage = `⚠️ <b>CẢNH BÁO</b>: Chỉ còn ${remainingDays} ngày nữa là hết videos!\nNgày hiện tại: ${currentDay}/${totalBackgrounds}`;
+      await sendDiscordMessage(warningMessage);
     }
 
     // Kiểm tra nếu đã hết ngày
     if (remainingDays < 0) {
       const errorMessage = `❌ <b>LỖI</b>: Đã hết video! Không thể tiếp tục render.\nNgày hiện tại: ${currentDay}/${totalBackgrounds}`;
       log(errorMessage);
-      await sendTelegramMessage(errorMessage);
+      await sendDiscordMessage(errorMessage);
       return;
     }
 
@@ -194,13 +295,13 @@ const main = async () => {
     // Gửi thông báo thành công
     const successMessage = `✅ <b>THÀNH CÔNG</b>: Đã render video cho ngày ${currentDay}/${totalBackgrounds}.\nCòn lại: ${remainingDays} ngày`;
     log(successMessage);
-    await sendTelegramMessage(successMessage);
+    await sendDiscordMessage(successMessage);
 
     log("✅ Hoàn thành quy trình tự động render video");
   } catch (error) {
     const errorMessage = `❌ <b>LỖI</b>: ${error.message}`;
     log(`❌ Lỗi trong quy trình tự động: ${error.message}`);
-    await sendTelegramMessage(errorMessage);
+    await sendDiscordMessage(errorMessage);
     process.exit(1);
   } finally {
     log(`================================================================`);

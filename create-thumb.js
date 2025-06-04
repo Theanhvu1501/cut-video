@@ -12,12 +12,13 @@ const CONFIG = {
     sizeFactor: 18, // Kích thước font = chiều rộng ảnh / sizeFactor
     weight: "bold",
     lineHeightRatio: 1.1, // Khoảng cách giữa các dòng (hệ số nhân với fontSize)
+    scaleY: 2,
   },
 
   // Cấu hình vị trí và kích thước
   layout: {
     sidePadding: 1, // Khoảng cách từ chữ đến hai bên
-    bottomPadding: 25, // Khoảng cách từ chữ đến cạnh dưới
+    bottomPadding: 120, // Khoảng cách từ chữ đến cạnh dưới
   },
 
   // Cấu hình màu sắc
@@ -30,7 +31,7 @@ const CONFIG = {
 
   // Cấu hình gradient
   gradient: {
-    heightFactor: 0.8, // Chiều cao gradient = fontSize * heightFactor
+    heightFactor: 1.5, // Chiều cao gradient = fontSize * heightFactor
     stops: [
       { position: 0, color: "rgba(0, 0, 0, 0.0)" }, // Trong suốt ở trên cùng
       { position: 0.1, color: "rgba(0, 0, 0, 0.3)" }, // Nhanh chóng chuyển sang đen
@@ -100,7 +101,6 @@ async function addTextToImage(imagePath, text, outputPath) {
     const lineHeight = fontSize * CONFIG.font.lineHeightRatio;
     // Điều chỉnh vị trí y để chữ thấp hơn, gần với cạnh dưới hơn
     const y1 = height - lineHeight - CONFIG.layout.bottomPadding;
-    const y2 = height - CONFIG.layout.bottomPadding;
 
     // Tạo gradient đen ở dưới ảnh - Kéo dài từ dưới lên cao hơn cả dòng đầu
     const gradientStart = y1 - fontSize * CONFIG.gradient.heightFactor;
@@ -116,28 +116,54 @@ async function addTextToImage(imagePath, text, outputPath) {
     ctx.fillStyle = gradient;
     ctx.fillRect(0, gradientStart, width, height - gradientStart);
 
+    const scaleY = CONFIG.font.scaleY; // Kéo cao chữ 1.5 lần
+
+    // Cập nhật lại lineHeight theo scaleY để không đè
+    const scaledLineHeight = lineHeight * scaleY;
+
     // Vẽ dòng đầu tiên
     const textWidth1 = ctx.measureText(firstLine).width;
     const x1 = (width - textWidth1) / 2;
 
+    // Lưu trạng thái context trước khi biến đổi
+    ctx.save();
+
+    // Di chuyển tới vị trí chữ dòng đầu
+    ctx.translate(x1, y1);
+
+    // Kéo dãn chữ theo chiều cao
+    ctx.scale(1, scaleY);
+
+    // Vẽ viền và chữ dòng đầu (tại vị trí 0,0 vì đã translate)
     ctx.strokeStyle = CONFIG.colors.stroke;
-    ctx.lineWidth = CONFIG.colors.strokeWidth;
-    ctx.strokeText(firstLine, x1, y1);
+    ctx.lineWidth = CONFIG.colors.strokeWidth / scaleY; // điều chỉnh lineWidth để viền không bị dày quá do scale
+    ctx.strokeText(firstLine, 0, 0);
 
     ctx.fillStyle = CONFIG.colors.firstLine;
-    ctx.fillText(firstLine, x1, y1);
+    ctx.fillText(firstLine, 0, 0);
 
-    // Vẽ dòng thứ hai
+    // Phục hồi context về trạng thái ban đầu
+    ctx.restore();
+
     if (secondLine) {
       const textWidth2 = ctx.measureText(secondLine).width;
       const x2 = (width - textWidth2) / 2;
 
+      ctx.save();
+
+      // Dịch tới vị trí dòng 2, dịch theo khoảng cách dòng đã scale
+      ctx.translate(x2, y1 + scaledLineHeight);
+
+      ctx.scale(1, scaleY);
+
       ctx.strokeStyle = CONFIG.colors.stroke;
-      ctx.lineWidth = CONFIG.colors.strokeWidth;
-      ctx.strokeText(secondLine, x2, y2);
+      ctx.lineWidth = CONFIG.colors.strokeWidth / scaleY;
+      ctx.strokeText(secondLine, 0, 0);
 
       ctx.fillStyle = CONFIG.colors.secondLine;
-      ctx.fillText(secondLine, x2, y2);
+      ctx.fillText(secondLine, 0, 0);
+
+      ctx.restore();
     }
 
     const textBuffer = canvas.toBuffer("image/png");

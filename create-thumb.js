@@ -3,13 +3,13 @@ import sharp from "sharp";
 
 // Load font tiếng Nhật
 GlobalFonts.registerFromPath("./fonts/NotoSansJP-Regular.ttf", "Noto Sans JP");
-
+GlobalFonts.registerFromPath("./fonts/KosugiMaru-Regular.ttf", "Noto Sans JP");
 // Cấu hình có thể tùy chỉnh
 const CONFIG = {
   // Cấu hình font chữ
   font: {
-    family: "Noto Sans JP",
-    sizeFactor: 15, // Kích thước font = chiều rộng ảnh / sizeFactor
+    family: "Kosugi Maru",
+    sizeFactor: 18, // Kích thước font = chiều rộng ảnh / sizeFactor
     weight: "bold",
     lineHeightRatio: 1.1, // Khoảng cách giữa các dòng (hệ số nhân với fontSize)
   },
@@ -25,7 +25,7 @@ const CONFIG = {
     firstLine: "white", // Màu chữ dòng đầu
     secondLine: "#16f020", // Màu chữ dòng thứ hai (xanh lá cây sáng)
     stroke: "black", // Màu viền chữ
-    strokeWidth: 10, // Độ dày viền chữ
+    strokeWidth: 8, // Độ dày viền chữ
   },
 
   // Cấu hình gradient

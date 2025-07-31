@@ -19,16 +19,16 @@ async function main() {
 
   let args = [];
 
-  if (script === "Render Video") {
-    const { params } = await inquirer.prompt([
-      {
-        type: "input",
-        name: "params",
-        message: "Nhập các tham số cho render (cách nhau bởi khoảng trắng):",
-      },
-    ]);
-    args = params.split(" "); // Chuyển params thành mảng
-  }
+  // if (script === "Render Video") {
+  //   const { params } = await inquirer.prompt([
+  //     {
+  //       type: "input",
+  //       name: "params",
+  //       message: "Nhập các tham số cho render (cách nhau bởi khoảng trắng):",
+  //     },
+  //   ]);
+  //   args = params.split(" "); // Chuyển params thành mảng
+  // }
 
   console.log(`\n🚀 Đang chạy: node ${scripts[script]} ${args.join(" ")}\n`);
 

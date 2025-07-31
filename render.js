@@ -2,48 +2,34 @@ import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import { spawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
+import logUpdate from "log-update"; // <-- THÊM THƯ VIỆN MỚI
 import path from "path";
 import { fileURLToPath } from "url";
+
 ffmpeg.setFfmpegPath(ffmpegPath);
 
 // =================================================================
-// 0. CẤU HÌNH & LOGGING (ĐÃ NÂNG CẤP)
+// 0. CẤU HÌNH & LOGGING (ĐÃ NÂNG CẤP HOÀN TOÀN)
 // =================================================================
 
-const LOG_LEVEL = { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3 };
-const currentLogLevel = LOG_LEVEL.INFO;
 const logFile = "./render.log";
-// Xóa log cũ khi bắt đầu
 if (fs.existsSync(logFile)) fs.unlinkSync(logFile);
 
-const logToQueue = (message) => {
+const logToFile = (message) => {
   const timestamp = new Date().toISOString();
   fs.appendFileSync(logFile, `[${timestamp}] ${message}\n`, {
     encoding: "utf-8",
   });
 };
 
-// --- HỆ THỐNG HIỂN THỊ TIẾN TRÌNH MỚI ---
+// --- HỆ THỐNG HIỂN THỊ TIẾN TRÌNH MỚI VỚI LOG-UPDATE ---
 let totalVideosToProcess = 0;
 let processedVideos = 0;
 let errorVideos = 0;
-let progressSlots = []; // Mảng lưu trạng thái của từng slot xử lý song song
-let dashboardInterval;
+let progressSlots = [];
 
-// Hàm khởi tạo các slot tiến trình
-const initializeProgressSlots = (count) => {
-  progressSlots = Array.from({ length: count }, (_, i) => ({
-    id: i,
-    message: "Đang chờ...",
-  }));
-};
-
-// Hàm render toàn bộ bảng điều khiển tiến trình
-const renderProgressDashboard = () => {
-  // Sử dụng process.stdout.write và \r để tránh làm đầy console và file log
-  const clearScreen = "\x1B[2J\x1B[0f";
-  process.stdout.write(clearScreen);
-
+// Hàm này giờ chỉ xây dựng chuỗi output cho log-update
+const renderDashboard = () => {
   let output = "BẢNG ĐIỀU KHIỂN TIẾN TRÌNH RENDER:\n";
   output += "=======================================\n";
   progressSlots.forEach((slot) => {
@@ -54,20 +40,9 @@ const renderProgressDashboard = () => {
     totalVideosToProcess > 0
       ? Math.round((processedVideos / totalVideosToProcess) * 100)
       : 0;
-  output += `TỔNG QUAN: ${processedVideos}/${totalVideosToProcess} videos (${overallPercent}%) - Lỗi: ${errorVideos}\n`;
+  output += `TỔNG QUAN: ${processedVideos}/${totalVideosToProcess} videos (${overallPercent}%) - Lỗi: ${errorVideos}`;
 
-  process.stdout.write(output);
-};
-
-const startDashboard = () => {
-  if (dashboardInterval) clearInterval(dashboardInterval);
-  dashboardInterval = setInterval(renderProgressDashboard, 200); // Cập nhật 5 lần/giây
-};
-
-const stopDashboard = () => {
-  clearInterval(dashboardInterval);
-  renderProgressDashboard(); // Render lần cuối để đảm bảo thông tin chính xác
-  process.stdout.write("\n"); // Xuống dòng để không ghi đè log cuối
+  logUpdate(output);
 };
 
 // =================================================================
@@ -89,7 +64,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 if (fs.existsSync(outputFolder)) {
-  logToQueue(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`);
+  logToFile(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`);
   fs.rmSync(outputFolder, { recursive: true, force: true });
 }
 fs.mkdirSync(outputFolder, { recursive: true });
@@ -181,6 +156,7 @@ const processVideo = async (
         .map("[a]")
         .on("progress", (progress) => {
           const percent = progress.percent ? progress.percent.toFixed(2) : 0;
+          // Chỉ cập nhật dữ liệu, không vẽ lại màn hình ở đây
           progressSlots[slotId].message = `Render ${videoName}... ${percent}%`;
         })
         .on("end", () => {
@@ -188,12 +164,13 @@ const processVideo = async (
           progressSlots[
             slotId
           ].message = `✅ Hoàn thành ${videoName} trong ${timeTaken}s`;
+          logToFile(`✅ Hoàn thành ${videoName} trong ${timeTaken}s`);
           processedVideos++;
           resolve();
         })
         .on("error", (error) => {
           progressSlots[slotId].message = `❌ Lỗi render ${videoName}`;
-          logToQueue(`Lỗi chi tiết ${videoName}: ${error.message}`);
+          logToFile(`❌ Lỗi render ${videoName}: ${error.message}`);
           processedVideos++;
           errorVideos++;
           reject(error);
@@ -210,7 +187,7 @@ const uploadVps = (index, folderName) => {
   if (!useAutoUploadVps) return;
   const vpsList = readIpList();
   if (index >= vpsList.length) {
-    logToQueue(
+    logToFile(
       `⚠️ Không có VPS tương ứng cho thư mục ${folderName} (index ${index})`
     );
     return;
@@ -229,14 +206,14 @@ const uploadVps = (index, folderName) => {
     ],
     { detached: true, stdio: "ignore" }
   ).unref();
-  logToQueue(`Đã bắt đầu upload folder ${folderName} lên VPS ${vpsName}`);
+  logToFile(`Đã bắt đầu upload folder ${folderName} lên VPS ${vpsName}`);
 };
 
 const deleteVpsFiles = () => {
   if (!useAutoUploadVps) return;
   const uniqueVps = [...new Set(readIpList())];
   if (uniqueVps.length === 0) return;
-  logToQueue(`Bắt đầu xóa file trên ${uniqueVps.length} VPS...`);
+  logToFile(`Bắt đầu xóa file trên ${uniqueVps.length} VPS...`);
   uniqueVps.forEach((vpsName) => {
     spawn(
       "cmd.exe",
@@ -256,7 +233,7 @@ const deleteVpsFiles = () => {
 // 5. HÀM ĐIỀU PHỐI CHÍNH (ĐÃ NÂNG CẤP)
 // =================================================================
 const processAllVideos = async () => {
-  const startTime = Date.now();
+  let dashboardInterval;
   try {
     const overlayFolders = getSubfolders(overlayFolder);
     if (overlayFolders.length === 0) {
@@ -273,13 +250,19 @@ const processAllVideos = async () => {
       ).length;
     });
 
-    initializeProgressSlots(maxConcurrentProcesses);
-    startDashboard();
+    // Khởi tạo các slot tiến trình
+    progressSlots = Array.from({ length: maxConcurrentProcesses }, (_, i) => ({
+      id: i,
+      message: "Đang chờ...",
+    }));
 
-    logToQueue(
+    // Bắt đầu vòng lặp vẽ lại màn hình
+    dashboardInterval = setInterval(renderDashboard, 100); // Vẽ lại 10 lần/giây
+
+    logToFile(
       `🚀 Bắt đầu xử lý cho ${overlayFolders.length} kênh, tổng cộng ${totalVideosToProcess} video.`
     );
-    logToQueue(`Xử lý tối đa ${maxConcurrentProcesses} video cùng lúc`);
+    logToFile(`Xử lý tối đa ${maxConcurrentProcesses} video cùng lúc`);
 
     for (let i = 0; i < overlayFolders.length; i++) {
       const folderName = overlayFolders[i];
@@ -294,10 +277,10 @@ const processAllVideos = async () => {
         path.join(backgroundSourceFolder, folderName)
       );
       if (overlayFiles.length === 0 || backgroundFiles.length === 0) {
-        logToQueue(
+        logToFile(
           `⚠️ Bỏ qua kênh ${folderName} do thiếu video overlay hoặc background.`
         );
-        processedVideos += overlayFiles.length; // Cập nhật để tiến trình tổng quan không bị sai
+        processedVideos += overlayFiles.length;
         continue;
       }
 
@@ -322,7 +305,9 @@ const processAllVideos = async () => {
               task.outputPath,
               task.folderIndex,
               index
-            ).catch(() => {})
+            ).catch((err) => {
+              logToFile(`Bắt được lỗi trong Promise.all: ${err.message}`);
+            })
           )
         );
       }
@@ -330,13 +315,17 @@ const processAllVideos = async () => {
       uploadVps(i, folderName);
     }
   } catch (error) {
-    logToQueue(`❌ Lỗi nghiêm trọng khi xử lý: ${error.message}`);
+    logToFile(`❌ Lỗi nghiêm trọng khi xử lý: ${error.message}`);
   } finally {
-    stopDashboard();
+    // Dọn dẹp
+    clearInterval(dashboardInterval); // Dừng vòng lặp vẽ lại
+    renderDashboard(); // Vẽ lại lần cuối để đảm bảo 100% chính xác
+    logUpdate.done(); // "Thả" console ra để các log sau có thể in bình thường
+
     const endTime = Date.now();
-    const totalTime = ((endTime - startTime) / 1000 / 60).toFixed(2);
+    const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(2);
     console.log(
-      `✅ Hoàn thành! Tổng thời gian: ${totalTime} phút. Xem chi tiết tại ${logFile}`
+      `\n✅ Hoàn thành! Tổng thời gian: ${totalTime} phút. Xem chi tiết tại ${logFile}`
     );
   }
 };

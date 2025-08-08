@@ -1,26 +1,29 @@
 import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
+import chalk from "chalk"; // Thư viện để thêm màu sắc
 import { spawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
+import logUpdate from "log-update";
 import path from "path";
 import { fileURLToPath } from "url";
+
 ffmpeg.setFfmpegPath(ffmpegPath);
 
-// Thêm hệ thống log tối ưu
+// =================================================================
+// region ========== HỆ THỐNG LOG & HIỂN THỊ NÂNG CAO ==========
+// =================================================================
+
 const LOG_LEVEL = {
   ERROR: 0,
   WARN: 1,
   INFO: 2,
   DEBUG: 3,
 };
-
 const currentLogLevel = LOG_LEVEL.INFO;
 const logFile = "./render.log";
 
-const log = (message, level = LOG_LEVEL.INFO) => {
-  if (level <= currentLogLevel) {
-    console.log(message);
-  }
+// Hàm ghi log vào file
+const writeToFile = (message) => {
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] ${message}\n`;
   try {
@@ -30,69 +33,108 @@ const log = (message, level = LOG_LEVEL.INFO) => {
   }
 };
 
-// Hiển thị tiến độ xử lý
+// Hàm log ra console và file
+const log = (message, level = LOG_LEVEL.INFO) => {
+  if (level <= currentLogLevel) {
+    // Xóa khối log-update hiện tại để in log tĩnh
+    logUpdate.clear();
+    console.log(message);
+    // Vẽ lại khối log-update
+    updateDisplay();
+  }
+  writeToFile(message);
+};
+
+// State để theo dõi tiến trình
 let totalVideosToProcess = 0;
 let processedVideos = 0;
 let errorVideos = 0;
+const activeProcesses = {}; // Lưu tiến độ của các video đang render
 
-const updateProgress = () => {
-  if (totalVideosToProcess > 0) {
-    const percent = Math.round((processedVideos / totalVideosToProcess) * 100);
-    process.stdout.write(
-      `\rTiến độ: ${processedVideos}/${totalVideosToProcess} videos (${percent}%) - Lỗi: ${errorVideos}`
-    );
-  }
+// Hàm tạo thanh tiến trình
+const createProgressBar = (percent, width = 40) => {
+  const filledWidth = Math.round((width * percent) / 100);
+  const emptyWidth = width - filledWidth;
+  const filled = "█".repeat(filledWidth);
+  const empty = "░".repeat(emptyWidth);
+  return `[${chalk.green(filled)}${chalk.gray(empty)}]`;
 };
 
-// region ========== 1. Đọc tham số dòng lệnh (ĐÃ XÓA) ==========
-// Không còn cần thiết vì logic đã thay đổi
+// Hàm hiển thị tập trung, trái tim của giao diện log
+const updateDisplay = () => {
+  // 1. Xây dựng khối tiến độ tổng thể
+  const percent =
+    totalVideosToProcess > 0
+      ? (processedVideos / totalVideosToProcess) * 100
+      : 0;
+  const progressBar = createProgressBar(percent);
+  const overallStats = `Tiến độ: ${processedVideos}/${totalVideosToProcess} (${percent.toFixed(
+    2
+  )}%) - ${chalk.red(errorVideos + " lỗi")}`;
+  const header = chalk.bold.yellow("🚀 VIDEO RENDERING PIPELINE 🚀");
+
+  const overallProgressBlock = `${header}\n${progressBar} ${overallStats}`;
+
+  // 2. Xây dựng danh sách các video đang render
+  const individualProgress = Object.keys(activeProcesses)
+    .map(
+      (key) =>
+        `  ${chalk.cyan("🔥 Đang render:")} ${key} - ${chalk.yellow(
+          activeProcesses[key]
+        )}`
+    )
+    .join("\n");
+
+  // 3. Kết hợp và hiển thị bằng log-update
+  logUpdate(`${overallProgressBlock}\n${individualProgress}`);
+};
 // endregion
 
-// region ========== 2. Ghi currentDay vào file (ĐÃ XÓA) ==========
-// Không còn cần thiết
-// endregion
+// =================================================================
+// region ========== CẤU HÌNH & ĐƯỜNG DẪN ==========
+// =================================================================
 
-// region ========== 3. Đường dẫn & thư mục ==========
 const overlayFolder = "./overlays";
 const backgroundFolder = "./backgrounds";
 const combinedVideosFolder = "./combined_videos";
 const outputFolder = "./done";
-const useChromaKey = false;
+const useChromaKey = true;
 const color = "4887EE";
 const chromaKeyFile = "./chromaKey.txt";
 const height = 190;
 const y_offset = 490;
 const ipList = "./vps.txt";
 const useAutoUploadVps = false;
-const maxConcurrentProcesses = 2;
+const maxConcurrentProcesses = 2; // Đặt số lượng render song song
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 if (fs.existsSync(outputFolder)) {
-  log(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`, LOG_LEVEL.INFO);
+  console.log(chalk.yellow(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`));
   fs.rmSync(outputFolder, { recursive: true, force: true });
 }
 fs.mkdirSync(outputFolder, { recursive: true });
+writeToFile("Đã dọn dẹp và tạo lại thư mục output.");
+
 // endregion
 
-// region ========== 4. Tiện ích đọc file ==========
+// =================================================================
+// region ========== TIỆN ÍCH ĐỌC FILE ==========
+// =================================================================
+
 const getFilesFromFolder = (folder, fileTypes = [".mp4"]) => {
-  // Thêm kiểm tra nếu thư mục không tồn tại
   if (!fs.existsSync(folder)) return [];
   return fs
     .readdirSync(folder)
-    .filter((file) => {
-      const ext = path.extname(file).toLowerCase();
-      return fileTypes.includes(ext);
-    })
+    .filter((file) => fileTypes.includes(path.extname(file).toLowerCase()))
     .sort((a, b) =>
       a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
     )
     .map((file) => path.join(folder, file));
 };
 
-// *** THAY ĐỔI: Thêm hàm lấy thư mục con
 const getSubfolders = (folder) => {
+  if (!fs.existsSync(folder)) return [];
   return fs
     .readdirSync(folder, { withFileTypes: true })
     .filter((dirent) => dirent.isDirectory())
@@ -101,79 +143,50 @@ const getSubfolders = (folder) => {
 
 const readIpList = () => {
   try {
-    if (!fs.existsSync(ipList)) {
-      log(`⚠️ Không tìm thấy file IP: ${ipList}`, LOG_LEVEL.WARN);
-      return [];
-    }
+    if (!fs.existsSync(ipList)) return [];
     const content = fs.readFileSync(ipList, "utf-8");
-    const ips = content
+    return content
       .split("\n")
       .map((line) => line.trim())
       .filter((line) => line && !line.startsWith("#"));
-    log(`Đã đọc ${ips.length} IP từ file ${ipList}`, LOG_LEVEL.DEBUG);
-    return ips;
   } catch (error) {
-    log(`❌ Lỗi khi đọc file IP: ${error.message}`, LOG_LEVEL.ERROR);
+    log(chalk.red(`❌ Lỗi khi đọc file IP: ${error.message}`), LOG_LEVEL.ERROR);
     return [];
   }
 };
-// endregion
-
-// region ========== 5. Danh sách file ==========
-// *** THAY ĐỔI: Lấy danh sách thư mục con của overlays thay vì file
-const overlaySubfolders = getSubfolders(overlayFolder);
 
 const readChromaKeyColors = () => {
   const colors = [];
   try {
     if (fs.existsSync(chromaKeyFile)) {
       const content = fs.readFileSync(chromaKeyFile, "utf-8");
-      const lines = content
+      return content
         .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith("#"));
-      for (const line of lines) {
-        if (/^[0-9A-Fa-f]{6}$/.test(line)) {
-          colors.push(line);
-        } else {
-          log(
-            `Định dạng màu không hợp lệ trong file ${chromaKeyFile}: ${line}`,
-            LOG_LEVEL.WARN
-          );
-        }
-      }
-      log(
-        `Đã đọc ${colors.length} màu chroma key từ file ${chromaKeyFile}`,
-        LOG_LEVEL.DEBUG
-      );
-    } else {
-      log(
-        `Không tìm thấy file ${chromaKeyFile}, sẽ sử dụng màu mặc định: #${color}`,
-        LOG_LEVEL.DEBUG
-      );
+        .map((l) => l.trim())
+        .filter((l) => /^[0-9A-Fa-f]{6}$/.test(l));
     }
   } catch (error) {
-    log(`Lỗi khi đọc file ${chromaKeyFile}: ${error.message}`, LOG_LEVEL.ERROR);
+    log(
+      chalk.red(`Lỗi khi đọc file ${chromaKeyFile}: ${error.message}`),
+      LOG_LEVEL.ERROR
+    );
   }
   return colors;
 };
 
 const chromaKeyColors = readChromaKeyColors();
+const overlaySubfolders = getSubfolders(overlayFolder);
 // endregion
 
-// region ========== 6. Tính vị trí video bắt đầu (ĐÃ XÓA) ==========
-// Không còn cần thiết
-// endregion
+// =================================================================
+// region ========== XỬ LÝ VIDEO ==========
+// =================================================================
 
-// region ========== 7. Xử lý video ==========
 const complexFilter = (inputOverlay) => {
-  // Logic chroma key có thể vẫn cần quyết định màu sắc dựa trên file, nhưng đơn giản hóa nó
   const videoColor = chromaKeyColors.length > 0 ? chromaKeyColors[0] : color;
-
   const chromaKeyFilter = useChromaKey
     ? `[1:v]scale=1280:720,colorkey=0x${videoColor}:0.3:0.1,format=yuva420p[overlay_video]`
     : `[1:v]scale=1280:720,crop=1280:${height}:0:${y_offset}[cropped]`;
-
   const filter = [chromaKeyFilter];
   if (!useChromaKey) {
     filter.push(
@@ -183,7 +196,6 @@ const complexFilter = (inputOverlay) => {
       "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]"
     );
   }
-
   return [
     filter.join(";"),
     "[0:v][overlay_video]overlay=0:H-h[combined_video]",
@@ -192,52 +204,60 @@ const complexFilter = (inputOverlay) => {
 };
 
 const processVideo = async (inputOverlay, inputBackground, outputPath) => {
+  const videoKey = path.basename(outputPath);
+
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
     ffmpeg.ffprobe(inputOverlay, (err, metadata) => {
       if (err) {
         log(
-          `Lỗi khi lấy metadata video overlay: ${err.message}`,
+          chalk.red(`Lỗi metadata video overlay: ${err.message}`),
           LOG_LEVEL.ERROR
         );
         processedVideos++;
         errorVideos++;
-        updateProgress();
+        updateDisplay();
         return reject(err);
       }
-      const duration = metadata.format.duration;
+
+      activeProcesses[videoKey] = "Bắt đầu...";
+      updateDisplay();
+
       ffmpeg(inputBackground)
         .inputOptions(["-stream_loop", "-1"])
         .input(inputOverlay)
         .complexFilter(complexFilter(inputOverlay))
         .outputOptions("-preset", "ultrafast")
-        .outputOptions("-t", duration)
+        .outputOptions("-t", metadata.format.duration)
         .audioCodec("aac")
         .map("[combined_video]")
         .map("[overlay_audio]")
+        .on("progress", (progress) => {
+          const percent =
+            progress.percent < 0 ? 0 : progress.percent.toFixed(2);
+          activeProcesses[videoKey] = `${percent}%`;
+          updateDisplay();
+        })
         .on("end", () => {
-          const endTime = Date.now();
+          delete activeProcesses[videoKey];
+          const duration = ((Date.now() - startTime) / 1000).toFixed(2);
           log(
-            `✅ Video ${path.basename(outputPath)} hoàn thành trong ${(
-              (endTime - startTime) /
-              1000
-            ).toFixed(2)}s`,
-            LOG_LEVEL.DEBUG
+            chalk.green(`✅ ${videoKey} hoàn thành trong ${duration}s`),
+            LOG_LEVEL.INFO
           );
           processedVideos++;
-          updateProgress();
+          updateDisplay();
           resolve();
         })
         .on("error", (error) => {
+          delete activeProcesses[videoKey];
           log(
-            `❌ Lỗi khi xử lý video ${path.basename(outputPath)}: ${
-              error.message
-            }`,
+            chalk.red(`❌ Lỗi khi xử lý ${videoKey}: ${error.message}`),
             LOG_LEVEL.ERROR
           );
           processedVideos++;
           errorVideos++;
-          updateProgress();
+          updateDisplay();
           reject(error);
         })
         .save(outputPath);
@@ -246,159 +266,130 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
 };
 // endregion
 
-// region ========== 8. Xử lý toàn bộ video ==========
+// =================================================================
+// region ========== LUỒNG XỬ LÝ CHÍNH ==========
+// =================================================================
+
 const processAllVideos = async () => {
   const startTime = Date.now();
   try {
-    // *** THAY ĐỔI: Kiểm tra thư mục con của overlays
     if (overlaySubfolders.length === 0) {
       log(
-        "❌ Không tìm thấy thư mục con nào trong thư mục overlays!",
+        chalk.red("❌ Không tìm thấy thư mục con nào trong 'overlays'!"),
         LOG_LEVEL.ERROR
       );
       return;
     }
 
-    // *** THAY ĐỔI: Lấy tất cả các file background vào một danh sách duy nhất
     const hasCombinedVideos = fs.existsSync(combinedVideosFolder);
-    let allBackgroundFiles = [];
-    if (hasCombinedVideos) {
-      log(`Sử dụng video từ thư mục combined_videos`, LOG_LEVEL.INFO);
-      const combinedVideosFolders = getSubfolders(combinedVideosFolder);
-      combinedVideosFolders.forEach((folder) => {
-        allBackgroundFiles.push(
-          ...getFilesFromFolder(path.join(combinedVideosFolder, folder))
-        );
-      });
-    } else {
-      log(`Sử dụng video từ thư mục backgrounds`, LOG_LEVEL.INFO);
-      const backgroundFolders = getSubfolders(backgroundFolder);
-      backgroundFolders.forEach((folder) => {
-        allBackgroundFiles.push(
-          ...getFilesFromFolder(path.join(backgroundFolder, folder))
-        );
-      });
-    }
+    const sourcePath = hasCombinedVideos
+      ? combinedVideosFolder
+      : backgroundFolder;
+    let allBackgroundFiles = getSubfolders(sourcePath).flatMap((folder) =>
+      getFilesFromFolder(path.join(sourcePath, folder))
+    );
 
     if (allBackgroundFiles.length === 0) {
-      log("❌ Không tìm thấy video background nào!", LOG_LEVEL.ERROR);
+      log(
+        chalk.red("❌ Không tìm thấy video background nào!"),
+        LOG_LEVEL.ERROR
+      );
       return;
     }
-    log(
-      `Đã tìm thấy tổng cộng ${allBackgroundFiles.length} video background.`,
-      LOG_LEVEL.INFO
+
+    totalVideosToProcess = overlaySubfolders.reduce(
+      (total, folderName) =>
+        total + getFilesFromFolder(path.join(overlayFolder, folderName)).length,
+      0
     );
 
-    // *** THAY ĐỔI: Tính tổng số video sẽ xử lý dựa trên cấu trúc mới
-    totalVideosToProcess = overlaySubfolders.reduce((total, folderName) => {
-      return (
-        total + getFilesFromFolder(path.join(overlayFolder, folderName)).length
-      );
-    }, 0);
-
     log(
-      `🚀 Bắt đầu xử lý ${totalVideosToProcess} video từ ${overlaySubfolders.length} thư mục overlay`,
+      chalk.blue(`Tổng số video cần xử lý: ${totalVideosToProcess}`),
       LOG_LEVEL.INFO
     );
     log(
-      `Xử lý tối đa ${maxConcurrentProcesses} video cùng lúc`,
+      chalk.blue(`Xử lý tối đa ${maxConcurrentProcesses} video cùng lúc`),
       LOG_LEVEL.INFO
     );
 
-    // *** THAY ĐỔI: Vòng lặp chính sẽ lặp qua các thư mục overlay
     for (let i = 0; i < overlaySubfolders.length; i++) {
       const overlayFolderName = overlaySubfolders[i];
-      const currentOverlayFolderPath = path.join(
-        overlayFolder,
-        overlayFolderName
+      const currentOverlayFiles = getFilesFromFolder(
+        path.join(overlayFolder, overlayFolderName)
       );
-      const currentOverlayFiles = getFilesFromFolder(currentOverlayFolderPath);
 
-      if (currentOverlayFiles.length === 0) {
-        log(
-          `⚠️ Bỏ qua thư mục overlay rỗng: ${overlayFolderName}`,
-          LOG_LEVEL.WARN
-        );
-        continue;
-      }
+      if (currentOverlayFiles.length === 0) continue;
 
       log(
-        `📁 Đang xử lý thư mục overlay: ${overlayFolderName} (${i + 1}/${
-          overlaySubfolders.length
-        }) với ${currentOverlayFiles.length} video.`,
+        chalk.magenta(
+          `\n📁 Bắt đầu xử lý thư mục: ${overlayFolderName} (${i + 1}/${
+            overlaySubfolders.length
+          })`
+        ),
         LOG_LEVEL.INFO
       );
 
-      // Tạo thư mục output tương ứng
       const groupFolder = path.join(outputFolder, overlayFolderName);
-      if (!fs.existsSync(groupFolder)) {
-        fs.mkdirSync(groupFolder, { recursive: true });
-      }
+      fs.mkdirSync(groupFolder, { recursive: true });
 
-      const tasks = [];
-      // Tạo task cho mỗi video trong thư mục overlay hiện tại
-      for (const overlayFile of currentOverlayFiles) {
-        const background =
+      const tasks = currentOverlayFiles.map((overlayFile) => ({
+        overlay: overlayFile,
+        background:
           allBackgroundFiles[
             Math.floor(Math.random() * allBackgroundFiles.length)
-          ];
-        const overlayFileName = path.basename(
-          overlayFile,
-          path.extname(overlayFile)
-        );
-        const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
-
-        tasks.push({
-          overlay: overlayFile,
-          background: background,
-          outputPath: outputPath,
-        });
-      }
-
-      // Xử lý song song
-      const processBatch = async (batch) => {
-        return Promise.all(
-          batch.map((task) =>
-            processVideo(task.overlay, task.background, task.outputPath).catch(
-              (error) =>
-                log(`Lỗi xử lý video: ${error.message}`, LOG_LEVEL.ERROR)
-            )
-          )
-        );
-      };
+          ],
+        outputPath: path.join(
+          groupFolder,
+          `${path.basename(overlayFile, path.extname(overlayFile))}.mp4`
+        ),
+      }));
 
       for (let k = 0; k < tasks.length; k += maxConcurrentProcesses) {
         const batch = tasks.slice(k, k + maxConcurrentProcesses);
-        await processBatch(batch);
+        await Promise.all(
+          batch.map((task) =>
+            processVideo(task.overlay, task.background, task.outputPath).catch(
+              () => {}
+            )
+          )
+        );
       }
 
-      // Upload lên VPS sau khi xử lý xong folder
       uploadVps(i, overlayFolderName);
     }
 
-    const endTime = Date.now();
-    const totalTime = ((endTime - startTime) / 1000 / 60).toFixed(2);
-    log("\n", LOG_LEVEL.INFO);
-    log(`✅ Hoàn thành! Tổng thời gian: ${totalTime} phút`, LOG_LEVEL.INFO);
+    logUpdate.done();
+    const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(2);
+    console.log(
+      chalk.bold.green(
+        `\n🎉 Hoàn thành tất cả! Tổng thời gian: ${totalTime} phút`
+      )
+    );
   } catch (error) {
-    log(`❌ Lỗi khi xử lý toàn bộ video: ${error.message}`, LOG_LEVEL.ERROR);
+    logUpdate.done();
+    console.log(
+      chalk.red.bold(`\n❌ Đã xảy ra lỗi nghiêm trọng: ${error.message}`)
+    );
   }
 };
 // endregion
 
-// region ========== 9. Upload VPS ==========
+// =================================================================
+// region ========== UPLOAD & XÓA VPS ==========
+// =================================================================
+
 const uploadVps = (index, folderName) => {
   if (!useAutoUploadVps) return;
   const vpsList = readIpList();
-  if (vpsList.length === 0) {
-    log("⚠️ Danh sách VPS trống, không thể upload.", LOG_LEVEL.WARN);
-    return;
-  }
-  // *** THAY ĐỔI NHỎ: Sử dụng modulo để chọn VPS an toàn hơn
+  if (vpsList.length === 0) return;
+
   const vpsName = vpsList[index % vpsList.length];
   const currentFolderUpload = path.join(__dirname, outputFolder);
-  const echoInfo = `echo Uploading ${folderName} from ${currentFolderUpload} to VPS ${vpsName} &&`;
-  console.log(`\nBắt đầu upload folder ${folderName} lên VPS ${vpsName}`);
+  const echoInfo = `echo Uploading ${folderName} to VPS ${vpsName} &&`;
+  log(
+    chalk.blueBright(`\n📡 Bắt đầu upload ${folderName} lên VPS ${vpsName}...`),
+    LOG_LEVEL.INFO
+  );
 
   const rcloneCmd = `rclone copy "${currentFolderUpload}" "${vpsName}:/" --include "${folderName}/**" --transfers 16 --checkers 8 --progress`;
   const cmd = `${echoInfo} ${rcloneCmd} && exit`;
@@ -408,43 +399,32 @@ const uploadVps = (index, folderName) => {
     windowsVerbatimArguments: true,
   }).unref();
 };
-// endregion
 
-// region ========== 9.5 Xóa file trên VPS ==========
 const deleteVpsFiles = () => {
-  // Không thay đổi
   if (!useAutoUploadVps) return;
-  const vpsList = readIpList();
-  if (vpsList.length === 0) {
-    log(`Không tìm thấy danh sách VPS để xóa file`, LOG_LEVEL.WARN);
-    return;
-  }
-  const uniqueVps = [...new Set(vpsList)];
-  log(`Bắt đầu xóa file trên ${uniqueVps.length} VPS...`, LOG_LEVEL.INFO);
-  for (const vpsName of uniqueVps) {
+  const vpsList = [...new Set(readIpList())];
+  if (vpsList.length === 0) return;
+
+  log(
+    chalk.yellow(`Bắt đầu xóa file trên ${vpsList.length} VPS...`),
+    LOG_LEVEL.INFO
+  );
+  for (const vpsName of vpsList) {
     const deleteCmd = `rclone delete "${vpsName}:/" --rmdirs && exit`;
-    log(`Đang xóa file trên VPS ${vpsName}`, LOG_LEVEL.INFO);
-    try {
-      spawn("cmd.exe", ["/c", "start", "cmd.exe", "/c", deleteCmd], {
-        detached: true,
-        stdio: "ignore",
-        windowsVerbatimArguments: true,
-      }).unref();
-      log(`Đã xóa file trên VPS ${vpsName}`, LOG_LEVEL.INFO);
-    } catch (error) {
-      log(
-        `Lỗi khi xóa file trên VPS ${vpsName}: ${error.message}`,
-        LOG_LEVEL.ERROR
-      );
-    }
+    spawn("cmd.exe", ["/c", "start", "cmd.exe", "/c", deleteCmd], {
+      detached: true,
+      stdio: "ignore",
+      windowsVerbatimArguments: true,
+    }).unref();
   }
-  log(`Hoàn thành xóa file trên các VPS`, LOG_LEVEL.INFO);
+  log(chalk.yellow(`Đã gửi lệnh xóa đến các VPS.`), LOG_LEVEL.INFO);
 };
 // endregion
 
-// region ========== 10. Khởi chạy ==========
+// =================================================================
+// region ========== KHỞI CHẠY ==========
+// =================================================================
+
 deleteVpsFiles();
-processAllVideos().then(() => {
-  console.log("\n🎉 Hoàn tất xử lý tất cả video.");
-});
+processAllVideos();
 // endregion

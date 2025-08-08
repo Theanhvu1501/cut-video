@@ -79,7 +79,7 @@ const configsFolder = "./configs";
 const overlayFolder = "./overlays";
 const backgroundFolder = "./backgrounds";
 const outputFolder = "./done";
-const useAutoUploadVps = true;
+const useAutoUploadVps = false;
 const maxConcurrentProcesses = 2;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -100,6 +100,22 @@ const getSubfolders = (folder) => {
     .readdirSync(folder, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name);
+};
+
+// *** NEW: Hàm tiện ích để chuyển đổi timemark thành giây ***
+const timemarkToSeconds = (timemark) => {
+  if (typeof timemark !== "string") return 0;
+  const parts = timemark.split(":").map(parseFloat);
+  let seconds = 0;
+  if (parts.length === 3) {
+    seconds += parts[0] * 3600;
+    seconds += parts[1] * 60;
+    seconds += parts[2];
+  } else if (parts.length === 2) {
+    seconds += parts[0] * 60;
+    seconds += parts[1];
+  }
+  return seconds;
 };
 
 const loadConfigForFolder = (folderName) => {
@@ -195,6 +211,8 @@ const processVideo = async (task) => {
         reject(err);
         return;
       }
+      // Lấy tổng thời lượng chính xác của video overlay
+      const totalDuration = metadata.format.duration;
       activeProcesses[videoKey] = "0.00%";
       updateDisplay();
 
@@ -206,10 +224,15 @@ const processVideo = async (task) => {
           "final_a",
         ])
         .outputOptions("-preset", config.preset)
-        .outputOptions("-t", metadata.format.duration)
+        .outputOptions("-t", totalDuration)
         .on("progress", (p) => {
-          const percent = p.percent < 0 ? 0 : p.percent.toFixed(2);
-          activeProcesses[videoKey] = `${percent}%`;
+          // *** THAY ĐỔI LỚN: TỰ TÍNH TOÁN LẠI % ***
+          const currentSeconds = timemarkToSeconds(p.timemark);
+          let accuratePercent = (currentSeconds / totalDuration) * 100;
+          if (accuratePercent > 100) accuratePercent = 100;
+          if (accuratePercent < 0) accuratePercent = 0;
+
+          activeProcesses[videoKey] = `${accuratePercent.toFixed(2)}%`;
           updateDisplay();
         })
         .on("end", () => {
@@ -250,8 +273,6 @@ const processAllVideos = async () => {
     if (overlaySubfolders.length === 0)
       throw new Error("Không tìm thấy thư mục con nào trong 'overlays'!");
 
-    // *** THAY ĐỔI LỚN: Không tải tất cả background ngay từ đầu nữa ***
-
     totalVideosToProcess = overlaySubfolders.reduce(
       (total, dir) =>
         total + getFilesFromFolder(path.join(overlayFolder, dir)).length,
@@ -266,7 +287,6 @@ const processAllVideos = async () => {
       const config = loadConfigForFolder(folderName);
       log(chalk.magenta(`\n📁 Xử lý thư mục: ${folderName}`), LOG_LEVEL.INFO);
 
-      // *** BẮT ĐẦU LOGIC MỚI ĐỂ TÌM BACKGROUND ***
       let backgroundFilesForThisFolder = [];
       const specificBackgroundDir = path.join(backgroundFolder, folderName);
       const defaultBackgroundDir = path.join(backgroundFolder, "default");
@@ -305,11 +325,10 @@ const processAllVideos = async () => {
         const skippedCount = getFilesFromFolder(
           path.join(overlayFolder, folderName)
         ).length;
-        processedVideos += skippedCount; // Coi như đã xử lý để progress bar chạy đúng
+        processedVideos += skippedCount;
         updateDisplay();
-        continue; // Bỏ qua và xử lý thư mục tiếp theo
+        continue;
       }
-      // *** KẾT THÚC LOGIC MỚI ***
 
       const currentOverlayFileNames = getFilesFromFolder(
         path.join(overlayFolder, folderName)
@@ -321,7 +340,6 @@ const processAllVideos = async () => {
 
       const tasks = currentOverlayFileNames.map((fileName, index) => ({
         overlayPath: path.join(overlayFolder, folderName, fileName),
-        // *** THAY ĐỔI: Lấy background từ danh sách đã được lọc cho thư mục này ***
         backgroundPath:
           backgroundFilesForThisFolder[
             Math.floor(Math.random() * backgroundFilesForThisFolder.length)

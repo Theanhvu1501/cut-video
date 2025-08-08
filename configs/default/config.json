@@ -1,0 +1,12 @@
+{
+  "_comment": "Đây là cấu hình mặc định, sẽ được áp dụng nếu không có file config riêng.",
+  "useChromaKey": false,
+  "chromaColor": "00FF00",
+  "chromaSimilarity": 0.3,
+  "chromaBlend": 0.1,
+  "cropHeight": 190,
+  "cropYOffset": 490,
+  "audioVolume": 1.0,
+  "preset": "veryfast",
+  "vpsRemoteName": ""
+}

@@ -1,0 +1,7 @@
+{
+  "_comment": "Cấu hình riêng cho folder 1",
+  "useChromaKey": false,
+  "cropHeight": 190,
+  "cropYOffset": 490,
+  "vpsRemoteName": "vps-gaming"
+}

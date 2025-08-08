@@ -19,12 +19,11 @@ const LOG_LEVEL = { ERROR: 0, WARN: 1, INFO: 2, DEBUG: 3 };
 const currentLogLevel = LOG_LEVEL.INFO;
 const logFile = "./render.log";
 
-// Xóa file log cũ khi bắt đầu
 if (fs.existsSync(logFile)) fs.unlinkSync(logFile);
 
 const writeToFile = (message) => {
   const timestamp = new Date().toISOString();
-  const cleanMessage = message.replace(/[\u001b\u009b][[()#;?]*.{0,2}m/g, ""); // Xóa mã màu
+  const cleanMessage = message.replace(/[\u001b\u009b][[()#;?]*.{0,2}m/g, "");
   fs.appendFileSync(logFile, `[${timestamp}] ${cleanMessage}\n`, {
     encoding: "utf-8",
   });
@@ -80,7 +79,7 @@ const configsFolder = "./configs";
 const overlayFolder = "./overlays";
 const backgroundFolder = "./backgrounds";
 const outputFolder = "./done";
-const useAutoUploadVps = false;
+const useAutoUploadVps = true;
 const maxConcurrentProcesses = 2;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -166,7 +165,6 @@ const complexFilter = (config, overlayIndex) => {
     ];
     return filterDefs.join("; ");
   } else {
-    // Logic crop...
     const cropHeight = config.cropHeight || 190;
     const cropYOffset = config.cropYOffset || 490;
     const filterDefs = [
@@ -252,13 +250,7 @@ const processAllVideos = async () => {
     if (overlaySubfolders.length === 0)
       throw new Error("Không tìm thấy thư mục con nào trong 'overlays'!");
 
-    const allBackgroundFiles = getSubfolders(backgroundFolder).flatMap((dir) =>
-      getFilesFromFolder(path.join(backgroundFolder, dir)).map((f) =>
-        path.join(backgroundFolder, dir, f)
-      )
-    );
-    if (allBackgroundFiles.length === 0)
-      throw new Error("Không tìm thấy video background nào!");
+    // *** THAY ĐỔI LỚN: Không tải tất cả background ngay từ đầu nữa ***
 
     totalVideosToProcess = overlaySubfolders.reduce(
       (total, dir) =>
@@ -274,6 +266,51 @@ const processAllVideos = async () => {
       const config = loadConfigForFolder(folderName);
       log(chalk.magenta(`\n📁 Xử lý thư mục: ${folderName}`), LOG_LEVEL.INFO);
 
+      // *** BẮT ĐẦU LOGIC MỚI ĐỂ TÌM BACKGROUND ***
+      let backgroundFilesForThisFolder = [];
+      const specificBackgroundDir = path.join(backgroundFolder, folderName);
+      const defaultBackgroundDir = path.join(backgroundFolder, "default");
+
+      if (
+        fs.existsSync(specificBackgroundDir) &&
+        getFilesFromFolder(specificBackgroundDir).length > 0
+      ) {
+        backgroundFilesForThisFolder = getFilesFromFolder(
+          specificBackgroundDir
+        ).map((f) => path.join(specificBackgroundDir, f));
+        log(
+          chalk.gray(`- Sử dụng backgrounds từ thư mục riêng: ${folderName}`),
+          LOG_LEVEL.DEBUG
+        );
+      } else if (
+        fs.existsSync(defaultBackgroundDir) &&
+        getFilesFromFolder(defaultBackgroundDir).length > 0
+      ) {
+        backgroundFilesForThisFolder = getFilesFromFolder(
+          defaultBackgroundDir
+        ).map((f) => path.join(defaultBackgroundDir, f));
+        log(
+          chalk.gray(`- Sử dụng backgrounds từ thư mục mặc định: default`),
+          LOG_LEVEL.DEBUG
+        );
+      }
+
+      if (backgroundFilesForThisFolder.length === 0) {
+        log(
+          chalk.yellow(
+            `⚠️ Cảnh báo: Không tìm thấy video background cho '${folderName}'. Bỏ qua thư mục này.`
+          ),
+          LOG_LEVEL.WARN
+        );
+        const skippedCount = getFilesFromFolder(
+          path.join(overlayFolder, folderName)
+        ).length;
+        processedVideos += skippedCount; // Coi như đã xử lý để progress bar chạy đúng
+        updateDisplay();
+        continue; // Bỏ qua và xử lý thư mục tiếp theo
+      }
+      // *** KẾT THÚC LOGIC MỚI ***
+
       const currentOverlayFileNames = getFilesFromFolder(
         path.join(overlayFolder, folderName)
       );
@@ -284,9 +321,10 @@ const processAllVideos = async () => {
 
       const tasks = currentOverlayFileNames.map((fileName, index) => ({
         overlayPath: path.join(overlayFolder, folderName, fileName),
+        // *** THAY ĐỔI: Lấy background từ danh sách đã được lọc cho thư mục này ***
         backgroundPath:
-          allBackgroundFiles[
-            Math.floor(Math.random() * allBackgroundFiles.length)
+          backgroundFilesForThisFolder[
+            Math.floor(Math.random() * backgroundFilesForThisFolder.length)
           ],
         outputPath: path.join(groupFolder, fileName),
         config: config,

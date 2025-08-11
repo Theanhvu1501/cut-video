@@ -185,8 +185,9 @@ const complexFilter = (config, overlayIndex) => {
     const cropYOffset = config.cropYOffset || 490;
     const filterDefs = [
       `[1:v]scale=1280:720,crop=1280:${cropHeight}:0:${cropYOffset}[cropped]`,
-      `[cropped]format=yuva420p,colorchannelmixer=aa=0.8[overlay_v]`,
-      `[0:v][overlay_v]overlay=0:H-h[final_v]`,
+      `[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]`,
+      `[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]`,
+      `[0:v][overlay_video]overlay=0:H-h[final_v]`,
       `[1:a]volume=${config.audioVolume || 1.0}[final_a]`,
     ];
     return filterDefs.join("; ");
@@ -215,10 +216,14 @@ const processVideo = async (task) => {
       const totalDuration = metadata.format.duration;
       activeProcesses[videoKey] = "0.00%";
       updateDisplay();
-
-      const command = ffmpeg(backgroundPath)
+      let command = ffmpeg(backgroundPath)
         .inputOptions(["-stream_loop", "-1"])
-        .input(overlayPath)
+        .input(overlayPath);
+      if (config.trimSeconds > 0) {
+        command.inputOptions(`-ss ${config.trimSeconds}`);
+      }
+
+      command
         .complexFilter(complexFilter(config, overlayIndex), [
           "final_v",
           "final_a",

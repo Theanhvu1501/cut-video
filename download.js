@@ -231,12 +231,12 @@ async function main() {
   } else {
     console.log("🚀 Chạy ở chế độ BÌNH THƯỜNG...");
     console.log("🧹 Dọn dẹp thư mục cũ...");
-    if (fs.existsSync(downloadBaseDir))
-      fs.rmSync(downloadBaseDir, { recursive: true, force: true });
-    if (fs.existsSync(outputBaseDir))
-      fs.rmSync(outputBaseDir, { recursive: true, force: true });
-    fs.mkdirSync(downloadBaseDir, { recursive: true });
-    fs.mkdirSync(outputBaseDir, { recursive: true });
+    if (!fs.existsSync(outputBaseDir)) {
+      fs.mkdirSync(outputBaseDir, { recursive: true });
+    }
+    if (!fs.existsSync(downloadBaseDir)) {
+      fs.mkdirSync(downloadBaseDir, { recursive: true });
+    }
     if (fs.existsSync(failedLogPath)) fs.unlinkSync(failedLogPath);
   }
 

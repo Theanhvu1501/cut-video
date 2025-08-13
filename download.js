@@ -210,6 +210,41 @@ function prepareRetryFiles() {
 // 2. HÀM MAIN - ĐIỀU PHỐI CHÍNH
 // =================================================================
 
+const convertCodec = async (directory) => {
+  const files = fs.readdirSync(directory);
+
+  for (const file of files) {
+    const filePath = path.join(directory, file);
+    const ext = path.extname(file).toLowerCase();
+
+    if (ext === ".mp4") {
+      const outputFilePath = path.join(directory, "converted_" + file);
+
+      console.log(`🔄 Đang chuyển đổi codec: ${file} -> ${outputFilePath}`);
+
+      await new Promise((resolve, reject) => {
+        ffmpegFluent(filePath)
+          .videoCodec("libx264")
+          .audioCodec("aac")
+          .audioBitrate("128k")
+          .outputOptions("-preset fast") // Giảm thời gian encode
+          .outputOptions("-crf 23") // Chất lượng tốt, dung lượng tối ưu
+          .on("end", () => {
+            console.log(`✅ Đã chuyển đổi codec: ${file}`);
+            fs.unlinkSync(filePath); // Xóa file gốc sau khi convert
+            fs.renameSync(outputFilePath, filePath); // Đổi lại tên file thành gốc
+            resolve();
+          })
+          .on("error", (err) => {
+            console.error(`❌ Lỗi khi chuyển đổi ${file}: ${err.message}`);
+            reject(err);
+          })
+          .save(outputFilePath);
+      });
+    }
+  }
+};
+
 async function main() {
   // --- Cấu hình ---
   const urlsDir = "./urls";
@@ -271,7 +306,9 @@ async function main() {
       urlFilePath,
       channelDownloadPath
     );
-
+    // if (fs.existsSync(channelDownloadPath)) {
+    //   await convertCodec(channelDownloadPath);
+    // }
     const failedTasks = results.filter(
       (result) => result.status === "rejected"
     );

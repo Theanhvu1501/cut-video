@@ -2,11 +2,11 @@ import { spawn } from "child_process";
 import inquirer from "inquirer";
 
 const scripts = {
-  "Render Video": "render.js",
-  "Tải video": "download.js",
-  "Cắt video": "cut-bg.js",
+  "Render Video": ["render.js"],
+  "Tải video": ["download.js"],
+  "Tải lại video lỗi": ["download.js", "retry"],
+  "Cắt video": ["cut-bg.js"],
 };
-
 async function main() {
   const { script } = await inquirer.prompt([
     {
@@ -32,7 +32,9 @@ async function main() {
 
   console.log(`\n🚀 Đang chạy: node ${scripts[script]} ${args.join(" ")}\n`);
 
-  const child = spawn("node", [scripts[script], ...args], { stdio: "inherit" });
+  const child = spawn("node", [...scripts[script], ...args], {
+    stdio: "inherit",
+  });
 
   child.on("close", (code) => {
     console.log(`\n✅ Process exited with code ${code}\n`);

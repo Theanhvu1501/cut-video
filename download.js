@@ -24,6 +24,7 @@ const downloadVideo = async (url, outputPath) => {
     output: output,
     format: "bestvideo[height=720]+bestaudio/best",
     mergeOutputFormat: "mp4",
+    // skipDownload: true,
     writeThumbnail: true,
     convertThumbnails: "jpg",
     cookies: "./cookies.txt",

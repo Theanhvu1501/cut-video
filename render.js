@@ -96,18 +96,18 @@ const chromaKeyFile = "./chromaKey.txt";
 const height = 190;
 const y_offset = 490;
 const ipList = "./vps.txt";
-const useAutoUploadVps = true;
+const useAutoUploadVps = false;
 const maxConcurrentProcesses = 2;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Tạo thư mục nếu chưa tồn tại
-if (fs.existsSync(outputFolder)) {
-  log(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`, LOG_LEVEL.INFO);
-  fs.rmSync(outputFolder, { recursive: true, force: true });
-}
+// if (fs.existsSync(outputFolder)) {
+//   log(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`, LOG_LEVEL.INFO);
+//   fs.rmSync(outputFolder, { recursive: true, force: true });
+// }
 
-fs.mkdirSync(outputFolder, { recursive: true });
+// fs.mkdirSync(outputFolder, { recursive: true });
 // endregion
 
 // region ========== 4. Tiện ích đọc file ==========
@@ -198,9 +198,8 @@ const chromaKeyColors = readChromaKeyColors();
 
 // region ========== 6. Tính vị trí video bắt đầu ==========
 const calculateStartIndex = (folderIndex, day, totalVideos) => {
-  return (
-    ((day - 1) * videosPerFolder + folderIndex * videosPerFolder) % totalVideos
-  );
+  const offset = (day - 1) * videosPerFolder;
+  return (folderIndex * videosPerFolder + offset) % totalVideos;
 };
 // endregion
 

@@ -27,8 +27,8 @@ const downloadVideo = async (url, outputPath) => {
     // skipDownload: true,
     writeThumbnail: true,
     convertThumbnails: "jpg",
-    cookies: "./cookies.txt",
-    addHeader: ["referer:youtube.com", "user-agent:googlebot"],
+    // cookies: "./cookies.txt",
+    // addHeader: ["referer:youtube.com", "user-agent:googlebot"],
     noOverwrites: true,
   });
   console.log(`✅ Tải/Kiểm tra thành công: ${url}`);
@@ -326,7 +326,7 @@ async function main() {
       .find((f) => path.parse(f).name === channelId);
     if (overlayFile) {
       const overlayImagePath = path.join(overlayDir, overlayFile);
-      fixFileNames(channelDownloadPath);
+      // fixFileNames(channelDownloadPath);
       await processSingleChannelImages(
         channelDownloadPath,
         overlayImagePath,

@@ -84,15 +84,23 @@ const maxConcurrentProcesses = 2;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-if (fs.existsSync(outputFolder))
-  fs.rmSync(outputFolder, { recursive: true, force: true });
-fs.mkdirSync(outputFolder, { recursive: true });
+// if (fs.existsSync(outputFolder))
+//   fs.rmSync(outputFolder, { recursive: true, force: true });
+// fs.mkdirSync(outputFolder, { recursive: true });
+if (!fs.existsSync(outputFolder))
+  fs.mkdirSync(outputFolder, { recursive: true });
 
 const getFilesFromFolder = (folder) => {
   if (!fs.existsSync(folder)) return [];
   return fs
     .readdirSync(folder)
-    .filter((file) => path.extname(file).toLowerCase() === ".mp4");
+    .filter((file) => path.extname(file).toLowerCase() === ".mp4")
+    .sort((a, b) => {
+      return a.localeCompare(b, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
+    });
 };
 const getSubfolders = (folder) => {
   if (!fs.existsSync(folder)) return [];

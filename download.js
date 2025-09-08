@@ -1,50 +1,89 @@
 import ffmpeg from "@ffmpeg-installer/ffmpeg";
 import ffmpegFluent from "fluent-ffmpeg";
-import fs from "fs"; // Đọc file
-import pLimit from "p-limit"; // Giới hạn số lượng video tải song song
+import fs from "fs";
+import pLimit from "p-limit";
 import path from "path";
 import sharp from "sharp";
-import youtubedl from "youtube-dl-exec"; // Tải video từ YouTube
+import youtubedl from "youtube-dl-exec";
 
-// Cấu hình FFmpeg cho fluent-ffmpeg
+// =================================================================
+// 0. CẤU HÌNH BAN ĐẦU
+// =================================================================
 ffmpegFluent.setFfmpegPath(ffmpeg.path);
-// Hàm tải video YouTube với định dạng MP4
+
+const ALL_URLS_FILE = "./urls.txt"; // Tên file chứa TẤT CẢ các URL
+const FAILED_URLS_LOG = "./failed_urls.txt"; // File log chứa các URL bị lỗi (đơn giản hóa)
+const DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbnail gốc
+const OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
+const OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
+
+// =================================================================
+// 1. CÁC HÀM CỐT LÕI
+// =================================================================
+
+/**
+ * Tải một video YouTube duy nhất.
+ */
 const downloadVideo = async (url, outputPath) => {
-  try {
-    const output = path.join(outputPath, "%(title)s.%(ext)s");
-    await youtubedl(url, {
-      output: output,
-      format: "bestvideo[height=720]+bestaudio/best",
-      mergeOutputFormat: "mp4",
-      writeThumbnail: true,
-      convertThumbnails: "jpg",
-      cookies: "./cookies.txt",
-      addHeader: ["referer:youtube.com", "user-agent:googlebot"],
-    });
-    console.log(`Tải video từ ${url} thành công dưới định dạng MP4!`);
-  } catch (error) {
-    console.error(`Lỗi khi tải video từ ${url}:`, error.message);
-  }
+  const output = path.join(outputPath, "%(title)s.%(ext)s");
+  await youtubedl(url, {
+    output: output,
+    format: "bestvideo[height=720]+bestaudio/best",
+    mergeOutputFormat: "mp4",
+    writeThumbnail: true,
+    convertThumbnails: "jpg",
+    addHeader: [
+      "referer:youtube.com",
+      "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
+    ],
+    limitRate: "2M",
+    // cookies: "./cookies.txt", // Bỏ comment nếu cần
+    // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
+    noOverwrites: true, // Không ghi đè nếu file đã tồn tại
+  });
+  console.log(`✅ Tải/Kiểm tra thành công: ${url}`);
 };
 
-// Hàm tải nhiều video từ danh sách URL
-const downloadVideos = async (filePath, savePath) => {
-  if (!fs.existsSync(savePath)) fs.mkdirSync(savePath); // Tạo thư mục nếu chưa có
+/**
+ * Tải tất cả video từ một danh sách URL, báo cáo kết quả.
+ * Trả về danh sách các tác vụ bị từ chối (failed URLs).
+ */
+const downloadVideosFromList = async (urls, savePath) => {
+  if (!fs.existsSync(savePath)) fs.mkdirSync(savePath, { recursive: true });
 
-  // Đọc file chứa danh sách URL
-  const urls = fs.readFileSync(filePath, "utf-8").split("\n").filter(Boolean); // Tách từng dòng và loại bỏ dòng trống
+  console.log(`📄 Bắt đầu tải ${urls.length} URL.`);
+  if (urls.length === 0) return [];
 
-  const limit = pLimit(3); // Giới hạn tối đa 3 video chạy song song
+  const limit = pLimit(3); // Giới hạn 3 video tải song song
 
-  // Lặp qua từng URL và gọi hàm tải video
   const downloadPromises = urls.map((url) =>
-    limit(() => downloadVideo(url, savePath))
+    limit(async () => {
+      try {
+        await downloadVideo(url, savePath);
+        return { status: "fulfilled", url: url };
+      } catch (error) {
+        const reason = error.stderr || error.message;
+        console.error(`🔴 Đã bắt được lỗi cho URL: ${url}`);
+        return { status: "rejected", url: url, reason: reason };
+      }
+    })
   );
 
-  await Promise.all(downloadPromises); // Chạy tất cả các Promise song song với giới hạn
+  const results = await Promise.all(downloadPromises);
+  const failedTasks = results.filter((result) => result.status === "rejected");
+  return failedTasks.map((task) => task.url); // Trả về chỉ URL bị lỗi
 };
 
+/**
+ * Chuyển đổi codec của các file MP4 trong thư mục.
+ */
 const convertCodec = async (directory) => {
+  if (!fs.existsSync(directory)) {
+    console.warn(
+      `⚠️ Thư mục không tồn tại: ${directory}, bỏ qua convert codec.`
+    );
+    return;
+  }
   const files = fs.readdirSync(directory);
 
   for (const file of files) {
@@ -56,83 +95,129 @@ const convertCodec = async (directory) => {
 
       console.log(`🔄 Đang chuyển đổi codec: ${file} -> ${outputFilePath}`);
 
-      await new Promise((resolve, reject) => {
-        ffmpegFluent(filePath)
-          .videoCodec("libx264")
-          .audioCodec("aac")
-          .audioBitrate("128k")
-          .outputOptions("-preset fast") // Giảm thời gian encode
-          .outputOptions("-crf 23") // Chất lượng tốt, dung lượng tối ưu
-          .on("end", () => {
-            console.log(`✅ Đã chuyển đổi codec: ${file}`);
-            fs.unlinkSync(filePath); // Xóa file gốc sau khi convert
-            fs.renameSync(outputFilePath, filePath); // Đổi lại tên file thành gốc
-            resolve();
-          })
-          .on("error", (err) => {
-            console.error(`❌ Lỗi khi chuyển đổi ${file}: ${err.message}`);
-            reject(err);
-          })
-          .save(outputFilePath);
-      });
+      try {
+        await new Promise((resolve, reject) => {
+          ffmpegFluent(filePath)
+            .videoCodec("libx264")
+            .audioCodec("aac")
+            .audioBitrate("128k")
+            .outputOptions("-preset fast") // Giảm thời gian encode
+            .outputOptions("-crf 23") // Chất lượng tốt, dung lượng tối ưu
+            .on("end", () => {
+              console.log(`✅ Đã chuyển đổi codec: ${file}`);
+              fs.unlinkSync(filePath); // Xóa file gốc sau khi convert
+              fs.renameSync(outputFilePath, filePath); // Đổi lại tên file thành gốc
+              resolve();
+            })
+            .on("error", (err) => {
+              console.error(`❌ Lỗi khi chuyển đổi ${file}: ${err.message}`);
+              reject(err);
+            })
+            .save(outputFilePath);
+        });
+      } catch (error) {
+        console.error(
+          `❌ Không thể chuyển đổi codec cho ${file}: ${error.message}`
+        );
+      }
     }
   }
 };
 
-async function processImagesFromFolder(
-  inputDir,
-  overlayDir,
-  outputBaseDir,
+/**
+ * Sửa tên file, thay thế ký tự '？'.
+ */
+const fixFileNames = (directory) => {
+  if (!fs.existsSync(directory)) return;
+  const files = fs.readdirSync(directory);
+
+  for (const file of files) {
+    if (file.includes("？")) {
+      const oldPath = path.join(directory, file);
+      const newPath = path.join(directory, file.replace(/？/g, ""));
+      try {
+        fs.renameSync(oldPath, newPath);
+        console.log(
+          `🔧 Đã sửa tên file: ${file} -> ${file.replace(/？/g, "")}`
+        );
+      } catch (error) {
+        console.error(`❌ Lỗi khi đổi tên file ${file}: ${error.message}`);
+      }
+    }
+  }
+};
+
+/**
+ * Xử lý tất cả thumbnail trong một thư mục bằng cách áp dụng TẤT CẢ các ảnh overlay
+ * từ thư mục OVERLAY_IMAGES_DIR, lưu kết quả vào các thư mục con tương ứng.
+ */
+async function processAllThumbnailsWithMultipleOverlays(
+  inputThumbDir, // Thư mục chứa các thumbnail gốc đã tải
+  overlayImagesDir, // Thư mục chứa nhiều ảnh overlay
+  outputBaseDir, // Thư mục gốc để lưu kết quả (sẽ có các thư mục con)
   overlaySize
 ) {
   try {
-    if (!fs.existsSync(outputBaseDir)) {
-      fs.mkdirSync(outputBaseDir, { recursive: true });
+    if (!fs.existsSync(inputThumbDir)) {
+      console.warn(
+        `⚠️ Thiếu thư mục thumbnail gốc: ${inputThumbDir}, bỏ qua xử lý ảnh.`
+      );
+      return;
+    }
+    if (!fs.existsSync(overlayImagesDir)) {
+      console.warn(
+        `⚠️ Thiếu thư mục ảnh overlay tại: ${overlayImagesDir}, bỏ qua xử lý ảnh.`
+      );
+      return;
     }
 
-    // Lấy danh sách ảnh overlay
     const overlayFiles = fs
-      .readdirSync(overlayDir)
-      .filter((file) => /\.(jpg|jpeg|png|webp)$/i.test(file)) // Lọc file ảnh
-      .sort((a, b) => parseInt(a) - parseInt(b)); // Sắp xếp theo số
+      .readdirSync(overlayImagesDir)
+      .filter((file) => /\.(jpg|jpeg|png|webp)$/i.test(file))
+      .sort(
+        (a, b) => parseInt(path.parse(a).name) - parseInt(path.parse(b).name)
+      ); // Sắp xếp theo tên (số)
 
-    console.log(
-      `Tìm thấy ${overlayFiles.length} ảnh overlay trong thư mục: ${overlayDir}`
-    );
+    if (overlayFiles.length === 0) {
+      console.warn(
+        `⚠️ Không tìm thấy ảnh overlay nào trong thư mục: ${overlayImagesDir}. Bỏ qua xử lý ảnh.`
+      );
+      return;
+    }
 
-    // Lấy danh sách ảnh đầu vào
-    const inputFiles = fs
-      .readdirSync(inputDir)
+    const inputThumbnailFiles = fs
+      .readdirSync(inputThumbDir)
       .filter((file) => /\.(jpg|jpeg|png|webp)$/i.test(file));
 
+    if (inputThumbnailFiles.length === 0) {
+      console.log(
+        `ℹ️ Không có ảnh thumbnail gốc nào để xử lý trong ${inputThumbDir}.`
+      );
+      return;
+    }
+
     console.log(
-      `Tìm thấy ${inputFiles.length} ảnh cần xử lý trong thư mục: ${inputDir}`
+      `🖼️  Bắt đầu xử lý ${inputThumbnailFiles.length} ảnh thumbnail gốc với ${overlayFiles.length} ảnh overlay.`
     );
 
     for (let i = 0; i < overlayFiles.length; i++) {
-      const overlayPath = path.join(overlayDir, overlayFiles[i]);
-      const outputDir = path.join(outputBaseDir, `${i + 1}`); // Tạo folder theo số thứ tự
+      const overlayFileName = overlayFiles[i];
+      const overlayPath = path.join(overlayImagesDir, overlayFileName);
+      const outputDirForThisOverlay = path.join(outputBaseDir, `${i + 1}`); // Tạo thư mục con dựa trên thứ tự overlay
 
-      if (!fs.existsSync(outputDir)) {
-        fs.mkdirSync(outputDir, { recursive: true });
+      if (!fs.existsSync(outputDirForThisOverlay)) {
+        fs.mkdirSync(outputDirForThisOverlay, { recursive: true });
       }
 
-      console.log(
-        `Sử dụng overlay: ${overlayFiles[i]} -> Lưu vào ${outputDir}`
-      );
-
-      // Tạo overlay hình tròn
+      // Tạo overlay hình tròn một lần cho mỗi file overlay
       const overlayCircle = await sharp(overlayPath)
         .resize(overlaySize, overlaySize)
         .composite([
           {
             input: Buffer.from(
-              `<svg width="${overlaySize}" height="${overlaySize}">
-              <rect width="100%" height="100%" fill="none"/> 
-              <circle cx="${overlaySize / 2}" cy="${overlaySize / 2}" r="${
+              `<svg><circle cx="${overlaySize / 2}" cy="${
                 overlaySize / 2
-              }" fill="white" stroke="white"/>
-            </svg>`
+              }" r="${overlaySize / 2}" fill="white"/></svg>`
             ),
             blend: "dest-in",
           },
@@ -140,85 +225,160 @@ async function processImagesFromFolder(
         .png()
         .toBuffer();
 
-      for (const file of inputFiles) {
-        const inputPath = path.join(inputDir, file);
-        const outputPath = path.join(outputDir, file);
-
-        console.log(`Đang xử lý: ${file} với overlay ${overlayFiles[i]}`);
-
+      // Áp dụng overlay này cho TẤT CẢ các thumbnail gốc
+      for (const file of inputThumbnailFiles) {
+        const inputPath = path.join(inputThumbDir, file);
+        const outputPath = path.join(outputDirForThisOverlay, file);
         try {
-          // Biến đổi màu và chèn overlay
           const transformedBaseImage = await sharp(inputPath)
             .modulate({ brightness: 1.1, saturation: 1.2, hue: 20 })
             .toBuffer();
-
           const metadata = await sharp(transformedBaseImage).metadata();
           const x = metadata.width - overlaySize - 10;
           const y = 10;
-
           await sharp(transformedBaseImage)
             .composite([{ input: overlayCircle, top: y, left: x }])
             .toFile(outputPath);
-
-          console.log(`Lưu ảnh đã xử lý tại: ${outputPath}`);
         } catch (err) {
-          console.error(`Lỗi khi xử lý file ${file}:`, err.message);
+          console.error(
+            `❌ Lỗi khi xử lý file ảnh ${file} với overlay ${overlayFileName}:`,
+            err.message
+          );
         }
       }
     }
-
-    console.log("Quá trình xử lý hoàn tất.");
+    console.log(`✅ Toàn bộ quá trình xử lý ảnh overlay đã hoàn tất.`);
   } catch (err) {
-    console.error("Lỗi khi xử lý thư mục:", err.message);
+    console.error(`❌ Lỗi nghiêm trọng khi xử lý ảnh:`, err.message);
   }
 }
 
-// Hàm sửa tên file, thay thế ？thành ?
-const fixFileNames = (directory) => {
-  const files = fs.readdirSync(directory);
-
-  for (const file of files) {
-    if (file.includes("？")) {
-      const oldPath = path.join(directory, file);
-      const newPath = path.join(directory, file.replace(/？/g, ""));
-
-      try {
-        fs.renameSync(oldPath, newPath);
-        console.log(`Đã sửa tên file: ${file} -> ${file.replace(/？/g, "")}`);
-      } catch (error) {
-        console.error(`Lỗi khi đổi tên file ${file}: ${error.message}`);
-      }
-    }
-  }
-};
+// =================================================================
+// 2. HÀM MAIN - ĐIỀU PHỐI CHÍNH
+// =================================================================
 
 async function main() {
-  // Đường dẫn tới file chứa các URL
-  const filePath = "./urls.txt";
-  const savePath = "./overlays"; // Thư mục lưu video tải về
-  const overlayDir = "./images"; // Thư mục chứa ảnh overlay
-  const outputBaseDir = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
-  const overlaySize = 125;
+  // --- Cấu hình ---
+  // Các biến cấu hình đã được định nghĩa ở trên (ALL_URLS_FILE, FAILED_URLS_LOG, v.v.)
+  const overlaySize = 125; // Kích thước của ảnh overlay
 
-  // Tạo thư mục nếu chưa tồn tại
-  // if (fs.existsSync(savePath)) {
-  //   console.log(`Thư mục ${savePath} đã tồn tại, đang xóa...`);
-  //   fs.rmSync(savePath, { recursive: true, force: true });
-  // }
+  // --- Kiểm tra chế độ chạy ---
+  const isRetryMode = process.argv.includes("retry");
 
-  // fs.mkdirSync(savePath, { recursive: true });
+  if (isRetryMode) {
+    console.log("🚀 Chạy ở chế độ THỬ LẠI (RETRY)...");
+    if (
+      !fs.existsSync(FAILED_URLS_LOG) ||
+      fs.readFileSync(FAILED_URLS_LOG, "utf-8").trim() === ""
+    ) {
+      console.log(
+        "✅ Không có file log lỗi hoặc file rỗng. Không cần thử lại."
+      );
+      return;
+    }
+  } else {
+    console.log("🚀 Chạy ở chế độ BÌNH THƯỜNG...");
+    console.log("🧹 Dọn dẹp/Chuẩn bị thư mục...");
 
-  // Gọi hàm tải video
-  await downloadVideos(filePath, savePath);
-  console.log("Đang sửa tên file có chứa ký tự ？...");
-  fixFileNames(savePath);
-  // await convertCodec(savePath);
-  await processImagesFromFolder(
-    savePath,
-    overlayDir,
-    outputBaseDir,
+    // Đảm bảo các thư mục tồn tại
+    [DOWNLOAD_DIR, OVERLAY_IMAGES_DIR, OUTPUT_THUMBS_BASE_DIR].forEach(
+      (dir) => {
+        if (!fs.existsSync(dir)) {
+          fs.mkdirSync(dir, { recursive: true });
+          console.log(`➕ Đã tạo thư mục: ${dir}`);
+        }
+      }
+    );
+
+    // Xóa file log lỗi cũ khi chạy chế độ bình thường để bắt đầu lại từ đầu
+    if (fs.existsSync(FAILED_URLS_LOG)) {
+      fs.unlinkSync(FAILED_URLS_LOG);
+      console.log(`🗑️ Đã xóa file log lỗi cũ: ${FAILED_URLS_LOG}`);
+    }
+  }
+
+  // --- Đọc danh sách URL cần xử lý ---
+  let urlsToProcess = [];
+  if (isRetryMode) {
+    console.log(`🔎 Đọc các URL lỗi từ file: ${FAILED_URLS_LOG}`);
+    urlsToProcess = fs
+      .readFileSync(FAILED_URLS_LOG, "utf-8")
+      .split("\n")
+      .filter(Boolean);
+    // Xóa file log lỗi sau khi đọc để ghi lại lỗi mới nếu có trong lần retry này
+    fs.unlinkSync(FAILED_URLS_LOG);
+  } else {
+    if (!fs.existsSync(ALL_URLS_FILE)) {
+      console.error(`❌ Lỗi: Không tìm thấy file URL chính: ${ALL_URLS_FILE}`);
+      console.log("💡 Vui lòng tạo file urls.txt và thêm các URL vào đó.");
+      return;
+    }
+    console.log(`🔎 Đọc các URL từ file: ${ALL_URLS_FILE}`);
+    urlsToProcess = fs
+      .readFileSync(ALL_URLS_FILE, "utf-8")
+      .split("\n")
+      .filter(Boolean);
+  }
+
+  if (urlsToProcess.length === 0) {
+    console.log("✅ Không tìm thấy URL nào để xử lý.");
+    return;
+  }
+
+  // --- Tải video ---
+  console.log(`\n================== BẮT ĐẦU TẢI VIDEO ==================`);
+  const failedDownloads = await downloadVideosFromList(
+    urlsToProcess,
+    DOWNLOAD_DIR
+  );
+
+  // --- Sửa tên file ---
+  // console.log(`\n🔧 Đang sửa tên file trong thư mục: ${DOWNLOAD_DIR}...`);
+  // fixFileNames(DOWNLOAD_DIR);
+
+  // --- Chuyển đổi codec (bỏ comment để bật) ---
+  // console.log(`\n🔄 Đang chuyển đổi codec trong thư mục: ${DOWNLOAD_DIR}...`);
+  // await convertCodec(DOWNLOAD_DIR);
+
+  // --- Xử lý ảnh overlay ---
+  console.log(`\n🖼️  Bắt đầu xử lý ảnh thumbnail với nhiều overlay...`);
+  await processAllThumbnailsWithMultipleOverlays(
+    DOWNLOAD_DIR, // Thư mục chứa các thumbnail gốc đã tải
+    OVERLAY_IMAGES_DIR, // Thư mục chứa nhiều ảnh overlay (images/)
+    OUTPUT_THUMBS_BASE_DIR, // Thư mục gốc để lưu kết quả (thumbs/)
     overlaySize
   );
+
+  // --- Tổng kết ---
+  if (failedDownloads.length > 0) {
+    console.log("\n================== TỔNG KẾT LỖI ==================");
+    console.error(
+      `🔥 Tổng cộng có ${failedDownloads.length} video tải thất bại.`
+    );
+    const failedUrlsContent = failedDownloads.join("\n");
+    fs.writeFileSync(FAILED_URLS_LOG, failedUrlsContent);
+    console.log(
+      `📂 Danh sách các URL lỗi đã được ghi vào file: ${FAILED_URLS_LOG}`
+    );
+    if (!isRetryMode) {
+      console.log(
+        "💡 Mẹo: Chạy lại với lệnh 'node your_script_name.js retry' để tự động thử lại các video lỗi."
+      );
+    } else {
+      console.log(
+        "⚠️ Vẫn còn URL lỗi sau khi thử lại. Vui lòng kiểm tra file log."
+      );
+    }
+  } else {
+    console.log("\n🎉🎉🎉 TẤT CẢ CÁC VIDEO ĐỀU ĐƯỢC XỬ LÝ THÀNH CÔNG! 🎉🎉🎉");
+    if (fs.existsSync(FAILED_URLS_LOG)) {
+      fs.unlinkSync(FAILED_URLS_LOG); // Xóa file log lỗi nếu tất cả đã thành công
+      console.log(`🗑️ Đã xóa file log lỗi ${FAILED_URLS_LOG}.`);
+    }
+  }
+
+  console.log("\n🏁 Chương trình đã hoàn tất.");
 }
 
-main(); // Chạy chương trình main() khi chương trình chạy đầu tiên
+// Chạy chương trình
+main();

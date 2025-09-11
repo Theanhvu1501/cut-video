@@ -7,6 +7,7 @@ const scripts = {
   "Tải lại video lỗi": ["download.js", "retry"],
   "Cắt video -> 30s": ["trim-videos.js"],
   "Cắt video background": ["cut-bg.js"],
+  "Tạo ảnh thu nhỏ": ["thumb.js"],
 };
 async function main() {
   const { script } = await inquirer.prompt([

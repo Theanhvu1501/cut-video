@@ -97,6 +97,8 @@ const height = 190;
 const y_offset = 490;
 const ipList = "./vps.txt";
 const useAutoUploadVps = false;
+const useGPU = false;
+const gpuVideoCodec = "h264_nvenc";
 const maxConcurrentProcesses = 2;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -251,16 +253,44 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       }
 
       const duration = metadata.format.duration;
-
-      ffmpeg(inputBackground)
+      const command = ffmpeg(inputBackground)
         .inputOptions(["-stream_loop", "-1"])
         .input(inputOverlay)
         .complexFilter(complexFilter(inputOverlay))
-        .outputOptions("-preset", "ultrafast")
         .outputOptions("-t", duration)
         .audioCodec("aac")
         .map("[combined_video]")
-        .map("[overlay_audio]")
+        .map("[overlay_audio]");
+
+      if (useGPU) {
+        log(
+          `🚀 Sử dụng GPU (${gpuVideoCodec}) để render ${path.basename(
+            outputPath
+          )}`,
+          LOG_LEVEL.DEBUG
+        );
+        command
+          .videoCodec(gpuVideoCodec) // Sử dụng encoder của NVIDIA
+          .outputOptions([
+            // '-preset p2',  // p1=fastest, p7=slowest. 'p2' hoặc 'p3' là điểm cân bằng tốt.
+            // '-tune hq',    // hq=high quality, ll=low latency. 'hq' tốt cho render offline.
+            // '-cq 23',      // Constant Quality. Giá trị càng thấp, chất lượng càng cao. Khoảng 20-25 là hợp lý.
+            // '-b:v 0'       // Bắt buộc khi sử dụng chế độ Constant Quality (cq).
+            "-preset:v",
+            "fast", // Một cách viết khác, `fast` tương đương với các preset p thấp.
+            "-cq:v",
+            "23", // Đặt chất lượng
+          ]);
+      } else {
+        // Cấu hình CPU cũ
+        log(
+          `🐌 Sử dụng CPU (ultrafast) để render ${path.basename(outputPath)}`,
+          LOG_LEVEL.DEBUG
+        );
+        command.outputOptions("-preset", "ultrafast");
+      }
+
+      command
         .on("end", () => {
           const endTime = Date.now();
           log(

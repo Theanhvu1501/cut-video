@@ -9,6 +9,16 @@ const __dirname = path.dirname(__filename);
 
 // Đọc API key
 const apiKey = "AIzaSyDZTsPGvG0u5du3t7YGueGgnNi7IiulMus";
+const minSeconds = 60 * 10; // 10p
+
+// Hàm parse ISO 8601 -> giây
+function parseDuration(duration) {
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  const hours = parseInt(match[1] || "0", 10);
+  const minutes = parseInt(match[2] || "0", 10);
+  const seconds = parseInt(match[3] || "0", 10);
+  return hours * 3600 + minutes * 60 + seconds;
+}
 
 async function getVideoUrls(handle) {
   const youtube = google.youtube({
@@ -50,7 +60,7 @@ async function getVideoUrls(handle) {
   }
 
   const filePath = path.join(directoryPath, "youtube.txt");
-  fs.writeFileSync(filePath, "URL\n"); // thêm header
+  fs.writeFileSync(filePath, "URL\tPublishedAt\tTitle\tDuration(s)\n"); // thêm header
 
   do {
     const playlistItemsResponse = await youtube.playlistItems.list({
@@ -60,14 +70,26 @@ async function getVideoUrls(handle) {
       pageToken: nextPageToken || undefined,
     });
 
-    for (const item of playlistItemsResponse.data.items) {
-      const vid = item.snippet.resourceId.videoId;
-      const videoUrl = `https://www.youtube.com/watch?v=${vid}`;
-      const publishedAt = item.snippet.publishedAt;
-      const title = item.snippet.title.replace(/\t/g, " "); // tránh tab trong title
+    const videoIds = playlistItemsResponse.data.items.map(
+      (item) => item.snippet.resourceId.videoId
+    );
 
-      fs.appendFileSync(filePath, `${videoUrl}\t${publishedAt}\t${title}\n`);
-      console.log(videoUrl);
+    if (videoIds.length > 0) {
+      const videosResponse = await youtube.videos.list({
+        part: ["contentDetails", "snippet"],
+        id: videoIds,
+      });
+
+      for (const video of videosResponse.data.items) {
+        const durationSec = parseDuration(video.contentDetails.duration);
+        if (durationSec > minSeconds) {
+          // > 10 phút
+          const vid = video.id;
+          const videoUrl = `https://www.youtube.com/watch?v=${vid}`;
+          fs.appendFileSync(filePath, `${videoUrl}\n`);
+          console.log(videoUrl, `(${Math.round(durationSec / 60)} phút)`);
+        }
+      }
     }
 
     nextPageToken = playlistItemsResponse.data.nextPageToken;

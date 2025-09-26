@@ -8,6 +8,7 @@ const scripts = {
   "Cắt video -> 30s": ["trim-videos.js"],
   "Cắt video background": ["cut-bg.js"],
   "Tạo ảnh thu nhỏ": ["thumb.js"],
+  "Lấy URL": ["get-url.js"],
 };
 async function main() {
   const { script } = await inquirer.prompt([
@@ -30,6 +31,16 @@ async function main() {
       },
     ]);
     args = params.split(" "); // Chuyển params thành mảng
+  }
+  if (script === "Lấy URL") {
+    const { params } = await inquirer.prompt([
+      {
+        type: "input",
+        name: "params",
+        message: "Nhập tên channel handle: (ví dụ: @line4091)",
+      },
+    ]);
+    args = [params]; // Chuyển params thành mảng
   }
 
   console.log(`\n🚀 Đang chạy: node ${scripts[script]} ${args.join(" ")}\n`);

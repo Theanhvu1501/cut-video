@@ -1,14 +1,16 @@
 import ffmpeg from "@ffmpeg-installer/ffmpeg";
+import { spawn } from "child_process";
 import ffmpegFluent from "fluent-ffmpeg";
 import fs from "fs";
 import pLimit from "p-limit";
 import path from "path";
 import sharp from "sharp";
 import youtubedl from "youtube-dl-exec";
-
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
 // =================================================================
+
+const YTDLP_PATH = path.resolve("./bin/yt-dlp");
 ffmpegFluent.setFfmpegPath(ffmpeg.path);
 
 const ALL_URLS_FILE = "./urls.txt"; // Tên file chứa TẤT CẢ các URL
@@ -44,6 +46,39 @@ const downloadVideo = async (url, outputPath) => {
   console.log(`✅ Tải/Kiểm tra thành công: ${url}`);
 };
 
+const downloadVideoWithYtdl = (url, outputPath) => {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(YTDLP_PATH, [
+      "-f",
+      "bestvideo[height=720]+bestaudio/best",
+      "-o",
+      path.join(outputPath, "%(title)s.%(ext)s"),
+      "--merge-output-format",
+      "mp4",
+      "--write-thumbnail",
+      "--convert-thumbnails",
+      "jpg",
+      "--no-overwrites",
+      "--limit-rate",
+      "2M",
+      "--add-header",
+      "referer:youtube.com",
+      "--add-header",
+      "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      url,
+    ]);
+
+    proc.on("close", (code) => {
+      if (code === 0) {
+        console.log(`✅ Hoàn tất: ${url}`);
+        resolve();
+      } else {
+        reject(new Error(`yt-dlp exited with code ${code}`));
+      }
+    });
+  });
+};
+
 /**
  * Tải tất cả video từ một danh sách URL, báo cáo kết quả.
  * Trả về danh sách các tác vụ bị từ chối (failed URLs).
@@ -59,11 +94,11 @@ const downloadVideosFromList = async (urls, savePath) => {
   const downloadPromises = urls.map((url) =>
     limit(async () => {
       try {
-        await downloadVideo(url, savePath);
+        await downloadVideoWithYtdl(url, savePath);
         return { status: "fulfilled", url: url };
       } catch (error) {
         const reason = error.stderr || error.message;
-        console.error(`🔴 Đã bắt được lỗi cho URL: ${url}`);
+        console.error(`🔴 Đã bắt được lỗi cho URL: ${url}`, reason);
         return { status: "rejected", url: url, reason: reason };
       }
     })

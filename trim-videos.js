@@ -12,7 +12,7 @@ const inputFolder = "./overlays";
 // Thư mục lưu video đã cắt
 const outputFolder = "./overlays_trimmed";
 // Thời lượng cần giữ lại (giây)
-const duration = 15;
+const duration = 30;
 // Số lượng video xử lý đồng thời
 const concurrency = 3;
 

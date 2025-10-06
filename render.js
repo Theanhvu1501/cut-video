@@ -100,6 +100,8 @@ const useAutoUploadVps = false;
 const useGPU = false;
 const gpuVideoCodec = "h264_nvenc";
 const maxConcurrentProcesses = 2;
+const topTransparent = true;
+const opacity = 0.7;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -235,6 +237,25 @@ const complexFilter = (inputOverlay) => {
   ];
 };
 
+const complexFilterTopTransparent = () => {
+  const filter = [
+    // 1. Lấy video background [0:v], scale về 1280x720.
+    // 2. Thêm kênh alpha (độ trong suốt) và đặt opacity là 0.9 (tức là mờ đi 10%).
+    // 3. Đặt tên cho stream này là [top_video].
+    `[0:v]scale=1280:720,format=yuva420p,colorchannelmixer=aa=${opacity}[top_video]`,
+
+    // 4. Lấy video overlay [1:v], scale về 1280x720 để cùng kích thước.
+    // 5. Đặt tên cho stream này là [base_video].
+    "[1:v]scale=1280:720[base_video]",
+  ];
+
+  return [
+    filter.join(";"), // Nối các bước chuẩn bị lại
+    "[base_video][top_video]overlay=0:0[combined_video]", // Đặt [top_video] lên trên [base_video]
+    "[1:a]volume=1.0[overlay_audio]", // Vẫn sử dụng âm thanh từ video overlay
+  ];
+};
+
 const processVideo = async (inputOverlay, inputBackground, outputPath) => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
@@ -253,10 +274,27 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       }
 
       const duration = metadata.format.duration;
+
+      let filterConfig;
+      if (topTransparent) {
+        log(
+          `✨ Sử dụng chế độ đè lớp phủ trong suốt cho ${path.basename(
+            outputPath
+          )}`,
+          LOG_LEVEL.DEBUG
+        );
+        filterConfig = complexFilterTopTransparent();
+      } else {
+        log(
+          `🎨 Sử dụng chế độ Chroma Key cho ${path.basename(outputPath)}`,
+          LOG_LEVEL.DEBUG
+        );
+        filterConfig = complexFilter(inputOverlay);
+      }
       const command = ffmpeg(inputBackground)
         .inputOptions(["-stream_loop", "-1"])
         .input(inputOverlay)
-        .complexFilter(complexFilter(inputOverlay))
+        .complexFilter(filterConfig)
         .outputOptions("-t", duration)
         .audioCodec("aac")
         .map("[combined_video]")

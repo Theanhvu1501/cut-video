@@ -5,11 +5,11 @@ import fs from "fs";
 import pLimit from "p-limit";
 import path from "path";
 import sharp from "sharp";
-import youtubedl from "youtube-dl-exec";
+import { create as createYoutubeDl } from "youtube-dl-exec";
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
 // =================================================================
-
+const youtubedl = createYoutubeDl("./bin/yt-dlp.exe");
 const YTDLP_PATH = path.resolve("./bin/yt-dlp");
 ffmpegFluent.setFfmpegPath(ffmpeg.path);
 
@@ -42,6 +42,7 @@ const downloadVideo = async (url, outputPath) => {
     // cookies: "./cookies.txt", // Bỏ comment nếu cần
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
+    extractorArgs: ["youtube:player-client=default,-tv_simply"],
   });
   console.log(`✅ Tải/Kiểm tra thành công: ${url}`);
 };
@@ -94,7 +95,7 @@ const downloadVideosFromList = async (urls, savePath) => {
   const downloadPromises = urls.map((url) =>
     limit(async () => {
       try {
-        await downloadVideoWithYtdl(url, savePath);
+        await downloadVideo(url, savePath);
         return { status: "fulfilled", url: url };
       } catch (error) {
         const reason = error.stderr || error.message;

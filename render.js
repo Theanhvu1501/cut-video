@@ -495,6 +495,16 @@ const processAllVideos = async () => {
         const overlayFileName = path.basename(overlay, path.extname(overlay));
         const outputPath = path.join(groupFolder, `${overlayFileName}.mp4`);
 
+        if (fs.existsSync(outputPath)) {
+          log(
+            `👉 Video đã tồn tại, bỏ qua: ${path.basename(outputPath)}`,
+            LOG_LEVEL.INFO // Hoặc DEBUG nếu bạn không muốn thấy quá nhiều log
+          );
+          processedVideos++; // Vẫn tăng biến này để hiển thị đúng tiến độ
+          updateProgress();
+          continue; // Bỏ qua việc thêm task này và sang vòng lặp tiếp theo
+        }
+
         log(
           `🎬 Chuẩn bị video ${j + 1}/${videosPerFolder}: ${path.basename(
             overlay

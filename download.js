@@ -168,14 +168,13 @@ const fixFileNames = (directory) => {
   const files = fs.readdirSync(directory);
 
   for (const file of files) {
-    if (file.includes("？")) {
+    const normalizedName = file.normalize("NFC");
+    if (file !== normalizedName) {
       const oldPath = path.join(directory, file);
-      const newPath = path.join(directory, file.replace(/？/g, ""));
+      const newPath = path.join(directory, normalizedName);
       try {
         fs.renameSync(oldPath, newPath);
-        console.log(
-          `🔧 Đã sửa tên file: ${file} -> ${file.replace(/？/g, "")}`
-        );
+        console.log(`🔧 Đã chuẩn hóa tên file: ${file} -> ${normalizedName}`);
       } catch (error) {
         console.error(`❌ Lỗi khi đổi tên file ${file}: ${error.message}`);
       }
@@ -369,8 +368,8 @@ async function main() {
   );
 
   // --- Sửa tên file ---
-  // console.log(`\n🔧 Đang sửa tên file trong thư mục: ${DOWNLOAD_DIR}...`);
-  // fixFileNames(DOWNLOAD_DIR);
+  console.log(`\n🔧 Đang sửa tên file trong thư mục: ${DOWNLOAD_DIR}...`);
+  fixFileNames(DOWNLOAD_DIR);
 
   // --- Chuyển đổi codec (bỏ comment để bật) ---
   // console.log(`\n🔄 Đang chuyển đổi codec trong thư mục: ${DOWNLOAD_DIR}...`);

@@ -9,6 +9,7 @@ const scripts = {
   "Cắt video background": ["cut-bg.js"],
   "Tạo ảnh thu nhỏ": ["thumb.js"],
   "Lấy URL": ["get-url.js"],
+  "Sửa tên ảnh thu nhỏ": ["convertNormalize.js"],
 };
 async function main() {
   const { script } = await inquirer.prompt([

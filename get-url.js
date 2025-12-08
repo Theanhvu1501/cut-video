@@ -94,7 +94,7 @@ async function getVideoUrls(handle) {
   } while (nextPageToken);
 
   // === B3: Sắp xếp theo lượt view giảm dần ===
-  videosData.sort((a, b) => b.viewCount - a.viewCount);
+  // videosData.sort((a, b) => b.viewCount - a.viewCount);
 
   // === B4: Ghi file chỉ gồm URL + view count ===
   fs.writeFileSync(

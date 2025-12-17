@@ -30,7 +30,8 @@ const downloadVideo = async (url, outputPath) => {
   const output = path.join(outputPath, "%(title)s.%(ext)s");
   await youtubedl(url, {
     output: output,
-    format: "bestvideo[height=720]+bestaudio/best",
+    format:
+      "bestvideo[height=720][ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[height=720][ext=mp4][vcodec^=avc]",
     mergeOutputFormat: "mp4",
     writeThumbnail: true,
     convertThumbnails: "jpg",

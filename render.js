@@ -90,22 +90,29 @@ const overlayFolder = "./overlays";
 const backgroundFolder = "./backgrounds";
 const combinedVideosFolder = "./combined_videos";
 const outputFolder = "./done";
-const useChromaKey = true;
-const color = "4887EE";
 const chromaKeyFile = "./chromaKey.txt";
 const height = 190;
 const y_offset = 490;
 const ipList = "./vps.txt";
-const useAutoUploadVps = false;
-const useGPU = false;
 const gpuVideoCodec = "h264_nvenc";
 const maxConcurrentProcesses = 2;
-const topTransparent = true;
-const opacity = 0.7;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const useAutoUploadVps = false;
+const useGPU = false;
 
-// Tạo thư mục nếu chưa tồn tại
+const topTransparent = false;
+const opacity = 0.7;
+
+const useChromaKey = true;
+const color = "D4F9D7";
+
+const useKeepColor = true; // Bật chế độ giữ màu (sẽ ưu tiên hơn useChromaKey cũ)
+const keepColorsList = ["85F33A", "222222", "FFFFFF"];
+const keepSimilarity = 0.2; // Độ sai số màu (0.1 - 0.3 là đẹp)
+
+// Tạo thư mục nếu chưa tồn tạ
+
 // if (fs.existsSync(outputFolder)) {
 //   log(`Thư mục ${outputFolder} đã tồn tại, đang xóa...`, LOG_LEVEL.INFO);
 //   fs.rmSync(outputFolder, { recursive: true, force: true });
@@ -256,6 +263,51 @@ const complexFilterTopTransparent = () => {
   ];
 };
 
+const complexFilterKeepColor = () => {
+  const filters = [];
+  const outputs = [];
+
+  // 1. Duyệt qua từng màu cần giữ để tách nền
+  keepColorsList.forEach((hexColor, index) => {
+    // Bước A: Dùng colorkey để chọn màu.
+    // Lưu ý: colorkey mặc định sẽ làm màu đó trong suốt (Alpha=0).
+    // Chúng ta cần nó làm màu đó thành Alpha=0 để sau đó đảo ngược.
+    filters.push(
+      `[1:v]colorkey=0x${hexColor}:${keepSimilarity}:0.1[ck_temp_${index}]`
+    );
+
+    // Bước B: Trích xuất kênh Alpha từ kết quả trên và ĐẢO NGƯỢC (negate).
+    // Sau khi negate: Màu được chọn sẽ có Alpha=1 (hiện), các màu khác Alpha=0 (ẩn).
+    filters.push(`[ck_temp_${index}]alphaextract,negate[mask_${index}]`);
+
+    // Bước C: Áp mask này ngược lại vào video gốc để lấy ra phần hình ảnh chỉ chứa màu đó.
+    filters.push(`[1:v][mask_${index}]alphamerge[isolated_${index}]`);
+
+    outputs.push(`[isolated_${index}]`);
+  });
+
+  // 2. Gộp (Stack) tất cả các layer màu đã tách lại với nhau
+  // Nếu chỉ có 1 màu, lấy luôn output đó. Nếu nhiều màu, overlay chồng lên nhau.
+  let currentStream = outputs[0];
+
+  for (let i = 1; i < outputs.length; i++) {
+    const nextStream = outputs[i];
+    const outName = `[stack_${i}]`;
+    filters.push(`${currentStream}${nextStream}overlay=0:0${outName}`);
+    currentStream = outName;
+  }
+
+  // 3. Scale về kích thước chuẩn (1280x720) để khớp với background
+  filters.push(`${currentStream}scale=1280:720[final_overlay]`);
+
+  // 4. Trả về mảng filter hoàn chỉnh cho ffmpeg
+  return [
+    filters.join(";"), // Chuỗi filter xử lý tách màu
+    `[0:v][final_overlay]overlay=0:H-h[combined_video]`, // Overlay lên background gốc
+    "[1:a]volume=1.0[overlay_audio]", // Giữ nguyên âm thanh
+  ];
+};
+
 const processVideo = async (inputOverlay, inputBackground, outputPath) => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
@@ -276,7 +328,15 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       const duration = metadata.format.duration;
 
       let filterConfig;
-      if (topTransparent) {
+      if (useKeepColor) {
+        log(
+          `🎨 Sử dụng chế độ GIỮ MÀU (Keep Colors) cho ${path.basename(
+            outputPath
+          )}`,
+          LOG_LEVEL.DEBUG
+        );
+        filterConfig = complexFilterKeepColor();
+      } else if (topTransparent) {
         log(
           `✨ Sử dụng chế độ đè lớp phủ trong suốt cho ${path.basename(
             outputPath

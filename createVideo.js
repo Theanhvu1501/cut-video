@@ -1,217 +1,170 @@
 import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
-import os from "os";
 import pLimit from "p-limit";
 import path from "path";
 
 // Cấu hình FFmpeg
 ffmpeg.setFfmpegPath(ffmpegPath);
 
-// Cấu hình hiệu suất
+// --- CẤU HÌNH ---
 const CONFIG = {
   processing: {
-    maxConcurrent: Math.max(1, os.cpus().length - 1),
-    useHardwareAcceleration: true,
-    cleanupTempFiles: true,
+    maxConcurrent: 3, // Tự động chỉnh theo số nhân CPU
+  },
+  video: {
+    segmentMin: 30, // Thời lượng ngắn nhất (giây)
+    segmentMax: 40, // Thời lượng dài nhất (giây)
   },
   ffmpeg: {
-    preset: "veryfast",
+    preset: "veryfast", // veryfast render cho lẹ
     crf: 23,
-    threads: 0,
-    audioBitrate: "128k",
     timeout: 10 * 60 * 1000,
   },
 };
 
 // Đường dẫn
 const imageBackgroundFolder = "./image_backgrounds";
-const outputFolder = "./backgrounds";
+const outputRootFolder = "./output_segments";
 const snowOverlay = "./snow1.mp4";
 
-// Tạo thư mục output nếu chưa tồn tại
-if (!fs.existsSync(outputFolder)) {
-  fs.mkdirSync(outputFolder, { recursive: true });
-  console.log(`Đã tạo thư mục ${outputFolder}`);
+// Tạo thư mục gốc output
+if (!fs.existsSync(outputRootFolder)) {
+  fs.mkdirSync(outputRootFolder, { recursive: true });
 }
 
-// Cache cho metadata
-const metadataCache = new Map();
+// Hàm random số
+const getRandomInt = (min, max) =>
+  Math.floor(Math.random() * (max - min + 1)) + min;
 
-// Lấy metadata của video
-const getVideoMetadata = async (videoPath) => {
-  if (metadataCache.has(videoPath)) {
-    return metadataCache.get(videoPath);
-  }
-
+// --- HÀM TẠO 1 SEGMENT ---
+const createSegment = async (imagePath, outputPath, duration) => {
   return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(videoPath, (err, metadata) => {
-      if (err) {
-        console.error(`Lỗi khi lấy metadata video: ${err.message}`);
-        return reject(err);
-      }
+    // Check nếu file output đã tồn tại thì bỏ qua (để resume nếu chạy lại)
+    if (fs.existsSync(outputPath)) {
+      return resolve("Skipped");
+    }
 
-      const result = {
-        duration: metadata.format.duration,
-        width: metadata.streams[0].width,
-        height: metadata.streams[0].height,
-      };
+    const timer = setTimeout(() => {
+      reject(new Error("Timeout quá thời gian cho phép"));
+    }, CONFIG.ffmpeg.timeout);
 
-      metadataCache.set(videoPath, result);
-      resolve(result);
-    });
+    ffmpeg()
+      .input(imagePath)
+      .loop(1)
+      .input(snowOverlay)
+      .inputOptions(["-stream_loop", "-1"])
+      .complexFilter([
+        "[0:v]scale=1280:720,setsar=1[bg]",
+        "[1:v]scale=1280:720,setsar=1,colorkey=0x000000:0.1:0.3[snow]",
+        "[bg][snow]overlay=0:0[out]",
+      ])
+      .outputOptions([
+        "-map",
+        "[out]",
+        "-t",
+        duration,
+        `-preset ${CONFIG.ffmpeg.preset}`,
+        `-crf ${CONFIG.ffmpeg.crf}`,
+        "-movflags +faststart",
+        "-pix_fmt yuv420p",
+        "-y", // Ghi đè file nếu có (nếu muốn check exist thì xóa dòng này đi)
+      ])
+      .on("end", () => {
+        clearTimeout(timer);
+        resolve(outputPath);
+      })
+      .on("error", (err) => {
+        clearTimeout(timer);
+        reject(err);
+      })
+      .save(outputPath);
   });
 };
 
-// --- HÀM XỬ LÝ BACKGROUND LÀ HÌNH ẢNH ---
-const createVideoWithImage = async (imagePath, outputPath) => {
-  try {
-    const snowMetadata = await getVideoMetadata(snowOverlay);
-    const duration = snowMetadata.duration;
-
-    console.log(`Đang ghép video với hình ảnh: ${path.basename(imagePath)}`);
-    const startTime = Date.now();
-
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(
-          new Error(`Timeout khi xử lý video ${path.basename(imagePath)}`)
-        );
-      }, CONFIG.ffmpeg.timeout);
-
-      ffmpeg()
-        .input(imagePath)
-        .loop(1)
-        .input(snowOverlay)
-        .inputOptions(["-stream_loop", "-1"])
-        .complexFilter([
-          // [0:v] Xử lý ảnh nền: Scale về HD
-          "[0:v]scale=1280:720,setsar=1[bg]",
-
-          // [1:v] Xử lý video tuyết: Scale về HD -> Lọc bỏ màu đen
-          // colorkey=0x000000: Chọn màu đen
-          // :0.1: Độ dung sai (0.1 để loại bỏ cả màu đen xám xám do nén video)
-          // :0.3: Độ mượt viền (giúp bông tuyết không bị răng cưa)
-          "[1:v]scale=1280:720,setsar=1,colorkey=0x000000:0.1:0.3[snow]",
-
-          // Ghép tuyết (đã trong suốt) lên nền
-          "[bg][snow]overlay=0:0[out]",
-        ])
-        .outputOptions([
-          "-map",
-          "[out]",
-          "-t",
-          duration,
-          `-preset ${CONFIG.ffmpeg.preset}`,
-          `-crf ${CONFIG.ffmpeg.crf}`,
-          `-threads ${CONFIG.ffmpeg.threads}`,
-          "-movflags +faststart",
-          "-pix_fmt yuv420p",
-        ])
-        .on("progress", (progress) => {
-          if (progress.percent) {
-            process.stdout.write(`\rTiến độ: ${Math.round(progress.percent)}%`);
-          }
-        })
-        .on("end", () => {
-          clearTimeout(timeout);
-          const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
-          console.log(
-            `\nĐã tạo video thành công: ${outputPath} (${processingTime}s)`
-          );
-          resolve();
-        })
-        .on("error", (err) => {
-          clearTimeout(timeout);
-          console.error(`\nLỗi khi tạo video: ${err.message}`);
-          reject(err);
-        })
-        .save(outputPath);
-    });
-  } catch (error) {
-    console.error(`Lỗi: ${error.message}`);
-    throw error;
-  }
-};
-
-// --- HÀM CHÍNH ---
+// --- MAIN ---
 const main = async () => {
   try {
-    console.log(
-      `🚀 Bắt đầu xử lý video với ${CONFIG.processing.maxConcurrent} luồng đồng thời`
-    );
-
-    let totalVideos = 0;
-    let processedVideos = 0;
-    let errorVideos = 0;
+    console.log(`🚀 BẮT ĐẦU CHUYỂN ĐỔI TẤT CẢ ẢNH SANG VIDEO`);
+    console.log(`⚡ Max Threads: ${CONFIG.processing.maxConcurrent}\n`);
 
     const limit = pLimit(CONFIG.processing.maxConcurrent);
     const tasks = [];
+    let totalImages = 0;
 
-    console.log("Đang xử lý với hình ảnh làm background...");
-    const imageFolders = fs
+    // 1. Quét danh sách folder
+    const folders = fs
       .readdirSync(imageBackgroundFolder)
       .filter((folder) =>
         fs.lstatSync(path.join(imageBackgroundFolder, folder)).isDirectory()
       );
 
-    for (const folder of imageFolders) {
-      const folderPath = path.join(imageBackgroundFolder, folder);
-      const outputFolderPath = path.join(outputFolder, folder);
+    for (const folderName of folders) {
+      const inputFolderPath = path.join(imageBackgroundFolder, folderName);
+      const outputFolderPath = path.join(outputRootFolder, folderName);
 
-      if (!fs.existsSync(outputFolderPath))
+      // Tạo folder đích
+      if (!fs.existsSync(outputFolderPath)) {
         fs.mkdirSync(outputFolderPath, { recursive: true });
+      }
 
+      // Lấy danh sách ảnh
       const images = fs
-        .readdirSync(folderPath)
+        .readdirSync(inputFolderPath)
         .filter((file) =>
           [".jpg", ".jpeg", ".png"].includes(path.extname(file).toLowerCase())
         );
 
-      totalVideos += images.length;
+      if (images.length === 0) continue;
 
-      for (const image of images) {
-        const imagePath = path.join(folderPath, image);
-        const outputPath = path.join(
-          outputFolderPath,
-          `${path.parse(image).name}.mp4`
+      console.log(
+        `📂 Folder "${folderName}": Tìm thấy ${images.length} ảnh -> Đang xử lý...`
+      );
+      totalImages += images.length;
+
+      // 2. Duyệt qua từng ảnh để tạo video
+      for (const imageFile of images) {
+        const imagePath = path.join(inputFolderPath, imageFile);
+
+        // Random thời gian cho video này
+        const duration = getRandomInt(
+          CONFIG.video.segmentMin,
+          CONFIG.video.segmentMax
         );
 
+        // Giữ nguyên tên file ảnh, chỉ thay đuôi thành .mp4
+        const imageNameWithoutExt = path.parse(imageFile).name;
+        const outputFileName = `${imageNameWithoutExt}.mp4`;
+        const outputPath = path.join(outputFolderPath, outputFileName);
+
+        // Đẩy task vào hàng đợi
         tasks.push(
           limit(() =>
-            createVideoWithImage(imagePath, outputPath)
-              .then(() => {
-                processedVideos++;
-                updateProgress(processedVideos, totalVideos);
+            createSegment(imagePath, outputPath, duration)
+              .then((res) => {
+                if (res === "Skipped") {
+                  process.stdout.write("S"); // S = Skipped
+                } else {
+                  process.stdout.write("."); // . = Done
+                }
               })
-              .catch((error) => {
-                console.error(`Lỗi xử lý ${image}: ${error.message}`);
-                errorVideos++;
-                processedVideos++;
-                updateProgress(processedVideos, totalVideos);
+              .catch((err) => {
+                console.error(`\n❌ Lỗi [${imageFile}]: ${err.message}`);
               })
           )
         );
       }
     }
 
-    console.log(`Tổng số video cần xử lý: ${totalVideos}`);
+    console.log(`\n\n⏳ Đang render tổng cộng ${totalImages} video...`);
+
     await Promise.all(tasks);
-    if (CONFIG.processing.cleanupTempFiles) metadataCache.clear();
-    console.log(
-      `\n✅ Hoàn thành! (${processedVideos}/${totalVideos} thành công)`
-    );
+
+    console.log(`\n\n✅ ĐÃ HOÀN THÀNH TOÀN BỘ!`);
+    console.log(`👉 File output nằm tại: ${outputRootFolder}`);
   } catch (error) {
-    console.error(`❌ Lỗi Fatal: ${error.message}`);
+    console.error(`Fatal Error: ${error.message}`);
   }
 };
 
-const updateProgress = (current, total) => {
-  const percent = Math.round((current / total) * 100);
-  process.stdout.write(`\rTiến độ tổng thể: ${current}/${total} (${percent}%)`);
-};
-
-console.time("Thời gian xử lý");
-main().finally(() => {
-  console.timeEnd("Thời gian xử lý");
-});
+main();

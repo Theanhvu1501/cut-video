@@ -86,30 +86,40 @@ try {
 // endregion
 
 // region ========== 3. Đường dẫn & thư mục ==========
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 const overlayFolder = "./overlays";
 const backgroundFolder = "./backgrounds";
 const combinedVideosFolder = "./combined_videos";
 const outputFolder = "./done";
-const chromaKeyFile = "./chromaKey.txt";
-const height = 190;
-const y_offset = 490;
-const ipList = "./vps.txt";
-const gpuVideoCodec = "h264_nvenc";
-const maxConcurrentProcesses = 2;
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const useAutoUploadVps = false;
-const useGPU = false;
 
+// GPU
+const gpuVideoCodec = "h264_nvenc";
+const useGPU = false;
+const maxConcurrentProcesses = 2;
+
+// VPS
+const useAutoUploadVps = false;
+const ipList = "./vps.txt";
+
+// Chế độ đè lớp phủ trong suốt
 const topTransparent = false;
 const opacity = 0.7;
 
+// Chế độ Chroma Key
 const useChromaKey = true;
 const color = "D4F9D7";
+const chromaKeyFile = "./chromaKey.txt";
 
+// Chế độ giữ màu
 const useKeepColor = true; // Bật chế độ giữ màu (sẽ ưu tiên hơn useChromaKey cũ)
-const keepColorsList = ["85F33A", "222222", "FFFFFF"];
+const keepColorsList = ["FBFF02"];
 const keepSimilarity = 0.2; // Độ sai số màu (0.1 - 0.3 là đẹp)
+const keepColorAndCrop = true;
+
+// Chế độ crop
+const height = 220;
+const y_offset = 490;
 
 // Tạo thư mục nếu chưa tồn tạ
 
@@ -265,31 +275,40 @@ const complexFilterTopTransparent = () => {
 
 const complexFilterKeepColor = () => {
   const filters = [];
+  const count = keepColorsList.length;
+
+  const totalSplits = count * 2;
+
+  let splitOutputs = "";
+  for (let i = 0; i < count; i++) {
+    splitOutputs += `[src_${i}_detect][src_${i}_apply]`;
+  }
+
+  let baseFilter = "";
+  if (keepColorAndCrop) {
+    baseFilter = `[1:v]scale=1280:720,crop=1280:${height}:0:${y_offset}`;
+  } else {
+    baseFilter = `[1:v]scale=1280:720`;
+  }
+
+  filters.push(`${baseFilter},split=${totalSplits}${splitOutputs}`);
+
+  // 2. VÒNG LẶP XỬ LÝ MÀU
   const outputs = [];
-
-  // 1. Duyệt qua từng màu cần giữ để tách nền
   keepColorsList.forEach((hexColor, index) => {
-    // Bước A: Dùng colorkey để chọn màu.
-    // Lưu ý: colorkey mặc định sẽ làm màu đó trong suốt (Alpha=0).
-    // Chúng ta cần nó làm màu đó thành Alpha=0 để sau đó đảo ngược.
     filters.push(
-      `[1:v]colorkey=0x${hexColor}:${keepSimilarity}:0.1[ck_temp_${index}]`
+      `[src_${index}_detect]colorkey=0x${hexColor}:${keepSimilarity}:0.1[ck_temp_${index}]`
     );
-
-    // Bước B: Trích xuất kênh Alpha từ kết quả trên và ĐẢO NGƯỢC (negate).
-    // Sau khi negate: Màu được chọn sẽ có Alpha=1 (hiện), các màu khác Alpha=0 (ẩn).
     filters.push(`[ck_temp_${index}]alphaextract,negate[mask_${index}]`);
 
-    // Bước C: Áp mask này ngược lại vào video gốc để lấy ra phần hình ảnh chỉ chứa màu đó.
-    filters.push(`[1:v][mask_${index}]alphamerge[isolated_${index}]`);
+    filters.push(
+      `[src_${index}_apply][mask_${index}]alphamerge[isolated_${index}]`
+    );
 
     outputs.push(`[isolated_${index}]`);
   });
 
-  // 2. Gộp (Stack) tất cả các layer màu đã tách lại với nhau
-  // Nếu chỉ có 1 màu, lấy luôn output đó. Nếu nhiều màu, overlay chồng lên nhau.
   let currentStream = outputs[0];
-
   for (let i = 1; i < outputs.length; i++) {
     const nextStream = outputs[i];
     const outName = `[stack_${i}]`;
@@ -297,14 +316,12 @@ const complexFilterKeepColor = () => {
     currentStream = outName;
   }
 
-  // 3. Scale về kích thước chuẩn (1280x720) để khớp với background
-  filters.push(`${currentStream}scale=1280:720[final_overlay]`);
+  filters.push(`${currentStream}copy[final_overlay]`);
 
-  // 4. Trả về mảng filter hoàn chỉnh cho ffmpeg
   return [
-    filters.join(";"), // Chuỗi filter xử lý tách màu
-    `[0:v][final_overlay]overlay=0:H-h[combined_video]`, // Overlay lên background gốc
-    "[1:a]volume=1.0[overlay_audio]", // Giữ nguyên âm thanh
+    filters.join(";"),
+    `[0:v][final_overlay]overlay=0:H-h[combined_video]`,
+    "[1:a]volume=1.0[overlay_audio]",
   ];
 };
 

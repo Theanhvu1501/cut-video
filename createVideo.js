@@ -4,7 +4,6 @@ import fs from "fs";
 import os from "os";
 import pLimit from "p-limit";
 import path from "path";
-import { fileURLToPath } from "url";
 
 // Cấu hình FFmpeg
 ffmpeg.setFfmpegPath(ffmpegPath);
@@ -26,10 +25,8 @@ const CONFIG = {
 };
 
 // Đường dẫn
-const __filename = fileURLToPath(import.meta.url);
-const backgroundFolder = "./backgrounds";
 const imageBackgroundFolder = "./image_backgrounds";
-const outputFolder = "./combined_videos";
+const outputFolder = "./backgrounds";
 const snowOverlay = "./snow1.mp4";
 
 // Tạo thư mục output nếu chưa tồn tại
@@ -137,74 +134,6 @@ const createVideoWithImage = async (imagePath, outputPath) => {
   }
 };
 
-// --- HÀM XỬ LÝ BACKGROUND LÀ VIDEO ---
-const createVideoWithBackground = async (backgroundPath, outputPath) => {
-  try {
-    const bgMetadata = await getVideoMetadata(backgroundPath);
-    const duration = bgMetadata.duration;
-
-    console.log(
-      `Đang ghép video với background: ${path.basename(backgroundPath)}`
-    );
-    const startTime = Date.now();
-
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        reject(
-          new Error(`Timeout khi xử lý video ${path.basename(backgroundPath)}`)
-        );
-      }, CONFIG.ffmpeg.timeout);
-
-      ffmpeg()
-        .input(backgroundPath)
-        .input(snowOverlay)
-        .inputOptions(["-stream_loop", "-1"])
-        .complexFilter([
-          // [0:v] Scale background về HD
-          "[0:v]scale=1280:720,setsar=1[bg]",
-
-          // [1:v] Xử lý tuyết: Scale + Tách nền đen
-          "[1:v]scale=1280:720,setsar=1,colorkey=0x000000:0.1:0.3[snow]",
-
-          // Overlay
-          "[bg][snow]overlay=0:0[out]",
-        ])
-        .outputOptions([
-          "-map",
-          "[out]",
-          "-t",
-          duration,
-          `-preset ${CONFIG.ffmpeg.preset}`,
-          `-crf ${CONFIG.ffmpeg.crf}`,
-          `-threads ${CONFIG.ffmpeg.threads}`,
-          "-movflags +faststart",
-        ])
-        .on("progress", (progress) => {
-          if (progress.percent) {
-            process.stdout.write(`\rTiến độ: ${Math.round(progress.percent)}%`);
-          }
-        })
-        .on("end", () => {
-          clearTimeout(timeout);
-          const processingTime = ((Date.now() - startTime) / 1000).toFixed(2);
-          console.log(
-            `\nĐã tạo video thành công: ${outputPath} (${processingTime}s)`
-          );
-          resolve();
-        })
-        .on("error", (err) => {
-          clearTimeout(timeout);
-          console.error(`\nLỗi khi tạo video: ${err.message}`);
-          reject(err);
-        })
-        .save(outputPath);
-    });
-  } catch (error) {
-    console.error(`Lỗi: ${error.message}`);
-    throw error;
-  }
-};
-
 // --- HÀM CHÍNH ---
 const main = async () => {
   try {
@@ -219,103 +148,50 @@ const main = async () => {
     const limit = pLimit(CONFIG.processing.maxConcurrent);
     const tasks = [];
 
-    // Kiểm tra thư mục Image Background
-    const hasImageBackgrounds =
-      fs.existsSync(imageBackgroundFolder) &&
-      fs
-        .readdirSync(imageBackgroundFolder)
-        .some((folder) =>
-          fs.lstatSync(path.join(imageBackgroundFolder, folder)).isDirectory()
+    console.log("Đang xử lý với hình ảnh làm background...");
+    const imageFolders = fs
+      .readdirSync(imageBackgroundFolder)
+      .filter((folder) =>
+        fs.lstatSync(path.join(imageBackgroundFolder, folder)).isDirectory()
+      );
+
+    for (const folder of imageFolders) {
+      const folderPath = path.join(imageBackgroundFolder, folder);
+      const outputFolderPath = path.join(outputFolder, folder);
+
+      if (!fs.existsSync(outputFolderPath))
+        fs.mkdirSync(outputFolderPath, { recursive: true });
+
+      const images = fs
+        .readdirSync(folderPath)
+        .filter((file) =>
+          [".jpg", ".jpeg", ".png"].includes(path.extname(file).toLowerCase())
         );
 
-    if (hasImageBackgrounds) {
-      console.log("Đang xử lý với hình ảnh làm background...");
-      const imageFolders = fs
-        .readdirSync(imageBackgroundFolder)
-        .filter((folder) =>
-          fs.lstatSync(path.join(imageBackgroundFolder, folder)).isDirectory()
+      totalVideos += images.length;
+
+      for (const image of images) {
+        const imagePath = path.join(folderPath, image);
+        const outputPath = path.join(
+          outputFolderPath,
+          `${path.parse(image).name}.mp4`
         );
 
-      for (const folder of imageFolders) {
-        const folderPath = path.join(imageBackgroundFolder, folder);
-        const outputFolderPath = path.join(outputFolder, folder);
-
-        if (!fs.existsSync(outputFolderPath))
-          fs.mkdirSync(outputFolderPath, { recursive: true });
-
-        const images = fs
-          .readdirSync(folderPath)
-          .filter((file) =>
-            [".jpg", ".jpeg", ".png"].includes(path.extname(file).toLowerCase())
-          );
-
-        totalVideos += images.length;
-
-        for (const image of images) {
-          const imagePath = path.join(folderPath, image);
-          const outputPath = path.join(
-            outputFolderPath,
-            `${path.parse(image).name}.mp4`
-          );
-
-          tasks.push(
-            limit(() =>
-              createVideoWithImage(imagePath, outputPath)
-                .then(() => {
-                  processedVideos++;
-                  updateProgress(processedVideos, totalVideos);
-                })
-                .catch((error) => {
-                  console.error(`Lỗi xử lý ${image}: ${error.message}`);
-                  errorVideos++;
-                  processedVideos++;
-                  updateProgress(processedVideos, totalVideos);
-                })
-            )
-          );
-        }
-      }
-    } else {
-      console.log("Đang xử lý với video làm background...");
-      const videoFolders = fs
-        .readdirSync(backgroundFolder)
-        .filter((folder) =>
-          fs.lstatSync(path.join(backgroundFolder, folder)).isDirectory()
+        tasks.push(
+          limit(() =>
+            createVideoWithImage(imagePath, outputPath)
+              .then(() => {
+                processedVideos++;
+                updateProgress(processedVideos, totalVideos);
+              })
+              .catch((error) => {
+                console.error(`Lỗi xử lý ${image}: ${error.message}`);
+                errorVideos++;
+                processedVideos++;
+                updateProgress(processedVideos, totalVideos);
+              })
+          )
         );
-
-      for (const folder of videoFolders) {
-        const folderPath = path.join(backgroundFolder, folder);
-        const outputFolderPath = path.join(outputFolder, folder);
-
-        if (!fs.existsSync(outputFolderPath))
-          fs.mkdirSync(outputFolderPath, { recursive: true });
-
-        const videos = fs
-          .readdirSync(folderPath)
-          .filter((file) => path.extname(file).toLowerCase() === ".mp4");
-
-        totalVideos += videos.length;
-
-        for (const video of videos) {
-          const videoPath = path.join(folderPath, video);
-          const outputPath = path.join(outputFolderPath, `combined_${video}`);
-
-          tasks.push(
-            limit(() =>
-              createVideoWithBackground(videoPath, outputPath)
-                .then(() => {
-                  processedVideos++;
-                  updateProgress(processedVideos, totalVideos);
-                })
-                .catch((error) => {
-                  console.error(`Lỗi xử lý ${video}: ${error.message}`);
-                  errorVideos++;
-                  processedVideos++;
-                  updateProgress(processedVideos, totalVideos);
-                })
-            )
-          );
-        }
       }
     }
 

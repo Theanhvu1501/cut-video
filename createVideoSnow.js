@@ -13,8 +13,8 @@ const CONFIG = {
     maxConcurrent: 3, // Số luồng chạy song song
   },
   video: {
-    segmentMin: 30,
-    segmentMax: 40,
+    segmentMin: 10,
+    segmentMax: 15,
     fps: 30, // Cố định FPS để tính toán chuyển động cho mượt
   },
   ffmpeg: {

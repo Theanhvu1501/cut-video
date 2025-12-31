@@ -10,14 +10,15 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 // --- CẤU HÌNH ---
 const CONFIG = {
   processing: {
-    maxConcurrent: 3, // Tự động chỉnh theo số nhân CPU
+    maxConcurrent: 3, // Số luồng chạy song song
   },
   video: {
-    segmentMin: 30, // Thời lượng ngắn nhất (giây)
-    segmentMax: 40, // Thời lượng dài nhất (giây)
+    segmentMin: 30,
+    segmentMax: 40,
+    fps: 30, // Cố định FPS để tính toán chuyển động cho mượt
   },
   ffmpeg: {
-    preset: "veryfast", // veryfast render cho lẹ
+    preset: "veryfast",
     crf: 23,
     timeout: 10 * 60 * 1000,
   },
@@ -33,17 +34,63 @@ if (!fs.existsSync(outputRootFolder)) {
   fs.mkdirSync(outputRootFolder, { recursive: true });
 }
 
-// Hàm random số
 const getRandomInt = (min, max) =>
   Math.floor(Math.random() * (max - min + 1)) + min;
+
+// --- HÀM TẠO FILTER CHUYỂN ĐỘNG (ZOOM/PAN) ---
+const getDynamicFilter = (durationInSeconds) => {
+  // Tính tổng số frame dựa trên thời lượng và FPS
+  // + 50 frame dư để tránh bị đen hình ở giây cuối cùng
+  const totalFrames = durationInSeconds * CONFIG.video.fps + 50;
+
+  // Các hiệu ứng zoompan
+  // d: thời lượng (frames), s: kích thước output, fps: tốc độ khung hình
+  const commonParams = `:d=${totalFrames}:s=1280x720:fps=${CONFIG.video.fps}`;
+
+  const effects = [
+    // 1. ZOOM IN (Từ từ phóng to vào giữa)
+    // z: zoom tăng dần mỗi frame thêm 0.0015
+    {
+      name: "Zoom In Center",
+      filter: `zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'${commonParams}`,
+    },
+
+    // 2. ZOOM OUT (Từ từ thu nhỏ lại)
+    // z: Nếu frame đầu tiên (on=1) thì set zoom 1.5, sau đó giảm dần
+    {
+      name: "Zoom Out Center",
+      filter: `zoompan=z='if(eq(on,1),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'${commonParams}`,
+    },
+
+    // 3. PAN RIGHT (Lia sang phải)
+    // z: Giữ zoom cố định 1.2. x: tăng dần tọa độ x
+    {
+      name: "Pan Right",
+      filter: `zoompan=z='1.2':x='(iw-iw/zoom)*(on/${totalFrames})':y='(ih-ih/zoom)/2'${commonParams}`,
+    },
+
+    // 4. PAN LEFT (Lia sang trái)
+    // z: Giữ zoom cố định 1.2. x: giảm dần tọa độ x (ngược lại của Right)
+    {
+      name: "Pan Left",
+      filter: `zoompan=z='1.2':x='(iw-iw/zoom)*(1-on/${totalFrames})':y='(ih-ih/zoom)/2'${commonParams}`,
+    },
+  ];
+
+  // Random chọn 1 hiệu ứng
+  const selectedEffect = effects[getRandomInt(0, effects.length - 1)];
+  return selectedEffect;
+};
 
 // --- HÀM TẠO 1 SEGMENT ---
 const createSegment = async (imagePath, outputPath, duration) => {
   return new Promise((resolve, reject) => {
-    // Check nếu file output đã tồn tại thì bỏ qua (để resume nếu chạy lại)
     if (fs.existsSync(outputPath)) {
       return resolve("Skipped");
     }
+
+    // Lấy hiệu ứng ngẫu nhiên
+    const effect = getDynamicFilter(duration);
 
     const timer = setTimeout(() => {
       reject(new Error("Timeout quá thời gian cho phép"));
@@ -51,28 +98,34 @@ const createSegment = async (imagePath, outputPath, duration) => {
 
     ffmpeg()
       .input(imagePath)
-      .loop(1)
+      // Không cần loop(1) ở đây vì zoompan sẽ tự tạo frame từ 1 ảnh
       .input(snowOverlay)
       .inputOptions(["-stream_loop", "-1"])
       .complexFilter([
-        "[0:v]scale=1280:720,setsar=1[bg]",
-        "[1:v]scale=1280:720,setsar=1,colorkey=0x000000:0.1:0.3[snow]",
-        "[bg][snow]overlay=0:0[out]",
+        // [0:v] input ảnh -> scale lên 1920 (để zoom cho nét) -> Áp dụng hiệu ứng -> đặt tên là [bg]
+        `[0:v]scale=1920:-2,${effect.filter}[bg]`,
+
+        // [1:v] input tuyết -> scale 1280x720 -> lọc màu đen -> đặt tên là [snow]
+        `[1:v]scale=1280:720,setsar=1,colorkey=0x000000:0.1:0.3[snow]`,
+
+        // Gộp [bg] và [snow]
+        `[bg][snow]overlay=0:0[out]`,
       ])
       .outputOptions([
         "-map",
         "[out]",
         "-t",
         duration,
+        `-r ${CONFIG.video.fps}`, // Bắt buộc set FPS output trùng với zoompan
         `-preset ${CONFIG.ffmpeg.preset}`,
         `-crf ${CONFIG.ffmpeg.crf}`,
         "-movflags +faststart",
         "-pix_fmt yuv420p",
-        "-y", // Ghi đè file nếu có (nếu muốn check exist thì xóa dòng này đi)
+        "-y",
       ])
       .on("end", () => {
         clearTimeout(timer);
-        resolve(outputPath);
+        resolve({ outputPath, effectName: effect.name });
       })
       .on("error", (err) => {
         clearTimeout(timer);
@@ -85,14 +138,14 @@ const createSegment = async (imagePath, outputPath, duration) => {
 // --- MAIN ---
 const main = async () => {
   try {
-    console.log(`🚀 BẮT ĐẦU CHUYỂN ĐỔI TẤT CẢ ẢNH SANG VIDEO`);
-    console.log(`⚡ Max Threads: ${CONFIG.processing.maxConcurrent}\n`);
+    console.log(`🚀 BẮT ĐẦU: HIỆU ỨNG ZOOM/PAN NGẪU NHIÊN`);
+    console.log(`⚡ Max Threads: ${CONFIG.processing.maxConcurrent}`);
+    console.log(`🎬 FPS: ${CONFIG.video.fps}\n`);
 
     const limit = pLimit(CONFIG.processing.maxConcurrent);
     const tasks = [];
     let totalImages = 0;
 
-    // 1. Quét danh sách folder
     const folders = fs
       .readdirSync(imageBackgroundFolder)
       .filter((folder) =>
@@ -103,12 +156,10 @@ const main = async () => {
       const inputFolderPath = path.join(imageBackgroundFolder, folderName);
       const outputFolderPath = path.join(outputRootFolder, folderName);
 
-      // Tạo folder đích
       if (!fs.existsSync(outputFolderPath)) {
         fs.mkdirSync(outputFolderPath, { recursive: true });
       }
 
-      // Lấy danh sách ảnh
       const images = fs
         .readdirSync(inputFolderPath)
         .filter((file) =>
@@ -117,35 +168,30 @@ const main = async () => {
 
       if (images.length === 0) continue;
 
-      console.log(
-        `📂 Folder "${folderName}": Tìm thấy ${images.length} ảnh -> Đang xử lý...`
-      );
+      console.log(`📂 Folder "${folderName}": ${images.length} ảnh.`);
       totalImages += images.length;
 
-      // 2. Duyệt qua từng ảnh để tạo video
       for (const imageFile of images) {
         const imagePath = path.join(inputFolderPath, imageFile);
-
-        // Random thời gian cho video này
         const duration = getRandomInt(
           CONFIG.video.segmentMin,
           CONFIG.video.segmentMax
         );
-
-        // Giữ nguyên tên file ảnh, chỉ thay đuôi thành .mp4
         const imageNameWithoutExt = path.parse(imageFile).name;
         const outputFileName = `${imageNameWithoutExt}.mp4`;
         const outputPath = path.join(outputFolderPath, outputFileName);
 
-        // Đẩy task vào hàng đợi
         tasks.push(
           limit(() =>
             createSegment(imagePath, outputPath, duration)
               .then((res) => {
                 if (res === "Skipped") {
-                  process.stdout.write("S"); // S = Skipped
+                  process.stdout.write("S");
                 } else {
-                  process.stdout.write("."); // . = Done
+                  // In ra hiệu ứng đã dùng (viết tắt chữ đầu cho gọn log)
+                  // Z=Zoom, P=Pan
+                  const shortName = res.effectName.charAt(0);
+                  process.stdout.write(shortName);
                 }
               })
               .catch((err) => {
@@ -156,7 +202,7 @@ const main = async () => {
       }
     }
 
-    console.log(`\n\n⏳ Đang render tổng cộng ${totalImages} video...`);
+    console.log(`\n\n⏳ Đang render... (Ký hiệu: Z=Zoom, P=Pan, S=Skip)`);
 
     await Promise.all(tasks);
 

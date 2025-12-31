@@ -46,34 +46,37 @@ const getDynamicFilter = (durationInSeconds) => {
   // Các hiệu ứng zoompan
   // d: thời lượng (frames), s: kích thước output, fps: tốc độ khung hình
   const commonParams = `:d=${totalFrames}:s=1280x720:fps=${CONFIG.video.fps}`;
+  const ZOOM_SPEED = 0.001; // Cũ là 0.0015 -> Tăng lên 0.005 cho nhanh
+  const MAX_ZOOM = 1.6; // Zoom sâu tối đa
+  const PAN_ZOOM = 1.4; // Zoom cố định khi lia máy (Càng to lia càng nhanh)
 
   const effects = [
     // 1. ZOOM IN (Từ từ phóng to vào giữa)
     // z: zoom tăng dần mỗi frame thêm 0.0015
     {
       name: "Zoom In Center",
-      filter: `zoompan=z='min(zoom+0.0015,1.5)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'${commonParams}`,
+      filter: `zoompan=z='min(zoom+${ZOOM_SPEED},${MAX_ZOOM})':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'${commonParams}`,
     },
 
     // 2. ZOOM OUT (Từ từ thu nhỏ lại)
     // z: Nếu frame đầu tiên (on=1) thì set zoom 1.5, sau đó giảm dần
     {
       name: "Zoom Out Center",
-      filter: `zoompan=z='if(eq(on,1),1.5,max(1.001,zoom-0.0015))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'${commonParams}`,
+      filter: `zoompan=z='if(eq(on,1),${MAX_ZOOM},max(1.001,zoom-${ZOOM_SPEED}))':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'${commonParams}`,
     },
 
     // 3. PAN RIGHT (Lia sang phải)
     // z: Giữ zoom cố định 1.2. x: tăng dần tọa độ x
     {
       name: "Pan Right",
-      filter: `zoompan=z='1.2':x='(iw-iw/zoom)*(on/${totalFrames})':y='(ih-ih/zoom)/2'${commonParams}`,
+      filter: `zoompan=z='${PAN_ZOOM}':x='(iw-iw/zoom)*(on/${totalFrames})':y='(ih-ih/zoom)/2'${commonParams}`,
     },
 
     // 4. PAN LEFT (Lia sang trái)
     // z: Giữ zoom cố định 1.2. x: giảm dần tọa độ x (ngược lại của Right)
     {
       name: "Pan Left",
-      filter: `zoompan=z='1.2':x='(iw-iw/zoom)*(1-on/${totalFrames})':y='(ih-ih/zoom)/2'${commonParams}`,
+      filter: `zoompan=z='${PAN_ZOOM}':x='(iw-iw/zoom)*(1-on/${totalFrames})':y='(ih-ih/zoom)/2'${commonParams}`,
     },
   ];
 

@@ -14,6 +14,12 @@ const LOG_LEVEL = {
   DEBUG: 3, // Log chi tiết
 };
 
+// ================= 0. CẤU HÌNH CHUẨN HÓA (MỚI) =================
+const FIXED_FPS = 30;
+const FIXED_GOP = FIXED_FPS * 2; // Keyframe mỗi 2 giây
+const AUDIO_FREQ = 44100;
+const VIDEO_QUALITY = 23;
+
 const currentLogLevel = LOG_LEVEL.INFO; // Mặc định chỉ log thông tin quan trọng
 const logFile = "./render.log";
 
@@ -112,10 +118,10 @@ const color = "D4F9D7";
 const chromaKeyFile = "./chromaKey.txt";
 
 // Chế độ giữ màu
-const useKeepColor = true; // Bật chế độ giữ màu (sẽ ưu tiên hơn useChromaKey cũ)
+const useKeepColor = false; // Bật chế độ giữ màu (sẽ ưu tiên hơn useChromaKey cũ)
 const keepColorsList = ["FBFF02"];
 const keepSimilarity = 0.2; // Độ sai số màu (0.1 - 0.3 là đẹp)
-const keepColorAndCrop = true;
+const keepColorAndCrop = false;
 
 // Chế độ crop
 const height = 220;
@@ -374,6 +380,8 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
         .complexFilter(filterConfig)
         .outputOptions("-t", duration)
         .audioCodec("aac")
+        .audioFrequency(AUDIO_FREQ)
+        .audioChannels(2)
         .map("[combined_video]")
         .map("[overlay_audio]");
 
@@ -387,14 +395,15 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
         command
           .videoCodec(gpuVideoCodec) // Sử dụng encoder của NVIDIA
           .outputOptions([
-            // '-preset p2',  // p1=fastest, p7=slowest. 'p2' hoặc 'p3' là điểm cân bằng tốt.
-            // '-tune hq',    // hq=high quality, ll=low latency. 'hq' tốt cho render offline.
-            // '-cq 23',      // Constant Quality. Giá trị càng thấp, chất lượng càng cao. Khoảng 20-25 là hợp lý.
-            // '-b:v 0'       // Bắt buộc khi sử dụng chế độ Constant Quality (cq).
-            "-preset:v",
-            "fast", // Một cách viết khác, `fast` tương đương với các preset p thấp.
-            "-cq:v",
-            "23", // Đặt chất lượng
+            "-pix_fmt yuv420p", // Chuẩn màu
+            `-r ${FIXED_FPS}`, // FPS cố định
+            `-g ${FIXED_GOP}`, // Khoảng cách Keyframe
+            `-keyint_min ${FIXED_GOP}`, // Ép cứng Keyframe
+            "-sc_threshold 0", // Tắt phát hiện cảnh
+            "-preset fast", // Tốc độ render
+            `-cq:v ${VIDEO_QUALITY}`, // Chất lượng
+            "-rc:v vbr", // Bitrate biến thiên
+            "-movflags +faststart", // Hỗ trợ xem nhanh/web
           ]);
       } else {
         // Cấu hình CPU cũ
@@ -402,7 +411,18 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
           `🐌 Sử dụng CPU (ultrafast) để render ${path.basename(outputPath)}`,
           LOG_LEVEL.DEBUG
         );
-        command.outputOptions("-preset", "ultrafast");
+        command
+          .videoCodec("libx264")
+          .outputOptions([
+            "-preset ultrafast",
+            "-pix_fmt yuv420p",
+            `-r ${FIXED_FPS}`,
+            `-g ${FIXED_GOP}`,
+            `-keyint_min ${FIXED_GOP}`,
+            "-sc_threshold 0",
+            `-crf ${VIDEO_QUALITY}`,
+            "-movflags +faststart",
+          ]);
       }
 
       command

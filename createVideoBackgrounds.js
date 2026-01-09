@@ -5,16 +5,24 @@ import path from "path";
 
 ffmpeg.setFfmpegPath(ffmpegPath);
 
+// --- XỬ LÝ THAM SỐ ĐẦU VÀO ---
+// Lấy tham số thứ nhất sau tên file. Ví dụ: node index.js 5
+const args = process.argv.slice(2);
+// Nếu có nhập số thì lấy, nếu không hoặc nhập sai thì mặc định là 3
+const inputCount = args[0] && !isNaN(parseInt(args[0])) ? parseInt(args[0]) : 3;
+
+console.log(`🎯 Số lượng video sẽ tạo cho mỗi folder: ${inputCount}`);
+
 // --- CẤU HÌNH ---
 const CONFIG = {
-  inputRoot: "./output_segments", // Folder chứa các video con (đã tạo ở bước trước)
-  outputRoot: "./backgrounds", // Folder chứa video dài thành phẩm
+  inputRoot: "./output_segments",
+  outputRoot: "./backgrounds",
 
   settings: {
-    targetDuration: 60 * 60, // Thời lượng video mong muốn (Giây). Ví dụ: 3600s = 1 giờ
-    sourceCount: 10, // Số lượng video con random để ghép (lấy 10 file trộn với nhau)
-    outputCountPerFolder: 3, // Số video dài cần tạo ra cho mỗi chủ đề (folder)
-    avgClipDuration: 12, // Thời lượng trung bình 1 clip con (để tính toán số lần lặp)
+    targetDuration: 60 * 60,
+    sourceCount: 10,
+    outputCountPerFolder: inputCount, // <--- Đã thay đổi dòng này
+    avgClipDuration: 12,
   },
 };
 
@@ -22,6 +30,8 @@ const CONFIG = {
 if (!fs.existsSync(CONFIG.outputRoot)) {
   fs.mkdirSync(CONFIG.outputRoot, { recursive: true });
 }
+
+// ... (Giữ nguyên phần còn lại của code từ đoạn này trở xuống: shuffleArray, createLongVideo, main...)
 
 // Hàm xáo trộn mảng (Fisher-Yates Shuffle)
 const shuffleArray = (array) => {
@@ -42,22 +52,15 @@ const getRandomFiles = (files, count) => {
 // --- HÀM TẠO 1 VIDEO DÀI ---
 const createLongVideo = async (inputFolder, outputFilePath, fileList) => {
   return new Promise((resolve, reject) => {
-    // 1. Tạo file text tạm thời chứa danh sách video để concat
-    // FFmpeg yêu cầu format: file '/path/to/file.mp4'
     const tempTxtPath = outputFilePath.replace(".mp4", ".txt");
-
-    // Tính toán cần lặp lại danh sách bao nhiêu lần để đủ thời gian
     const totalClipDuration = fileList.length * CONFIG.settings.avgClipDuration;
     const loopsNeeded =
-      Math.ceil(CONFIG.settings.targetDuration / totalClipDuration) + 1; // +1 để dư ra rồi cắt
+      Math.ceil(CONFIG.settings.targetDuration / totalClipDuration) + 1;
 
     let fileContent = "";
 
     for (let i = 0; i < loopsNeeded; i++) {
-      // Mỗi vòng lặp lại shuffle nhẹ thứ tự trong 10 file đó cho đỡ chán (tuỳ chọn)
-      // Hoặc giữ nguyên thứ tự:
       fileList.forEach((fileName) => {
-        // Đường dẫn tuyệt đối an toàn hơn cho FFmpeg
         const absPath = path.resolve(inputFolder, fileName).replace(/\\/g, "/");
         fileContent += `file '${absPath}'\n`;
       });
@@ -67,16 +70,11 @@ const createLongVideo = async (inputFolder, outputFilePath, fileList) => {
 
     console.log(`   ⏳ Đang render: ${path.basename(outputFilePath)}...`);
 
-    // 2. Chạy lệnh FFmpeg concat
     ffmpeg()
       .input(tempTxtPath)
       .inputOptions(["-f concat", "-safe 0"])
-      .outputOptions([
-        "-c copy", // Quan trọng: Copy stream không render lại -> SIÊU NHANH
-        `-t ${CONFIG.settings.targetDuration}`, // Cắt đúng thời lượng yêu cầu
-      ])
+      .outputOptions(["-c copy", `-t ${CONFIG.settings.targetDuration}`])
       .on("end", () => {
-        // Xóa file temp txt sau khi xong
         if (fs.existsSync(tempTxtPath)) fs.unlinkSync(tempTxtPath);
         resolve();
       })
@@ -94,7 +92,6 @@ const main = async () => {
     console.log("🚀 BẮT ĐẦU TẠO VIDEO DÀI (MIX)");
     console.log(`⏱️ Thời lượng mục tiêu: ${CONFIG.settings.targetDuration}s`);
 
-    // 1. Quét folder
     if (!fs.existsSync(CONFIG.inputRoot)) {
       throw new Error(`Không tìm thấy folder input: ${CONFIG.inputRoot}`);
     }
@@ -109,7 +106,6 @@ const main = async () => {
       const inputFolderPath = path.join(CONFIG.inputRoot, folderName);
       const outputFolderPath = path.join(CONFIG.outputRoot, folderName);
 
-      // Lấy danh sách video mp4
       const allVideos = fs
         .readdirSync(inputFolderPath)
         .filter((file) => file.endsWith(".mp4"));
@@ -127,9 +123,8 @@ const main = async () => {
         fs.mkdirSync(outputFolderPath, { recursive: true });
       }
 
-      // Tạo N video theo yêu cầu
+      // Vòng lặp này bây giờ sẽ chạy theo số lượng bạn nhập
       for (let i = 1; i <= CONFIG.settings.outputCountPerFolder; i++) {
-        // Lấy ngẫu nhiên sourceCount video (ví dụ 10 file)
         const selectedFiles = getRandomFiles(
           allVideos,
           CONFIG.settings.sourceCount

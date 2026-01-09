@@ -5,6 +5,8 @@ const scripts = {
   "Render Video": ["render.js"],
   "Tải video": ["download.js"],
   "Tải lại video lỗi": ["download.js", "retry"],
+  "Tạo video từ ảnh": ["createVideoSnow.js"],
+  "Tạo video backgrounds": ["createVideoBackgrounds.js"],
   "Cắt video -> 30s": ["trim-videos.js"],
   "Cắt video background": ["cut-bg.js"],
   "Tạo ảnh thu nhỏ": ["thumb.js"],
@@ -39,6 +41,16 @@ async function main() {
         type: "input",
         name: "params",
         message: "Nhập tên channel handle: (ví dụ: @line4091)",
+      },
+    ]);
+    args = [params]; // Chuyển params thành mảng
+  }
+  if (script === "Tạo video backgrounds") {
+    const { params } = await inquirer.prompt([
+      {
+        type: "input",
+        name: "params",
+        message: "Nhập số lượng video sẽ tạo cho mỗi folder: (ví dụ: 5)",
       },
     ]);
     args = [params]; // Chuyển params thành mảng

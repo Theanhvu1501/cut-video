@@ -40,7 +40,7 @@ const downloadVideo = async (url, outputPath) => {
       "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
     ],
     limitRate: "2M",
-    // cookies: "./cookies.txt", // Bỏ comment nếu cần
+    cookies: "./cookies.txt", // Bỏ comment nếu cần
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
     extractorArgs: ["youtube:player-client=default,-tv_simply"],

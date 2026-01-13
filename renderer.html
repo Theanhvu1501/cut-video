@@ -711,6 +711,28 @@
               style="display: none"
             ></div>
           </div>
+          <div class="form-group">
+            <label>File cookies.txt:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="download-cookies-file"
+                placeholder="Chọn file cookies.txt hoặc để trống dùng ./cookies.txt"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectDownloadCookiesFile()"
+              >
+                Chọn File
+              </button>
+            </div>
+            <div
+              id="download-cookies-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
           <div class="action-buttons">
             <button class="btn btn-primary" onclick="runDownload()">
               Tải video

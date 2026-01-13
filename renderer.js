@@ -59,6 +59,7 @@ async function saveSettings() {
       outputFolder: selectedDownloadOutputFolder,
       overlayImagesFolder: selectedDownloadOverlayImagesFolder,
       thumbsFolder: selectedDownloadThumbsFolder,
+      cookiesFile: selectedDownloadCookiesFile,
     },
     // Video Snow settings
     videoSnow: {
@@ -430,6 +431,16 @@ async function loadSettings() {
           "download-thumbs-path"
         ).textContent = `Đã chọn: ${settings.download.thumbsFolder}`;
         document.getElementById("download-thumbs-path").style.display = "block";
+      }
+      if (settings.download.cookiesFile) {
+        selectedDownloadCookiesFile = settings.download.cookiesFile;
+        document.getElementById("download-cookies-file").value =
+          settings.download.cookiesFile;
+        document.getElementById(
+          "download-cookies-path"
+        ).textContent = `Đã chọn: ${settings.download.cookiesFile}`;
+        document.getElementById("download-cookies-path").style.display =
+          "block";
       }
     }
 
@@ -960,6 +971,7 @@ let selectedUrlsFile = null;
 let selectedDownloadOutputFolder = null;
 let selectedDownloadOverlayImagesFolder = null;
 let selectedDownloadThumbsFolder = null;
+let selectedDownloadCookiesFile = null;
 
 async function selectDownloadFile() {
   if (!checkElectronAPI()) return;
@@ -1028,6 +1040,30 @@ async function selectDownloadThumbsFolder() {
   }
 }
 
+async function selectDownloadCookiesFile() {
+  if (!checkElectronAPI()) return;
+  try {
+    const filePath = await window.electronAPI.selectFile({
+      filters: [
+        { name: "Text Files", extensions: ["txt"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (filePath) {
+      selectedDownloadCookiesFile = filePath;
+      document.getElementById("download-cookies-file").value = filePath;
+      document.getElementById(
+        "download-cookies-path"
+      ).textContent = `Đã chọn: ${filePath}`;
+      document.getElementById("download-cookies-path").style.display = "block";
+      saveSettings();
+    }
+  } catch (error) {
+    console.error("Error selecting cookies file:", error);
+    alert("Lỗi khi chọn file: " + error.message);
+  }
+}
+
 async function runDownload() {
   if (!checkElectronAPI()) return;
 
@@ -1046,6 +1082,7 @@ async function runDownload() {
         downloadDir: selectedDownloadOutputFolder || "./overlays",
         overlayImagesDir: selectedDownloadOverlayImagesFolder || "./images",
         outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
+        cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
       },
     };
 

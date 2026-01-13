@@ -27,6 +27,7 @@ const FAILED_URLS_LOG = "./failed_urls.txt"; // File log chứa các URL bị l�
 let DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbnail gốc
 let OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
 let OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
+let COOKIES_FILE = "./cookies.txt"; // File cookies.txt
 
 // Đọc config từ file nếu có
 // Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
@@ -43,6 +44,7 @@ if (fs.existsSync(configFilePath)) {
     if (config.overlayImagesDir) OVERLAY_IMAGES_DIR = config.overlayImagesDir;
     if (config.outputThumbsBaseDir)
       OUTPUT_THUMBS_BASE_DIR = config.outputThumbsBaseDir;
+    if (config.cookiesFile) COOKIES_FILE = config.cookiesFile;
 
     console.log(`Đã đọc config từ file: ${configFilePath}`);
   } catch (error) {
@@ -71,7 +73,7 @@ const downloadVideo = async (url, outputPath) => {
       "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
     ],
     limitRate: "2M",
-    cookies: "./cookies.txt", // Bỏ comment nếu cần
+    cookies: COOKIES_FILE,
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
     extractorArgs: ["youtube:player-client=default,-tv_simply"],

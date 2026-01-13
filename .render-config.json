@@ -1,0 +1,19 @@
+{
+  "renderMode": "crop",
+  "chromaKeyMode": "color",
+  "chromaKeyColor": null,
+  "chromaKeyFile": null,
+  "keepColorColors": null,
+  "keepColorCrop": false,
+  "keepColorHeight": 220,
+  "keepColorYOffset": 490,
+  "useGPU": false,
+  "maxConcurrentProcesses": 2,
+  "gpuVideoCodec": "h264_nvenc",
+  "opacity": 0.7,
+  "height": 220,
+  "y_offset": 490,
+  "overlayFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\overlays_trimmed",
+  "backgroundFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\backgrounds",
+  "outputFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\done"
+}

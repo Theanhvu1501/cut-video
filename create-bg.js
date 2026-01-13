@@ -1,10 +1,16 @@
-import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs/promises";
 import path from "path";
+import { fileURLToPath } from "url";
 
-// Thiết lập đường dẫn đến ffmpeg thực thi
-ffmpeg.setFfmpegPath(ffmpegInstaller.path);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Thiết lập đường dẫn đến ffmpeg thực thi - sử dụng từ thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
+ffmpeg.setFfprobePath(FFPROBE_PATH);
 
 // --- CẤU HÌNH ---
 const BASE_DIR = "./backgrounds";

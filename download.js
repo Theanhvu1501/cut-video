@@ -1,23 +1,54 @@
-import ffmpeg from "@ffmpeg-installer/ffmpeg";
 import { spawn } from "child_process";
 import ffmpegFluent from "fluent-ffmpeg";
 import fs from "fs";
 import pLimit from "p-limit";
 import path from "path";
 import sharp from "sharp";
+import { fileURLToPath } from "url";
 import { create as createYoutubeDl } from "youtube-dl-exec";
+
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
 // =================================================================
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Đường dẫn đến ffmpeg trong thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+
 const youtubedl = createYoutubeDl("./bin/yt-dlp.exe");
 const YTDLP_PATH = path.resolve("./bin/yt-dlp");
-ffmpegFluent.setFfmpegPath(ffmpeg.path);
+ffmpegFluent.setFfmpegPath(FFMPEG_PATH);
+ffmpegFluent.setFfprobePath(FFPROBE_PATH);
 
-const ALL_URLS_FILE = "./urls.txt"; // Tên file chứa TẤT CẢ các URL
+let ALL_URLS_FILE = "./urls.txt"; // Tên file chứa TẤT CẢ các URL
 const FAILED_URLS_LOG = "./failed_urls.txt"; // File log chứa các URL bị lỗi (đơn giản hóa)
-const DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbnail gốc
-const OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
-const OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
+let DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbnail gốc
+let OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
+let OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".download-config.json");
+if (fs.existsSync(configFilePath)) {
+  try {
+    const configContent = fs.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    if (config.urlsFile) ALL_URLS_FILE = config.urlsFile;
+    if (config.downloadDir) DOWNLOAD_DIR = config.downloadDir;
+    if (config.overlayImagesDir) OVERLAY_IMAGES_DIR = config.overlayImagesDir;
+    if (config.outputThumbsBaseDir)
+      OUTPUT_THUMBS_BASE_DIR = config.outputThumbsBaseDir;
+
+    console.log(`Đã đọc config từ file: ${configFilePath}`);
+  } catch (error) {
+    console.error(`Lỗi khi đọc config file: ${error.message}`);
+  }
+}
 
 // =================================================================
 // 1. CÁC HÀM CỐT LÕI

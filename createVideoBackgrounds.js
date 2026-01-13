@@ -1,9 +1,16 @@
-import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
+import { fileURLToPath } from "url";
 
-ffmpeg.setFfmpegPath(ffmpegPath);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Cấu hình FFmpeg - sử dụng từ thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
+ffmpeg.setFfprobePath(FFPROBE_PATH);
 
 // --- XỬ LÝ THAM SỐ ĐẦU VÀO ---
 // Lấy tham số thứ nhất sau tên file. Ví dụ: node index.js 5
@@ -14,15 +21,46 @@ const inputCount = args[0] && !isNaN(parseInt(args[0])) ? parseInt(args[0]) : 3;
 console.log(`🎯 Số lượng video sẽ tạo cho mỗi folder: ${inputCount}`);
 
 // --- CẤU HÌNH ---
+let inputRoot = "./output_segments";
+let outputRoot = "./backgrounds";
+let targetDuration = 60 * 60; // 1 giờ
+let sourceCount = 10;
+let avgClipDuration = 12;
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".bg-video-config.json");
+if (fs.existsSync(configFilePath)) {
+  try {
+    const configContent = fs.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    if (config.inputRoot) inputRoot = config.inputRoot;
+    if (config.outputRoot) outputRoot = config.outputRoot;
+    if (config.targetDuration !== undefined)
+      targetDuration = parseInt(config.targetDuration) || 60 * 60;
+    if (config.sourceCount !== undefined)
+      sourceCount = parseInt(config.sourceCount) || 10;
+    if (config.avgClipDuration !== undefined)
+      avgClipDuration = parseInt(config.avgClipDuration) || 12;
+
+    console.log(`Đã đọc config từ file: ${configFilePath}`);
+  } catch (error) {
+    console.error(`Lỗi khi đọc config file: ${error.message}`);
+  }
+}
+
 const CONFIG = {
-  inputRoot: "./output_segments",
-  outputRoot: "./backgrounds",
+  inputRoot,
+  outputRoot,
 
   settings: {
-    targetDuration: 60 * 60,
-    sourceCount: 10,
+    targetDuration,
+    sourceCount,
     outputCountPerFolder: inputCount, // <--- Đã thay đổi dòng này
-    avgClipDuration: 12,
+    avgClipDuration,
   },
 };
 

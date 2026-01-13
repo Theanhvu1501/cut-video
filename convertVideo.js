@@ -24,6 +24,9 @@ const CONFIG = {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Đường dẫn đến ffmpeg trong thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+
 // Tạo thư mục output
 if (!fs.existsSync(CONFIG.outputDir)) {
   fs.mkdirSync(CONFIG.outputDir, { recursive: true });
@@ -91,8 +94,8 @@ function processVideo(fileName) {
 
     const args = getFfmpegOptions(inputPath, outputPath);
 
-    // Spawn tiến trình
-    const ffmpeg = spawn("ffmpeg", args);
+    // Spawn tiến trình - sử dụng ffmpeg từ thư mục bin
+    const ffmpeg = spawn(FFMPEG_PATH, args);
 
     // Bắt lỗi stderr để debug nếu cần (FFmpeg xuất log qua stderr)
     let errorLog = "";

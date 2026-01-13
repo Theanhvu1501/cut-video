@@ -6,6 +6,12 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Cấu hình FFmpeg - sử dụng từ thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
+ffmpeg.setFfprobePath(FFPROBE_PATH);
+
 const THUMBS_DIR = path.join(__dirname, "thumbs");
 const DONE_DIR = path.join(__dirname, "done");
 const OUTPUT_DIR = path.join(__dirname, "output");

@@ -1,8 +1,16 @@
-import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
-ffmpeg.setFfmpegPath(ffmpegPath);
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Cấu hình FFmpeg - sử dụng từ thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
+ffmpeg.setFfprobePath(FFPROBE_PATH);
 
 // Hàm lấy độ dài video
 function getVideoDuration(inputFile) {
@@ -90,8 +98,27 @@ async function processAllVideosInFolders(inputRoot, outputRoot) {
 }
 
 // Thư mục nguồn và đích
-const inputRoot = "bgs";
-const outputRoot = "backgrounds";
+let inputRoot = "./bgs";
+let outputRoot = "./backgrounds";
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".cut-bg-config.json");
+if (fs.existsSync(configFilePath)) {
+  try {
+    const configContent = fs.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    if (config.inputRoot) inputRoot = config.inputRoot;
+    if (config.outputRoot) outputRoot = config.outputRoot;
+
+    console.log(`Đã đọc config từ file: ${configFilePath}`);
+  } catch (error) {
+    console.error(`Lỗi khi đọc config file: ${error.message}`);
+  }
+}
 
 // Gọi hàm chính
 processAllVideosInFolders(inputRoot, outputRoot);

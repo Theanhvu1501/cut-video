@@ -1,15 +1,19 @@
 {
-  "name": "cut-video",
+  "name": "vid-master",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "electron-main.js",
   "type": "module",
   "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Cut Video Application - GUI Tool",
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "axios": "^1.11.0",
@@ -18,10 +22,59 @@
     "fluent-ffmpeg": "^2.1.3",
     "googleapis": "^160.0.0",
     "inquirer": "^12.4.2",
+    "node-machine-id": "^1.1.12",
     "node-telegram-bot-api": "^0.66.0",
     "p-limit": "^6.2.0",
     "qs": "^6.14.0",
     "sharp": "^0.33.5",
     "youtube-dl-exec": "^3.0.25"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.vidmaster.app",
+    "productName": "VidMaster",
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "asarUnpack": [
+      "render.js",
+      "download.js",
+      "get-url.js",
+      "cut-bg.js",
+      "createVideoBackgrounds.js",
+      "convertNormalize.js",
+      "trim-videos.js",
+      "thumb.js",
+      "createVideoSnow.js",
+      "bin/**",
+      "node_modules/**"
+    ],
+    "files": [
+      "**/*",
+      "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+      "!node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+      "!node_modules/*.d.ts",
+      "!node_modules/.bin",
+      "!.git",
+      "!*.log",
+      "!BUILD_INSTRUCTIONS.md"
+    ]
   }
 }

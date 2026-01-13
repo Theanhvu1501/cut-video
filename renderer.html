@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VidMaster</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      .header {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .header-logo {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+      }
+
+      .header img {
+        max-height: 60px;
+        height: auto;
+        width: auto;
+        object-fit: contain;
+        display: block;
+      }
+
+      .header-title {
+        font-size: 32px;
+        font-weight: 700;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        letter-spacing: 1px;
+        margin: 0;
+      }
+
+      .header h1 {
+        color: #333;
+        font-size: 28px;
+      }
+
+      .container {
+        flex: 1;
+        display: flex;
+        background: rgba(255, 255, 255, 0.95);
+        margin: 20px;
+        border-radius: 10px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      .tabs {
+        width: 250px;
+        background: #f5f5f5;
+        border-right: 1px solid #ddd;
+        overflow-y: auto;
+      }
+
+      .tab-button {
+        width: 100%;
+        padding: 15px 20px;
+        border: none;
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.3s;
+        border-bottom: 1px solid #e0e0e0;
+      }
+
+      .tab-button:hover {
+        background: #e8e8e8;
+      }
+
+      .tab-button.active {
+        background: #667eea;
+        color: white;
+      }
+
+      .content {
+        flex: 1;
+        padding: 30px;
+        overflow-y: auto;
+      }
+
+      .tab-content {
+        display: none;
+      }
+
+      .tab-content.active {
+        display: block;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        color: #333;
+        font-weight: 600;
+      }
+
+      input[type="text"],
+      input[type="number"],
+      select {
+        width: 100%;
+        padding: 12px;
+        border: 2px solid #ddd;
+        border-radius: 5px;
+        font-size: 14px;
+        transition: border-color 0.3s;
+      }
+
+      input:focus,
+      select:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+
+      .folder-select {
+        display: flex;
+        gap: 10px;
+      }
+
+      .folder-select input {
+        flex: 1;
+      }
+
+      .btn {
+        padding: 12px 24px;
+        border: none;
+        border-radius: 5px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .btn-primary {
+        background: #667eea;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #5568d3;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      }
+
+      .btn-secondary {
+        background: #6c757d;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #5a6268;
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .output {
+        margin-top: 20px;
+        padding: 15px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        border-radius: 5px;
+        font-family: "Consolas", "Monaco", monospace;
+        font-size: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+      }
+
+      .info-box {
+        background: #e3f2fd;
+        border-left: 4px solid #2196f3;
+        padding: 15px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+      }
+
+      .info-box p {
+        margin: 5px 0;
+        color: #1565c0;
+      }
+
+      .action-buttons {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+      }
+
+      .folder-path {
+        background: #f5f5f5;
+        padding: 10px;
+        border-radius: 5px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #666;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="header-logo">
+        <img src="assets/vidMaster.png" alt="VidMaster" />
+        <h1 class="header-title">VidMaster</h1>
+      </div>
+    </div>
+
+    <div class="container">
+      <div class="tabs">
+        <button class="tab-button active" data-tab="render">
+          Render Video
+        </button>
+        <button class="tab-button" data-tab="download">Tải video</button>
+        <button class="tab-button" data-tab="retry">Tải lại video lỗi</button>
+        <button class="tab-button" data-tab="video-snow">
+          Tạo video từ ảnh
+        </button>
+        <button class="tab-button" data-tab="bg-video">
+          Tạo video backgrounds
+        </button>
+        <button class="tab-button" data-tab="trim">Cắt video -> 30s</button>
+        <button class="tab-button" data-tab="cut-bg">
+          Cắt video background
+        </button>
+        <button class="tab-button" data-tab="thumb">Tạo ảnh thu nhỏ</button>
+        <button class="tab-button" data-tab="get-url">Lấy URL</button>
+        <button class="tab-button" data-tab="normalize">
+          Sửa tên ảnh thu nhỏ
+        </button>
+      </div>
+
+      <div class="content">
+        <!-- Render Video Tab -->
+        <div id="render" class="tab-content active">
+          <h2>Render Video</h2>
+          <div class="info-box">
+            <p>
+              <strong>Chức năng:</strong> Render video với các tham số ngày và
+              số video
+            </p>
+          </div>
+          <div class="form-group">
+            <label>Số ngày:</label>
+            <input type="number" id="render-day" value="1" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Số video mỗi folder:</label>
+            <input type="number" id="render-videos" value="1" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Folder Overlay (video đầu vào):</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="render-overlay-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./overlays"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectRenderOverlayFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="render-overlay-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder Background:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="render-background-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectRenderBackgroundFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="render-background-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder Output:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="render-output-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./done"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectRenderOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="render-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Mode (chọn 1):</label>
+            <div style="display: flex; flex-direction: column; gap: 10px">
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  font-weight: normal;
+                "
+              >
+                <input
+                  type="radio"
+                  name="render-mode"
+                  id="render-mode-top-transparent"
+                  value="topTransparent"
+                  checked
+                  onchange="toggleRenderMode()"
+                />
+                <span>Top Transparent</span>
+              </label>
+              <div
+                id="render-opacity-group"
+                class="form-group"
+                style="display: none; margin-left: 25px; margin-top: 5px"
+              >
+                <label>Opacity (0.0 - 1.0):</label>
+                <input
+                  type="number"
+                  id="render-opacity"
+                  value="0.7"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                />
+              </div>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  font-weight: normal;
+                "
+              >
+                <input
+                  type="radio"
+                  name="render-mode"
+                  id="render-mode-chromakey"
+                  value="chromaKey"
+                  onchange="toggleRenderMode()"
+                />
+                <span>Chroma Key</span>
+              </label>
+              <div
+                id="render-chromakey-group"
+                style="display: none; margin-left: 25px; margin-top: 5px"
+              >
+                <div style="margin-bottom: 10px">
+                  <label
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      font-weight: normal;
+                    "
+                  >
+                    <input
+                      type="radio"
+                      name="chromakey-mode"
+                      id="chromakey-color"
+                      value="color"
+                      checked
+                      onchange="toggleChromaKeyMode()"
+                    />
+                    <span>Dùng màu</span>
+                  </label>
+                  <label
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      font-weight: normal;
+                      margin-top: 5px;
+                    "
+                  >
+                    <input
+                      type="radio"
+                      name="chromakey-mode"
+                      id="chromakey-file"
+                      value="file"
+                      onchange="toggleChromaKeyMode()"
+                    />
+                    <span>Dùng file</span>
+                  </label>
+                </div>
+                <div id="chromakey-color-input" class="form-group">
+                  <label>Màu (hex, ví dụ: D4F9D7):</label>
+                  <input
+                    type="text"
+                    id="render-chromakey-color"
+                    value="D4F9D7"
+                    placeholder="D4F9D7"
+                    style="text-transform: uppercase"
+                  />
+                </div>
+                <div
+                  id="chromakey-file-input"
+                  class="form-group"
+                  style="display: none"
+                >
+                  <label>File chromaKey.txt:</label>
+                  <div class="folder-select">
+                    <input
+                      type="text"
+                      id="render-chromakey-file"
+                      placeholder="Chọn file hoặc để trống dùng ./chromaKey.txt"
+                      readonly
+                    />
+                    <button
+                      class="btn btn-secondary"
+                      onclick="selectRenderChromaKeyFile()"
+                    >
+                      Chọn File
+                    </button>
+                  </div>
+                  <div
+                    id="render-chromakey-file-path"
+                    class="folder-path"
+                    style="display: none"
+                  ></div>
+                </div>
+              </div>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  font-weight: normal;
+                "
+              >
+                <input
+                  type="radio"
+                  name="render-mode"
+                  id="render-mode-crop"
+                  value="crop"
+                  onchange="toggleRenderMode()"
+                />
+                <span>Crop</span>
+              </label>
+              <div
+                id="render-crop-group"
+                style="display: none; margin-left: 25px; margin-top: 5px"
+              >
+                <div class="form-group">
+                  <label>Crop Height:</label>
+                  <input type="number" id="render-height" value="220" min="1" />
+                </div>
+                <div class="form-group">
+                  <label>Crop Y Offset:</label>
+                  <input
+                    type="number"
+                    id="render-y-offset"
+                    value="490"
+                    min="0"
+                  />
+                </div>
+              </div>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  font-weight: normal;
+                "
+              >
+                <input
+                  type="radio"
+                  name="render-mode"
+                  id="render-mode-keepcolor"
+                  value="keepColor"
+                  onchange="toggleRenderMode()"
+                />
+                <span>Keep Color</span>
+              </label>
+              <div
+                id="render-keepcolor-group"
+                style="display: none; margin-left: 25px; margin-top: 5px"
+              >
+                <div class="form-group">
+                  <label
+                    >Mảng màu (hex, cách nhau bởi dấu phẩy, ví dụ:
+                    FBFF02,FF0000):</label
+                  >
+                  <input
+                    type="text"
+                    id="render-keepcolor-colors"
+                    value="FBFF02"
+                    placeholder="FBFF02,FF0000"
+                    style="text-transform: uppercase"
+                  />
+                </div>
+                <label
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-weight: normal;
+                    margin-top: 10px;
+                  "
+                >
+                  <input
+                    type="checkbox"
+                    id="render-keepcolor-crop"
+                    onchange="toggleKeepColorCrop()"
+                  />
+                  <span>Crop</span>
+                </label>
+                <div
+                  id="render-keepcolor-crop-group"
+                  style="display: none; margin-left: 20px; margin-top: 5px"
+                >
+                  <div class="form-group">
+                    <label>Crop Height:</label>
+                    <input
+                      type="number"
+                      id="render-keepcolor-height"
+                      value="220"
+                      min="1"
+                    />
+                  </div>
+                  <div class="form-group">
+                    <label>Crop Y Offset:</label>
+                    <input
+                      type="number"
+                      id="render-keepcolor-y-offset"
+                      value="490"
+                      min="0"
+                    />
+                  </div>
+                </div>
+              </div>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  font-weight: normal;
+                "
+              >
+                <input type="checkbox" id="render-use-gpu" />
+                <span>Use GPU (NVIDIA)</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Max Concurrent Processes:</label>
+            <input type="number" id="render-max-concurrent" value="2" min="1" />
+          </div>
+          <div class="form-group">
+            <label>GPU Video Codec:</label>
+            <input
+              type="text"
+              id="render-gpu-codec"
+              value="h264_nvenc"
+              placeholder="h264_nvenc"
+            />
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runRender()">
+              Chạy Render
+            </button>
+          </div>
+          <div id="render-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Download Tab -->
+        <div id="download" class="tab-content">
+          <h2>Tải video</h2>
+          <div class="info-box">
+            <p>
+              <strong>Chức năng:</strong> Tải video từ danh sách URL trong file
+              urls.txt
+            </p>
+          </div>
+          <div class="form-group">
+            <label>File URLs (urls.txt):</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="download-urls-file"
+                placeholder="Chọn file urls.txt hoặc để trống dùng ./urls.txt"
+                readonly
+              />
+              <button class="btn btn-secondary" onclick="selectDownloadFile()">
+                Chọn File
+              </button>
+            </div>
+            <div
+              id="download-urls-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder tải về:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="download-output-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./overlays"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectDownloadOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="download-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder ảnh overlay:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="download-overlay-images-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./images"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectDownloadOverlayImagesFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="download-overlay-images-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder output thumbs:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="download-thumbs-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./thumbs"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectDownloadThumbsFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="download-thumbs-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runDownload()">
+              Tải video
+            </button>
+          </div>
+          <div id="download-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Retry Tab -->
+        <div id="retry" class="tab-content">
+          <h2>Tải lại video lỗi</h2>
+          <div class="info-box">
+            <p>
+              <strong>Chức năng:</strong> Tải lại các video đã bị lỗi từ log
+            </p>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runRetry()">
+              Tải lại
+            </button>
+          </div>
+          <div id="retry-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Video Snow Tab -->
+        <div id="video-snow" class="tab-content">
+          <h2>Tạo video từ ảnh</h2>
+          <div class="info-box">
+            <p><strong>Chức năng:</strong> Tạo video từ ảnh với hiệu ứng</p>
+          </div>
+          <div class="form-group">
+            <label>Folder ảnh input:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="video-snow-input-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./image_backgrounds"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectVideoSnowInputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="video-snow-input-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder output:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="video-snow-output-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./output_segments"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectVideoSnowOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="video-snow-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>File Snow Video (snow1.mp4):</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="video-snow-snow-file"
+                placeholder="Chọn file hoặc để trống dùng ./snow1.mp4"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectVideoSnowSnowFile()"
+              >
+                Chọn File
+              </button>
+            </div>
+            <div
+              id="video-snow-snow-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Max Concurrent:</label>
+            <input
+              type="number"
+              id="video-snow-max-concurrent"
+              value="3"
+              min="1"
+            />
+          </div>
+          <div class="form-group">
+            <label>Segment Min (giây):</label>
+            <input
+              type="number"
+              id="video-snow-segment-min"
+              value="10"
+              min="1"
+            />
+          </div>
+          <div class="form-group">
+            <label>Segment Max (giây):</label>
+            <input
+              type="number"
+              id="video-snow-segment-max"
+              value="15"
+              min="1"
+            />
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runVideoSnow()">
+              Tạo video
+            </button>
+          </div>
+          <div
+            id="video-snow-output"
+            class="output"
+            style="display: none"
+          ></div>
+        </div>
+
+        <!-- Background Video Tab -->
+        <div id="bg-video" class="tab-content">
+          <h2>Tạo video backgrounds</h2>
+          <div class="info-box">
+            <p><strong>Chức năng:</strong> Tạo video backgrounds từ segments</p>
+          </div>
+          <div class="form-group">
+            <label>Số lượng video mỗi folder:</label>
+            <input type="number" id="bg-count" value="3" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Folder input segments:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="bg-input-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./output_segments"
+                readonly
+              />
+              <button class="btn btn-secondary" onclick="selectBgInputFolder()">
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="bg-input-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder output:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="bg-output-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectBgOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="bg-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Target Duration (giây):</label>
+            <input type="number" id="bg-target-duration" value="3600" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Source Count:</label>
+            <input type="number" id="bg-source-count" value="10" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Avg Clip Duration (giây):</label>
+            <input type="number" id="bg-avg-clip-duration" value="12" min="1" />
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runBgVideo()">
+              Tạo video backgrounds
+            </button>
+          </div>
+          <div id="bg-video-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Trim Tab -->
+        <div id="trim" class="tab-content">
+          <h2>Cắt video -> 30s</h2>
+          <div class="info-box">
+            <p><strong>Chức năng:</strong> Cắt video thành 30 giây đầu tiên</p>
+          </div>
+          <div class="form-group">
+            <label>Folder input:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="trim-input-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./overlays"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectTrimInputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="trim-input-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder output:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="trim-output-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./overlays_trimmed"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectTrimOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="trim-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runTrim()">
+              Cắt video
+            </button>
+          </div>
+          <div id="trim-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Cut BG Tab -->
+        <div id="cut-bg" class="tab-content">
+          <h2>Cắt video background</h2>
+          <div class="info-box">
+            <p>
+              <strong>Chức năng:</strong> Cắt video background thành các
+              segments
+            </p>
+          </div>
+          <div class="form-group">
+            <label>Folder input:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="cut-bg-input-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./bgs"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectCutBgInputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="cut-bg-input-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder output:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="cut-bg-output-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectCutBgOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="cut-bg-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runCutBg()">
+              Cắt video background
+            </button>
+          </div>
+          <div id="cut-bg-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Thumb Tab -->
+        <div id="thumb" class="tab-content">
+          <h2>Tạo ảnh thu nhỏ</h2>
+          <div class="info-box">
+            <p><strong>Chức năng:</strong> Tạo ảnh thumbnail từ video</p>
+          </div>
+          <div class="form-group">
+            <label>Folder input video:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="thumb-input-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./overlays"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectThumbInputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="thumb-input-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder ảnh overlay:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="thumb-overlay-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./images"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectThumbOverlayFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="thumb-overlay-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Folder output thumbs:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="thumb-output-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./thumbs"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectThumbOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="thumb-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runThumb()">
+              Tạo ảnh thu nhỏ
+            </button>
+          </div>
+          <div id="thumb-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Get URL Tab -->
+        <div id="get-url" class="tab-content">
+          <h2>Lấy URL</h2>
+          <div class="info-box">
+            <p>
+              <strong>Chức năng:</strong> Lấy danh sách URL từ YouTube channel
+            </p>
+          </div>
+          <div class="form-group">
+            <label>Channel handle (ví dụ: @line4091):</label>
+            <input type="text" id="channel-handle" placeholder="@line4091" />
+          </div>
+          <div class="form-group">
+            <label>Folder lưu kết quả:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="get-url-output-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./channels"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectGetUrlOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="get-url-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runGetUrl()">
+              Lấy URL
+            </button>
+          </div>
+          <div id="get-url-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Normalize Tab -->
+        <div id="normalize" class="tab-content">
+          <h2>Sửa tên ảnh thu nhỏ</h2>
+          <div class="info-box">
+            <p><strong>Chức năng:</strong> Chuẩn hóa tên file ảnh thu nhỏ</p>
+          </div>
+          <div class="form-group">
+            <label>Folder thumbs:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="normalize-input-folder"
+                placeholder="Chọn folder hoặc để trống dùng ./thumbs"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectNormalizeInputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="normalize-input-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runNormalize()">
+              Sửa tên
+            </button>
+          </div>
+          <div id="normalize-output" class="output" style="display: none"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>

@@ -1,20 +1,49 @@
-import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import pLimit from "p-limit";
 import path from "path";
+import { fileURLToPath } from "url";
 
-// Cấu hình FFmpeg
-ffmpeg.setFfmpegPath(ffmpegPath);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Cấu hình FFmpeg - sử dụng từ thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
+ffmpeg.setFfprobePath(FFPROBE_PATH);
 
 // Thư mục chứa video cần cắt
-const inputFolder = "./overlays";
+let inputFolder = "./overlays";
 // Thư mục lưu video đã cắt
-const outputFolder = "./overlays_trimmed";
+let outputFolder = "./overlays_trimmed";
 // Thời lượng cần giữ lại (giây)
-const duration = 30;
+let duration = 30;
 // Số lượng video xử lý đồng thời
-const concurrency = 3;
+let concurrency = 3;
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".trim-config.json");
+if (fs.existsSync(configFilePath)) {
+  try {
+    const configContent = fs.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    if (config.inputFolder) inputFolder = config.inputFolder;
+    if (config.outputFolder) outputFolder = config.outputFolder;
+    if (config.duration !== undefined)
+      duration = parseInt(config.duration) || 30;
+    if (config.concurrency !== undefined)
+      concurrency = parseInt(config.concurrency) || 3;
+
+    console.log(`Đã đọc config từ file: ${configFilePath}`);
+  } catch (error) {
+    console.error(`Lỗi khi đọc config file: ${error.message}`);
+  }
+}
 
 // Hàm cắt video
 const trimVideo = async (inputFile, outputFile, duration) => {

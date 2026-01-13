@@ -1,10 +1,34 @@
 import fs from "fs";
 import path from "path";
 import sharp from "sharp";
+import { fileURLToPath } from "url";
 
-const DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbnail gốc
-const OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
-const OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbnail gốc
+let OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
+let OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".thumb-config.json");
+if (fs.existsSync(configFilePath)) {
+  try {
+    const configContent = fs.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    if (config.downloadDir) DOWNLOAD_DIR = config.downloadDir;
+    if (config.overlayImagesDir) OVERLAY_IMAGES_DIR = config.overlayImagesDir;
+    if (config.outputThumbsBaseDir) OUTPUT_THUMBS_BASE_DIR = config.outputThumbsBaseDir;
+
+    console.log(`Đã đọc config từ file: ${configFilePath}`);
+  } catch (error) {
+    console.error(`Lỗi khi đọc config file: ${error.message}`);
+  }
+}
 
 async function processAllThumbnailsWithMultipleOverlays(
   inputThumbDir, // Thư mục chứa các thumbnail gốc đã tải

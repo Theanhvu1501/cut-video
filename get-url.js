@@ -11,6 +11,27 @@ const __dirname = path.dirname(__filename);
 const apiKey = "AIzaSyDZTsPGvG0u5du3t7YGueGgnNi7IiulMus";
 const minSeconds = 60 * 10; // chỉ lấy video >10 phút
 
+// Đường dẫn output mặc định
+let outputBaseFolder = "./channels";
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".get-url-config.json");
+if (fs.existsSync(configFilePath)) {
+  try {
+    const configContent = fs.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    if (config.outputBaseFolder) outputBaseFolder = config.outputBaseFolder;
+
+    console.log(`Đã đọc config từ file: ${configFilePath}`);
+  } catch (error) {
+    console.error(`Lỗi khi đọc config file: ${error.message}`);
+  }
+}
+
 // Hàm parse thời lượng ISO 8601 -> giây
 function parseDuration(duration) {
   const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
@@ -47,8 +68,7 @@ async function getVideoUrls(handle) {
   // === B2: Lấy tất cả video từ playlist uploads ===
   let nextPageToken = "";
   const directoryPath = path.join(
-    __dirname,
-    "channels",
+    outputBaseFolder,
     handle.replace(/^@/, "")
   );
   if (!fs.existsSync(directoryPath))

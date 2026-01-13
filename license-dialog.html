@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Yêu cầu đăng ký - VidMaster</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .dialog-container {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        max-width: 500px;
+        width: 100%;
+        overflow: hidden;
+        animation: slideIn 0.3s ease-out;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .dialog-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .dialog-header .icon {
+        font-size: 64px;
+        margin-bottom: 15px;
+      }
+
+      .dialog-header h1 {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      .dialog-header p {
+        font-size: 14px;
+        opacity: 0.95;
+      }
+
+      .dialog-body {
+        padding: 30px;
+      }
+
+      .message {
+        text-align: center;
+        color: #333;
+        margin-bottom: 25px;
+        line-height: 1.6;
+      }
+
+      .message-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #667eea;
+        margin-bottom: 12px;
+      }
+
+      .message-text {
+        font-size: 14px;
+        color: #666;
+      }
+
+      .machine-id-section {
+        background: #f8f9fa;
+        border: 2px dashed #ddd;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 25px;
+        text-align: center;
+      }
+
+      .machine-id-label {
+        font-size: 12px;
+        color: #999;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 10px;
+        font-weight: 600;
+      }
+
+      .machine-id-value {
+        font-family: "Consolas", "Monaco", monospace;
+        font-size: 16px;
+        font-weight: 600;
+        color: #333;
+        word-break: break-all;
+        padding: 12px;
+        background: white;
+        border-radius: 6px;
+        border: 1px solid #e0e0e0;
+        margin-bottom: 15px;
+        user-select: all;
+        cursor: text;
+      }
+
+      .copy-button {
+        width: 100%;
+        padding: 12px 24px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .copy-button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      }
+
+      .copy-button:active {
+        transform: translateY(0);
+      }
+
+      .copy-button.copied {
+        background: #10b981;
+      }
+
+      .instructions {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 25px;
+      }
+
+      .instructions-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #856404;
+        margin-bottom: 8px;
+      }
+
+      .instructions-text {
+        font-size: 13px;
+        color: #856404;
+        line-height: 1.6;
+      }
+
+      .dialog-footer {
+        padding: 0 30px 30px;
+        text-align: center;
+      }
+
+      .close-button {
+        padding: 12px 32px;
+        background: #6c757d;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .close-button:hover {
+        background: #5a6268;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(108, 117, 125, 0.3);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="dialog-container">
+      <div class="dialog-header">
+        <div class="icon">🔒</div>
+        <h1>Yêu cầu đăng ký</h1>
+        <p>Máy này chưa được đăng ký với admin</p>
+      </div>
+
+      <div class="dialog-body">
+        <div class="message">
+          <div class="message-title">Ứng dụng chưa được kích hoạt</div>
+          <div class="message-text">
+            Để sử dụng VidMaster, vui lòng gửi Machine ID dưới đây cho admin
+            để được đăng ký.
+          </div>
+        </div>
+
+        <div class="instructions">
+          <div class="instructions-title">📋 Hướng dẫn:</div>
+          <div class="instructions-text">
+            1. Sao chép Machine ID bên dưới<br />
+            2. Gửi Machine ID cho admin<br />
+            3. Đợi admin kích hoạt tài khoản<br />
+            4. Khởi động lại ứng dụng
+          </div>
+        </div>
+
+        <div class="machine-id-section">
+          <div class="machine-id-label">Machine ID</div>
+          <div class="machine-id-value" id="machineId">MACHINE_ID_PLACEHOLDER</div>
+          <button class="copy-button" id="copyButton">
+            <span id="copyIcon">📋</span>
+            <span id="copyText">Sao chép Machine ID</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="dialog-footer">
+        <button class="close-button" id="closeButton">Đóng ứng dụng</button>
+      </div>
+    </div>
+
+    <script>
+      // MachineId đã được set từ main process
+      window.addEventListener("DOMContentLoaded", () => {
+        const machineIdElement = document.getElementById("machineId");
+        const copyButton = document.getElementById("copyButton");
+        const copyText = document.getElementById("copyText");
+        const copyIcon = document.getElementById("copyIcon");
+        const closeButton = document.getElementById("closeButton");
+
+        // Copy button click
+        copyButton.addEventListener("click", async () => {
+          const id = machineIdElement.textContent;
+          if (id && id !== "Đang tải..." && id !== "Không thể lấy Machine ID") {
+            try {
+              await navigator.clipboard.writeText(id);
+              copyButton.classList.add("copied");
+              copyText.textContent = "Đã sao chép!";
+              copyIcon.textContent = "✓";
+
+              setTimeout(() => {
+                copyButton.classList.remove("copied");
+                copyText.textContent = "Sao chép Machine ID";
+                copyIcon.textContent = "📋";
+              }, 2000);
+            } catch (err) {
+              // Fallback: select text
+              machineIdElement.select();
+              document.execCommand("copy");
+              copyText.textContent = "Đã sao chép!";
+              setTimeout(() => {
+                copyText.textContent = "Sao chép Machine ID";
+              }, 2000);
+            }
+          }
+        });
+
+        // Close button click - gửi message đến parent
+        closeButton.addEventListener("click", () => {
+          window.close();
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -1,20 +1,62 @@
-import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import pLimit from "p-limit";
 import path from "path";
+import { fileURLToPath } from "url";
 
-// Cấu hình FFmpeg
-ffmpeg.setFfmpegPath(ffmpegPath);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Cấu hình FFmpeg - sử dụng từ thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
+ffmpeg.setFfprobePath(FFPROBE_PATH);
 
 // --- CẤU HÌNH ---
+let maxConcurrent = 3; // Số luồng chạy song song
+let segmentMin = 10;
+let segmentMax = 15;
+
+// Đường dẫn
+let imageBackgroundFolder = "./image_backgrounds";
+let outputRootFolder = "./output_segments";
+let snowOverlay = "./snow1.mp4";
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".video-snow-config.json");
+if (fs.existsSync(configFilePath)) {
+  try {
+    const configContent = fs.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    if (config.imageBackgroundFolder)
+      imageBackgroundFolder = config.imageBackgroundFolder;
+    if (config.outputRootFolder) outputRootFolder = config.outputRootFolder;
+    if (config.snowOverlay) snowOverlay = config.snowOverlay;
+    if (config.maxConcurrent !== undefined)
+      maxConcurrent = parseInt(config.maxConcurrent) || 3;
+    if (config.segmentMin !== undefined)
+      segmentMin = parseInt(config.segmentMin) || 10;
+    if (config.segmentMax !== undefined)
+      segmentMax = parseInt(config.segmentMax) || 15;
+
+    console.log(`Đã đọc config từ file: ${configFilePath}`);
+  } catch (error) {
+    console.error(`Lỗi khi đọc config file: ${error.message}`);
+  }
+}
+
 const CONFIG = {
   processing: {
-    maxConcurrent: 3, // Số luồng chạy song song
+    maxConcurrent,
   },
   video: {
-    segmentMin: 10,
-    segmentMax: 15,
+    segmentMin,
+    segmentMax,
     fps: 30, // Cố định FPS để tính toán chuyển động cho mượt
   },
   ffmpeg: {
@@ -23,11 +65,6 @@ const CONFIG = {
     timeout: 10 * 60 * 1000,
   },
 };
-
-// Đường dẫn
-const imageBackgroundFolder = "./image_backgrounds";
-const outputRootFolder = "./output_segments";
-const snowOverlay = "./snow1.mp4";
 
 // Tạo thư mục gốc output
 if (!fs.existsSync(outputRootFolder)) {
@@ -46,7 +83,7 @@ const getDynamicFilter = (durationInSeconds) => {
   // Các hiệu ứng zoompan
   // d: thời lượng (frames), s: kích thước output, fps: tốc độ khung hình
   const commonParams = `:d=${totalFrames}:s=1280x720:fps=${CONFIG.video.fps}`;
-  const ZOOM_SPEED = 0.001; // Cũ là 0.0015 -> Tăng lên 0.005 cho nhanh
+  const ZOOM_SPEED = 0.005; // Cũ là 0.0015 -> Tăng lên 0.005 cho nhanh
   const MAX_ZOOM = 1.6; // Zoom sâu tối đa
   const PAN_ZOOM = 1.4; // Zoom cố định khi lia máy (Càng to lia càng nhanh)
 

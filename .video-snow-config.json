@@ -1,0 +1,8 @@
+{
+  "imageBackgroundFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\image_backgrounds",
+  "outputRootFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\output_segments",
+  "snowOverlay": "C:\\Users\\INFODEVHP\\Desktop\\test\\snow1.mp4",
+  "maxConcurrent": 3,
+  "segmentMin": 10,
+  "segmentMax": 15
+}

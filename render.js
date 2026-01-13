@@ -1,10 +1,8 @@
-import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import { spawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-ffmpeg.setFfmpegPath(ffmpegPath);
 
 // Thêm hệ thống log tối ưu
 const LOG_LEVEL = {
@@ -94,38 +92,110 @@ try {
 // region ========== 3. Đường dẫn & thư mục ==========
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const overlayFolder = "./overlays";
-const backgroundFolder = "./backgrounds";
-const combinedVideosFolder = "./combined_videos";
-const outputFolder = "./done";
+
+// Cấu hình FFmpeg - sử dụng từ thư mục bin
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
+ffmpeg.setFfprobePath(FFPROBE_PATH);
+
+let overlayFolder = "./overlays";
+let backgroundFolder = "./backgrounds";
+let combinedVideosFolder = "./combined_videos";
+let outputFolder = "./done";
 
 // GPU
-const gpuVideoCodec = "h264_nvenc";
-const useGPU = false;
-const maxConcurrentProcesses = 2;
+let gpuVideoCodec = "h264_nvenc";
+let useGPU = false;
+let maxConcurrentProcesses = 2;
 
 // VPS
 const useAutoUploadVps = false;
-const ipList = "./vps.txt";
 
-// Chế độ đè lớp phủ trong suốt
-const topTransparent = false;
-const opacity = 0.7;
+// Chế độ render (topTransparent, chromaKey, crop, keepColor)
+let renderMode = "topTransparent";
+let opacity = 0.7;
 
 // Chế độ Chroma Key
-const useChromaKey = true;
-const color = "D4F9D7";
-const chromaKeyFile = "./chromaKey.txt";
+let color = "D4F9D7";
+let chromaKeyFile = "./chromaKey.txt";
+let chromaKeyMode = "color"; // "color" hoặc "file"
+
+// VPS
+let ipList = "./vps.txt";
 
 // Chế độ giữ màu
-const useKeepColor = false; // Bật chế độ giữ màu (sẽ ưu tiên hơn useChromaKey cũ)
-const keepColorsList = ["FBFF02"];
+let keepColorsList = ["FBFF02"];
 const keepSimilarity = 0.2; // Độ sai số màu (0.1 - 0.3 là đẹp)
-const keepColorAndCrop = false;
+let keepColorCrop = false;
+let keepColorHeight = 220;
+let keepColorYOffset = 490;
 
 // Chế độ crop
-const height = 220;
-const y_offset = 490;
+let height = 220;
+let y_offset = 490;
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".render-config.json");
+if (fs.existsSync(configFilePath)) {
+  try {
+    const configContent = fs.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    if (config.renderMode) renderMode = config.renderMode;
+    if (config.opacity !== undefined) opacity = config.opacity;
+    if (config.chromaKeyMode) chromaKeyMode = config.chromaKeyMode;
+    if (config.chromaKeyColor) color = config.chromaKeyColor;
+    if (config.chromaKeyFile) chromaKeyFile = config.chromaKeyFile;
+    if (config.useGPU !== undefined) useGPU = config.useGPU;
+    if (config.maxConcurrentProcesses !== undefined)
+      maxConcurrentProcesses = parseInt(config.maxConcurrentProcesses) || 2;
+    if (config.gpuVideoCodec) gpuVideoCodec = config.gpuVideoCodec;
+    if (config.keepColorColors && Array.isArray(config.keepColorColors)) {
+      keepColorsList = config.keepColorColors;
+    }
+    if (config.keepColorCrop !== undefined)
+      keepColorCrop = config.keepColorCrop;
+    if (config.keepColorHeight !== undefined)
+      keepColorHeight = parseInt(config.keepColorHeight) || 220;
+    if (config.keepColorYOffset !== undefined)
+      keepColorYOffset = parseInt(config.keepColorYOffset) || 490;
+    if (config.height !== undefined) height = config.height;
+    if (config.y_offset !== undefined) y_offset = config.y_offset;
+    // Đọc đường dẫn từ config
+    if (config.overlayFolder) {
+      // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
+      overlayFolder = path.isAbsolute(config.overlayFolder) 
+        ? config.overlayFolder 
+        : path.resolve(__dirname, config.overlayFolder);
+    }
+    if (config.backgroundFolder) {
+      backgroundFolder = path.isAbsolute(config.backgroundFolder)
+        ? config.backgroundFolder
+        : path.resolve(__dirname, config.backgroundFolder);
+    }
+    if (config.combinedVideosFolder) {
+      combinedVideosFolder = path.isAbsolute(config.combinedVideosFolder)
+        ? config.combinedVideosFolder
+        : path.resolve(__dirname, config.combinedVideosFolder);
+    }
+    if (config.outputFolder) {
+      // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
+      outputFolder = path.isAbsolute(config.outputFolder)
+        ? config.outputFolder
+        : path.resolve(__dirname, config.outputFolder);
+      log(`Output folder từ config: ${outputFolder}`, LOG_LEVEL.INFO);
+    }
+    if (config.ipList) ipList = config.ipList;
+
+    log(`Đã đọc config từ file: ${configFilePath}`, LOG_LEVEL.INFO);
+  } catch (error) {
+    log(`Lỗi khi đọc config file: ${error.message}`, LOG_LEVEL.ERROR);
+  }
+}
 
 // Tạo thư mục nếu chưa tồn tạ
 
@@ -184,6 +254,15 @@ const overlayFiles = getFilesFromFolder(overlayFolder);
 const readChromaKeyColors = () => {
   const colors = [];
 
+  // Chỉ đọc file khi mode là "file"
+  if (chromaKeyMode !== "file") {
+    log(
+      `Chế độ Chroma Key là "color", không đọc file. Sử dụng màu: #${color}`,
+      LOG_LEVEL.DEBUG
+    );
+    return colors; // Trả về mảng rỗng khi dùng màu
+  }
+
   try {
     if (fs.existsSync(chromaKeyFile)) {
       const content = fs.readFileSync(chromaKeyFile, "utf-8");
@@ -231,27 +310,37 @@ const calculateStartIndex = (folderIndex, day, totalVideos) => {
 // endregion
 
 // region ========== 7. Xử lý video ==========
-const complexFilter = (inputOverlay) => {
-  const overlayIndex = overlayFiles.findIndex((file) => file === inputOverlay);
-  const videoColor =
-    overlayIndex >= 0 && overlayIndex < chromaKeyColors.length
-      ? chromaKeyColors[overlayIndex]
-      : color;
+const complexFilterChromaKey = (inputOverlay) => {
+  let videoColor = color; // Mặc định dùng màu từ config
 
-  const chromaKeyFilter = useChromaKey
-    ? `[1:v]scale=1280:720,colorkey=0x${videoColor}:0.3:0.1,format=yuva420p[overlay_video]`
-    : `[1:v]scale=1280:720,crop=1280:${height}:0:${y_offset}[cropped]`;
-
-  const filter = [chromaKeyFilter];
-
-  if (!useChromaKey) {
-    filter.push(
-      "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]"
+  // Chỉ check file khi mode là "file"
+  if (chromaKeyMode === "file") {
+    const overlayIndex = overlayFiles.findIndex(
+      (file) => file === inputOverlay
     );
-    filter.push(
-      "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]"
-    );
+    if (overlayIndex >= 0 && overlayIndex < chromaKeyColors.length) {
+      videoColor = chromaKeyColors[overlayIndex];
+    }
   }
+  // Nếu mode là "color", chỉ dùng màu từ config (đã set ở trên)
+
+  const filter = [
+    `[1:v]scale=1280:720,colorkey=0x${videoColor}:0.3:0.1,format=yuva420p[overlay_video]`,
+  ];
+
+  return [
+    filter.join(";"),
+    "[0:v][overlay_video]overlay=0:H-h[combined_video]",
+    "[1:a]volume=1.0[overlay_audio]",
+  ];
+};
+
+const complexFilterCrop = () => {
+  const filter = [
+    `[1:v]scale=1280:720,crop=1280:${height}:0:${y_offset}[cropped]`,
+    "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]",
+    "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]",
+  ];
 
   return [
     filter.join(";"),
@@ -290,13 +379,10 @@ const complexFilterKeepColor = () => {
     splitOutputs += `[src_${i}_detect][src_${i}_apply]`;
   }
 
-  let baseFilter = "";
-  if (keepColorAndCrop) {
-    baseFilter = `[1:v]scale=1280:720,crop=1280:${height}:0:${y_offset}`;
-  } else {
-    baseFilter = `[1:v]scale=1280:720`;
+  let baseFilter = `[1:v]scale=1280:720`;
+  if (keepColorCrop) {
+    baseFilter = `[1:v]scale=1280:720,crop=1280:${keepColorHeight}:0:${keepColorYOffset}`;
   }
-
   filters.push(`${baseFilter},split=${totalSplits}${splitOutputs}`);
 
   // 2. VÒNG LẶP XỬ LÝ MÀU
@@ -351,7 +437,7 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       const duration = metadata.format.duration;
 
       let filterConfig;
-      if (useKeepColor) {
+      if (renderMode === "keepColor") {
         log(
           `🎨 Sử dụng chế độ GIỮ MÀU (Keep Colors) cho ${path.basename(
             outputPath
@@ -359,7 +445,7 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
           LOG_LEVEL.DEBUG
         );
         filterConfig = complexFilterKeepColor();
-      } else if (topTransparent) {
+      } else if (renderMode === "topTransparent") {
         log(
           `✨ Sử dụng chế độ đè lớp phủ trong suốt cho ${path.basename(
             outputPath
@@ -367,12 +453,27 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
           LOG_LEVEL.DEBUG
         );
         filterConfig = complexFilterTopTransparent();
-      } else {
+      } else if (renderMode === "chromaKey") {
         log(
           `🎨 Sử dụng chế độ Chroma Key cho ${path.basename(outputPath)}`,
           LOG_LEVEL.DEBUG
         );
-        filterConfig = complexFilter(inputOverlay);
+        filterConfig = complexFilterChromaKey(inputOverlay);
+      } else if (renderMode === "crop") {
+        log(
+          `✂️ Sử dụng chế độ Crop cho ${path.basename(outputPath)}`,
+          LOG_LEVEL.DEBUG
+        );
+        filterConfig = complexFilterCrop();
+      } else {
+        // Default to topTransparent if mode is invalid
+        log(
+          `⚠️ Mode không hợp lệ (${renderMode}), sử dụng Top Transparent cho ${path.basename(
+            outputPath
+          )}`,
+          LOG_LEVEL.WARN
+        );
+        filterConfig = complexFilterTopTransparent();
       }
       const command = ffmpeg(inputBackground)
         .inputOptions(["-stream_loop", "-1"])

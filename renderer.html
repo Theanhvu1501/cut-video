@@ -224,6 +224,143 @@
         color: #666;
         word-break: break-all;
       }
+
+      .help-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: #2196f3;
+        color: white;
+        font-size: 14px;
+        font-weight: bold;
+        cursor: pointer;
+        margin-left: 10px;
+        transition: all 0.3s;
+        vertical-align: middle;
+      }
+
+      .help-icon:hover {
+        background: #1976d2;
+        transform: scale(1.1);
+      }
+
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        animation: fadeIn 0.3s;
+      }
+
+      .modal.active {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .modal-content {
+        background-color: white;
+        padding: 30px;
+        border-radius: 10px;
+        max-width: 700px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        animation: slideIn 0.3s;
+        position: relative;
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #e0e0e0;
+      }
+
+      .modal-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 24px;
+      }
+
+      .modal-close {
+        background: none;
+        border: none;
+        font-size: 28px;
+        cursor: pointer;
+        color: #999;
+        padding: 0;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: all 0.3s;
+      }
+
+      .modal-close:hover {
+        background: #f5f5f5;
+        color: #333;
+      }
+
+      .modal-body {
+        color: #555;
+        line-height: 1.6;
+      }
+
+      .modal-body h4 {
+        color: #667eea;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        font-size: 18px;
+      }
+
+      .modal-body ul {
+        margin-left: 20px;
+        margin-bottom: 15px;
+      }
+
+      .modal-body li {
+        margin-bottom: 8px;
+      }
+
+      .modal-body code {
+        background: #f5f5f5;
+        padding: 2px 6px;
+        border-radius: 3px;
+        font-family: "Consolas", "Monaco", monospace;
+        font-size: 13px;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      @keyframes slideIn {
+        from {
+          transform: translateY(-50px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
     </style>
   </head>
   <body>
@@ -262,7 +399,10 @@
       <div class="content">
         <!-- Render Video Tab -->
         <div id="render" class="tab-content active">
-          <h2>Render Video</h2>
+          <h2>
+            Render Video
+            <span class="help-icon" onclick="showHelp('render')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Render video với các tham số ngày và
@@ -620,7 +760,10 @@
 
         <!-- Download Tab -->
         <div id="download" class="tab-content">
-          <h2>Tải video</h2>
+          <h2>
+            Tải video
+            <span class="help-icon" onclick="showHelp('download')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Tải video từ danh sách URL trong file
@@ -744,7 +887,10 @@
 
         <!-- Retry Tab -->
         <div id="retry" class="tab-content">
-          <h2>Tải lại video lỗi</h2>
+          <h2>
+            Tải lại video lỗi
+            <span class="help-icon" onclick="showHelp('retry')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Tải lại các video đã bị lỗi từ log
@@ -760,7 +906,10 @@
 
         <!-- Video Snow Tab -->
         <div id="video-snow" class="tab-content">
-          <h2>Tạo video từ ảnh</h2>
+          <h2>
+            Tạo video từ ảnh
+            <span class="help-icon" onclick="showHelp('video-snow')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo video từ ảnh với hiệu ứng</p>
           </div>
@@ -871,7 +1020,10 @@
 
         <!-- Background Video Tab -->
         <div id="bg-video" class="tab-content">
-          <h2>Tạo video backgrounds</h2>
+          <h2>
+            Tạo video backgrounds
+            <span class="help-icon" onclick="showHelp('bg-video')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo video backgrounds từ segments</p>
           </div>
@@ -942,7 +1094,10 @@
 
         <!-- Trim Tab -->
         <div id="trim" class="tab-content">
-          <h2>Cắt video -> 30s</h2>
+          <h2>
+            Cắt video -> 30s
+            <span class="help-icon" onclick="showHelp('trim')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Cắt video thành 30 giây đầu tiên</p>
           </div>
@@ -1000,7 +1155,10 @@
 
         <!-- Cut BG Tab -->
         <div id="cut-bg" class="tab-content">
-          <h2>Cắt video background</h2>
+          <h2>
+            Cắt video background
+            <span class="help-icon" onclick="showHelp('cut-bg')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Cắt video background thành các
@@ -1061,7 +1219,10 @@
 
         <!-- Thumb Tab -->
         <div id="thumb" class="tab-content">
-          <h2>Tạo ảnh thu nhỏ</h2>
+          <h2>
+            Tạo ảnh thu nhỏ
+            <span class="help-icon" onclick="showHelp('thumb')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo ảnh thumbnail từ video</p>
           </div>
@@ -1141,7 +1302,10 @@
 
         <!-- Get URL Tab -->
         <div id="get-url" class="tab-content">
-          <h2>Lấy URL</h2>
+          <h2>
+            Lấy URL
+            <span class="help-icon" onclick="showHelp('get-url')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Lấy danh sách URL từ YouTube channel
@@ -1183,7 +1347,10 @@
 
         <!-- Normalize Tab -->
         <div id="normalize" class="tab-content">
-          <h2>Sửa tên ảnh thu nhỏ</h2>
+          <h2>
+            Sửa tên ảnh thu nhỏ
+            <span class="help-icon" onclick="showHelp('normalize')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Chuẩn hóa tên file ảnh thu nhỏ</p>
           </div>
@@ -1219,7 +1386,10 @@
 
         <!-- Concat Video Tab -->
         <div id="concat" class="tab-content">
-          <h2>Ghép video</h2>
+          <h2>
+            Ghép video
+            <span class="help-icon" onclick="showHelp('concat')" title="Hướng dẫn">?</span>
+          </h2>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Ghép nhiều video lại với nhau, chèn
@@ -1340,6 +1510,17 @@
           </div>
           <div id="concat-output" class="output" style="display: none"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Help Modal -->
+    <div id="helpModal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="helpModalTitle">Hướng dẫn</h3>
+          <button class="modal-close" onclick="closeHelp()">&times;</button>
+        </div>
+        <div class="modal-body" id="helpModalBody"></div>
       </div>
     </div>
 

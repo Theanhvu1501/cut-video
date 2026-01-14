@@ -20,42 +20,76 @@
       }
 
       .header {
-        background: rgba(255, 255, 255, 0.95);
-        padding: 20px;
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        padding: 25px 40px;
+        box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: space-between;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .header::before {
+        content: "";
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 50%;
+        pointer-events: none;
+      }
+
+      .header::after {
+        content: "";
+        position: absolute;
+        bottom: -50%;
+        left: -10%;
+        width: 250px;
+        height: 250px;
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 50%;
+        pointer-events: none;
       }
 
       .header-logo {
         display: flex;
         align-items: center;
-        gap: 15px;
+        gap: 20px;
+        position: relative;
+        z-index: 1;
       }
 
       .header img {
-        max-height: 60px;
+        max-height: 70px;
         height: auto;
         width: auto;
         object-fit: contain;
         display: block;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
       }
 
       .header-title {
-        font-size: 32px;
-        font-weight: 700;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-        letter-spacing: 1px;
+        font-size: 36px;
+        font-weight: 800;
+        color: white;
+        letter-spacing: 2px;
         margin: 0;
+        text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        position: relative;
       }
 
-      .header h1 {
-        color: #333;
-        font-size: 28px;
+      .header-title::after {
+        content: "";
+        position: absolute;
+        bottom: -5px;
+        left: 0;
+        width: 60px;
+        height: 3px;
+        background: rgba(255, 255, 255, 0.8);
+        border-radius: 2px;
       }
 
       .container {
@@ -225,26 +259,69 @@
         word-break: break-all;
       }
 
+      .tab-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        padding-bottom: 15px;
+        border-bottom: 2px solid #e0e0e0;
+      }
+
+      .tab-header h2 {
+        margin: 0;
+        color: #333;
+        font-size: 28px;
+        font-weight: 700;
+      }
+
       .help-icon {
-        display: inline-flex;
+        display: flex;
         align-items: center;
         justify-content: center;
-        width: 24px;
-        height: 24px;
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
-        background: #2196f3;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        font-size: 14px;
+        font-size: 18px;
         font-weight: bold;
         cursor: pointer;
-        margin-left: 10px;
         transition: all 0.3s;
-        vertical-align: middle;
+        box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        position: relative;
       }
 
       .help-icon:hover {
-        background: #1976d2;
-        transform: scale(1.1);
+        transform: scale(1.15) rotate(360deg);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.5);
+      }
+
+      .help-icon::before {
+        content: "";
+        position: absolute;
+        inset: -2px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        opacity: 0;
+        transition: opacity 0.3s;
+        z-index: -1;
+      }
+
+      .help-icon:hover::before {
+        opacity: 0.3;
+        animation: pulse 1.5s infinite;
+      }
+
+      @keyframes pulse {
+        0%, 100% {
+          transform: scale(1);
+          opacity: 0.3;
+        }
+        50% {
+          transform: scale(1.2);
+          opacity: 0;
+        }
       }
 
       .modal {
@@ -399,10 +476,10 @@
       <div class="content">
         <!-- Render Video Tab -->
         <div id="render" class="tab-content active">
-          <h2>
-            Render Video
+          <div class="tab-header">
+            <h2>Render Video</h2>
             <span class="help-icon" onclick="showHelp('render')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Render video với các tham số ngày và
@@ -760,10 +837,10 @@
 
         <!-- Download Tab -->
         <div id="download" class="tab-content">
-          <h2>
-            Tải video
+          <div class="tab-header">
+            <h2>Tải video</h2>
             <span class="help-icon" onclick="showHelp('download')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Tải video từ danh sách URL trong file
@@ -887,10 +964,10 @@
 
         <!-- Retry Tab -->
         <div id="retry" class="tab-content">
-          <h2>
-            Tải lại video lỗi
+          <div class="tab-header">
+            <h2>Tải lại video lỗi</h2>
             <span class="help-icon" onclick="showHelp('retry')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Tải lại các video đã bị lỗi từ log
@@ -906,10 +983,10 @@
 
         <!-- Video Snow Tab -->
         <div id="video-snow" class="tab-content">
-          <h2>
-            Tạo video từ ảnh
+          <div class="tab-header">
+            <h2>Tạo video từ ảnh</h2>
             <span class="help-icon" onclick="showHelp('video-snow')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo video từ ảnh với hiệu ứng</p>
           </div>
@@ -1020,10 +1097,10 @@
 
         <!-- Background Video Tab -->
         <div id="bg-video" class="tab-content">
-          <h2>
-            Tạo video backgrounds
+          <div class="tab-header">
+            <h2>Tạo video backgrounds</h2>
             <span class="help-icon" onclick="showHelp('bg-video')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo video backgrounds từ segments</p>
           </div>
@@ -1094,10 +1171,10 @@
 
         <!-- Trim Tab -->
         <div id="trim" class="tab-content">
-          <h2>
-            Cắt video -> 30s
+          <div class="tab-header">
+            <h2>Cắt video -> 30s</h2>
             <span class="help-icon" onclick="showHelp('trim')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Cắt video thành 30 giây đầu tiên</p>
           </div>
@@ -1155,10 +1232,10 @@
 
         <!-- Cut BG Tab -->
         <div id="cut-bg" class="tab-content">
-          <h2>
-            Cắt video background
+          <div class="tab-header">
+            <h2>Cắt video background</h2>
             <span class="help-icon" onclick="showHelp('cut-bg')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Cắt video background thành các
@@ -1219,10 +1296,10 @@
 
         <!-- Thumb Tab -->
         <div id="thumb" class="tab-content">
-          <h2>
-            Tạo ảnh thu nhỏ
+          <div class="tab-header">
+            <h2>Tạo ảnh thu nhỏ</h2>
             <span class="help-icon" onclick="showHelp('thumb')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo ảnh thumbnail từ video</p>
           </div>
@@ -1302,10 +1379,10 @@
 
         <!-- Get URL Tab -->
         <div id="get-url" class="tab-content">
-          <h2>
-            Lấy URL
+          <div class="tab-header">
+            <h2>Lấy URL</h2>
             <span class="help-icon" onclick="showHelp('get-url')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Lấy danh sách URL từ YouTube channel
@@ -1347,10 +1424,10 @@
 
         <!-- Normalize Tab -->
         <div id="normalize" class="tab-content">
-          <h2>
-            Sửa tên ảnh thu nhỏ
+          <div class="tab-header">
+            <h2>Sửa tên ảnh thu nhỏ</h2>
             <span class="help-icon" onclick="showHelp('normalize')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Chuẩn hóa tên file ảnh thu nhỏ</p>
           </div>
@@ -1386,10 +1463,10 @@
 
         <!-- Concat Video Tab -->
         <div id="concat" class="tab-content">
-          <h2>
-            Ghép video
+          <div class="tab-header">
+            <h2>Ghép video</h2>
             <span class="help-icon" onclick="showHelp('concat')" title="Hướng dẫn">?</span>
-          </h2>
+          </div>
           <div class="info-box">
             <p>
               <strong>Chức năng:</strong> Ghép nhiều video lại với nhau, chèn

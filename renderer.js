@@ -112,8 +112,7 @@ async function saveSettings() {
     // Concat settings
     concat: {
       chunkSize: document.getElementById("concat-chunk-size")?.value || "2",
-      useThumbs:
-        document.getElementById("concat-use-thumbs")?.checked ?? true,
+      useThumbs: document.getElementById("concat-use-thumbs")?.checked ?? true,
       thumbDuration:
         document.getElementById("concat-thumb-duration")?.value || "3",
       inputFolder: selectedConcatInputFolder,
@@ -1635,96 +1634,240 @@ const helpContents = {
   render: {
     title: "Hướng dẫn Render Video",
     content: `
-      <h4>Chức năng:</h4>
-      <p>Render video với các tham số ngày và số video mỗi folder.</p>
+      <h4>📋 Chức năng:</h4>
+      <p>Render video bằng cách kết hợp video overlay với video background theo các chế độ khác nhau. Hệ thống sẽ tự động xử lý nhiều video cùng lúc dựa trên số ngày và số video mỗi folder.</p>
       
-      <h4>Các bước sử dụng:</h4>
+      <h4>🔧 Các tham số chi tiết:</h4>
       <ul>
-        <li><strong>Số ngày:</strong> Nhập số ngày cần render</li>
-        <li><strong>Số video mỗi folder:</strong> Số lượng video sẽ được render trong mỗi folder</li>
-        <li><strong>Folder Overlay:</strong> Chọn folder chứa video overlay (video đầu vào). Để trống sẽ dùng <code>./overlays</code></li>
-        <li><strong>Folder Background:</strong> Chọn folder chứa video background. Để trống sẽ dùng <code>./backgrounds</code></li>
-        <li><strong>Folder Output:</strong> Chọn folder lưu video đã render. Để trống sẽ dùng <code>./done</code></li>
-        <li><strong>Mode:</strong> Chọn chế độ render:
-          <ul>
-            <li><strong>Top Transparent:</strong> Overlay ở trên với độ trong suốt</li>
-            <li><strong>Chroma Key:</strong> Xóa nền theo màu (có thể dùng màu hoặc file)</li>
-            <li><strong>Crop:</strong> Cắt video theo chiều cao và vị trí Y</li>
-            <li><strong>Keep Color:</strong> Giữ lại các màu chỉ định</li>
-          </ul>
-        </li>
-        <li><strong>Use GPU:</strong> Bật nếu có card NVIDIA để tăng tốc</li>
-        <li><strong>Max Concurrent Processes:</strong> Số tiến trình chạy đồng thời</li>
+        <li><strong>Số ngày:</strong> Render ngày số nào. Ví dụ: nhập "1" sẽ render video cho ngày số 1. Mỗi ngày sẽ có folder riêng trong output.</li>
+        <li><strong>Số video mỗi folder:</strong> Số lượng video sẽ được render trong mỗi folder của mỗi ngày. Ví dụ: "5" nghĩa là mỗi ngày sẽ có 5 video được render trong folder(Tương ứng với folder trong backgrounds).</li>
+        <li><strong>Folder Overlay:</strong> Folder chứa video overlay (video chính cần render). Cấu trúc: <code>./overlays/video1.mp4</code>. Để trống sẽ dùng <code>./overlays</code></li>
+        <li><strong>Folder Background:</strong> Folder chứa video background (nền). Cấu trúc: <code>./backgrounds/1/bg1.mp4</code>. Để trống sẽ dùng <code>./backgrounds</code></li>
       </ul>
       
-      <h4>Lưu ý:</h4>
+      <h4>🎨 Các chế độ Render:</h4>
+      <li><strong>Top Transparent:</strong> 
+          <ul>
+            <li>Đặt video overlay lên trên video background với độ trong suốt</li>
+            <li>Opacity: Điều chỉnh độ trong suốt (0.0 = hoàn toàn trong suốt, 1.0 = không trong suốt)</li>
+            <li>Mặc định: 0.7 (70% độ mờ)</li>
+          </ul>
+        </li>
+        <li><strong>Chroma Key:</strong> 
+          <ul>
+            <li>Xóa nền của video overlay dựa trên màu chỉ định</li>
+            <li>Dùng màu: Nhập mã màu hex (ví dụ: D4F9D7) để xóa nền có màu đó</li>
+            <li>Dùng file: Chọn file <code>chromaKey.txt</code> chứa mã màu (mỗi dòng một màu)</li>
+            <li>Phù hợp cho video có nền xanh lá (green screen) hoặc nền đồng nhất</li>
+          </ul>
+        </li>
+        <li><strong>Crop:</strong> 
+          <ul>
+            <li>Cắt một phần của video overlay</li>
+            <li>Crop Height: Chiều cao phần cần cắt (pixel, mặc định: 220)</li>
+            <li>Crop Y Offset: Vị trí bắt đầu cắt từ trên xuống (pixel, mặc định: 490)</li>
+            <li>Ví dụ: Height=220, Y Offset=490 nghĩa là cắt 220px từ vị trí 490px</li>
+          </ul>
+        </li>
+        <li><strong>Keep Color:</strong> 
+          <ul>
+            <li>Chỉ giữ lại các màu được chỉ định, xóa các màu khác</li>
+            <li>Mảng màu: Nhập mã màu hex, cách nhau bởi dấu phẩy (ví dụ: FBFF02,FF0000)</li>
+            <li>Có thể bật Crop để kết hợp cắt video</li>
+          </ul>
+        </li>
+      </ul>
+      
+      <h4>⚙️ Tùy chọn nâng cao:</h4>
       <ul>
-        <li>Đảm bảo các folder input đã có video</li>
-        <li>Video output sẽ được lưu trong folder output với cấu trúc theo ngày</li>
+        <li><strong>Use GPU (NVIDIA):</strong> Bật để sử dụng card đồ họa NVIDIA tăng tốc render. Yêu cầu card NVIDIA và driver mới nhất.</li>
+        <li><strong>GPU Video Codec:</strong> Codec sử dụng khi render bằng GPU (mặc định: h264_nvenc)</li>
+        <li><strong>Max Concurrent Processes:</strong> Số video render đồng thời (mặc định: 2). Tăng số này sẽ nhanh hơn nhưng tốn nhiều tài nguyên hơn.</li>
+      </ul>
+      
+      <h4>💡 Lưu ý quan trọng:</h4>
+      <ul>
+        <li>Đảm bảo cấu trúc folder input đúng: <code>overlays/video1.mp4</code>, <code>backgrounds/1/bg1.mp4</code></li>
+        <li>Tên file video trong overlay và background nên khớp nhau để render đúng</li>
+        <li>Video output sẽ được lưu tự động với tên giống video overlay</li>
+        <li>Nếu dùng GPU, đảm bảo card NVIDIA đã cài đặt driver và hỗ trợ hardware encoding</li>
+        <li>Quá trình render có thể mất nhiều thời gian tùy vào độ dài video và số lượng</li>
       </ul>
     `,
   },
   download: {
     title: "Hướng dẫn Tải video",
     content: `
-      <h4>Chức năng:</h4>
-      <p>Tải video từ danh sách URL trong file urls.txt</p>
+      <h4>📋 Chức năng:</h4>
+      <p>Tải video từ YouTube, TikTok, hoặc các nền tảng khác từ danh sách URL. Hệ thống sẽ tự động tải video, tạo thumbnail và xử lý overlay.</p>
       
-      <h4>Các bước sử dụng:</h4>
+      <h4>🔧 Các tham số chi tiết:</h4>
       <ul>
-        <li><strong>File URLs:</strong> Chọn file chứa danh sách URL (mỗi URL một dòng). Để trống sẽ dùng <code>./urls.txt</code></li>
-        <li><strong>Folder tải về:</strong> Chọn folder lưu video đã tải. Để trống sẽ dùng <code>./overlays</code></li>
-        <li><strong>Folder ảnh overlay:</strong> Chọn folder chứa ảnh overlay. Để trống sẽ dùng <code>./images</code></li>
-        <li><strong>Folder output thumbs:</strong> Chọn folder lưu thumbnail. Để trống sẽ dùng <code>./thumbs</code></li>
-        <li><strong>File cookies.txt:</strong> Chọn file cookies để tải video có bảo vệ. Để trống sẽ dùng <code>./cookies.txt</code></li>
+        <li><strong>File URLs:</strong> 
+          <ul>
+            <li>File text chứa danh sách URL (mỗi URL một dòng)</li>
+            <li>Ví dụ nội dung file: <br><code>https://youtube.com/watch?v=abc123<br>https://tiktok.com/@user/video/123456</code></li>
+            <li>Để trống sẽ dùng <code>./urls.txt</code></li>
+            <li>Có thể tạo file này bằng chức năng "Lấy URL"</li>
+          </ul>
+        </li>
+        <li><strong>Folder tải về:</strong> 
+          <ul>
+            <li>Folder lưu video đã tải về</li>
+            <li>Video sẽ được đặt tên tự động theo tên video gốc</li>
+            <li>Để trống sẽ dùng <code>./overlays</code></li>
+          </ul>
+        </li>
+        <li><strong>Folder ảnh overlay:</strong> 
+          <ul>
+            <li>Folder chứa ảnh overlay sẽ được thêm vào thumbnail</li>
+            <li>Ảnh overlay sẽ được kết hợp với thumbnail gốc của video</li>
+            <li>Để trống sẽ dùng <code>./images</code></li>
+          </ul>
+        </li>
+        <li><strong>Folder output thumbs:</strong> 
+          <ul>
+            <li>Folder lưu thumbnail đã xử lý (có overlay)</li>
+            <li>Thumbnail sẽ được tạo tự động từ video và kết hợp với ảnh overlay</li>
+            <li>Cấu trúc: <code>./thumbs/ngày1/video1.jpg</code></li>
+            <li>Để trống sẽ dùng <code>./thumbs</code></li>
+          </ul>
+        </li>
+        <li><strong>File cookies.txt:</strong> 
+          <ul>
+            <li>File cookies để tải video có bảo vệ hoặc video riêng tư</li>
+            <li>Định dạng: Netscape HTTP Cookie File</li>
+            <li>Có thể export từ trình duyệt (Chrome/Firefox extension)</li>
+            <li>Để trống sẽ dùng <code>./cookies.txt</code></li>
+            <li>Không bắt buộc nếu video công khai</li>
+          </ul>
+        </li>
       </ul>
       
-      <h4>Lưu ý:</h4>
+      <h4>🔄 Quy trình hoạt động:</h4>
+      <ol>
+        <li>Đọc danh sách URL từ file</li>
+        <li>Tải video từ mỗi URL (sử dụng yt-dlp)</li>
+        <li>Lưu video vào folder tải về</li>
+        <li>Tạo thumbnail từ video</li>
+        <li>Kết hợp thumbnail với ảnh overlay</li>
+        <li>Lưu thumbnail đã xử lý vào folder output thumbs</li>
+      </ol>
+      
+      <h4>💡 Lưu ý quan trọng:</h4>
       <ul>
-        <li>File urls.txt nên chứa một URL mỗi dòng</li>
-        <li>Video sẽ được tải về và đặt tên tự động</li>
-        <li>Thumbnail sẽ được tạo tự động từ video</li>
+        <li>File urls.txt phải có định dạng UTF-8, mỗi URL một dòng</li>
+        <li>Video sẽ được tải với chất lượng tốt nhất có sẵn</li>
+        <li>Nếu video tải lỗi, URL sẽ được ghi vào log để tải lại sau</li>
+        <li>Thumbnail sẽ tự động khớp với tên video (ví dụ: video.mp4 → video.jpg)</li>
+        <li>Quá trình tải có thể mất nhiều thời gian tùy vào số lượng và độ dài video</li>
+        <li>Đảm bảo có kết nối internet ổn định</li>
       </ul>
     `,
   },
   retry: {
     title: "Hướng dẫn Tải lại video lỗi",
     content: `
-      <h4>Chức năng:</h4>
-      <p>Tải lại các video đã bị lỗi từ log file</p>
+      <h4>📋 Chức năng:</h4>
+      <p>Tự động tải lại các video đã bị lỗi trong lần tải trước. Hệ thống sẽ đọc danh sách URL lỗi từ log file và thử tải lại.</p>
       
-      <h4>Cách sử dụng:</h4>
-      <ul>
-        <li>Nhấn nút "Tải lại" để tự động tìm và tải lại các video đã bị lỗi</li>
-        <li>Hệ thống sẽ đọc từ log file <code>failed_urls.txt</code></li>
-      </ul>
+      <h4>🔄 Cách hoạt động:</h4>
+      <ol>
+        <li>Hệ thống đọc file log <code>failed_urls.txt</code> (tự động tạo khi có video lỗi)</li>
+        <li>Lấy từng URL từ log file</li>
+        <li>Thử tải lại video từ URL đó</li>
+        <li>Nếu thành công: Xóa URL khỏi log</li>
+        <li>Nếu vẫn lỗi: Giữ nguyên trong log để thử lại sau</li>
+      </ol>
       
-      <h4>Lưu ý:</h4>
+      <h4>💡 Lưu ý:</h4>
       <ul>
-        <li>Chức năng này chỉ hoạt động sau khi đã chạy tải video và có video lỗi</li>
-        <li>Video lỗi sẽ được ghi vào log tự động</li>
+        <li>Chức năng này chỉ hoạt động sau khi đã chạy "Tải video" và có video bị lỗi</li>
+        <li>File <code>failed_urls.txt</code> được tạo tự động trong thư mục gốc</li>
+        <li>Có thể chạy nhiều lần cho đến khi tất cả video được tải thành công</li>
+        <li>Nếu video vẫn lỗi sau nhiều lần thử, có thể do:
+          <ul>
+            <li>Video đã bị xóa hoặc không còn tồn tại</li>
+            <li>Video bị giới hạn quyền truy cập</li>
+            <li>Vấn đề về kết nối mạng</li>
+            <li>URL không hợp lệ</li>
+          </ul>
+        </li>
       </ul>
     `,
   },
   "video-snow": {
     title: "Hướng dẫn Tạo video từ ảnh",
     content: `
-      <h4>Chức năng:</h4>
-      <p>Tạo video từ ảnh với hiệu ứng tuyết rơi</p>
+      <h4>📋 Chức năng:</h4>
+      <p>Chuyển đổi ảnh tĩnh thành video động với hiệu ứng tuyết rơi overlay. Mỗi ảnh sẽ được tạo thành một video segment có độ dài ngẫu nhiên.</p>
       
-      <h4>Các bước sử dụng:</h4>
+      <h4>🔧 Các tham số chi tiết:</h4>
       <ul>
-        <li><strong>Folder ảnh input:</strong> Chọn folder chứa ảnh cần tạo video. Để trống sẽ dùng <code>./image_backgrounds</code></li>
-        <li><strong>Folder output:</strong> Chọn folder lưu video đã tạo. Để trống sẽ dùng <code>./output_segments</code></li>
-        <li><strong>File Snow Video:</strong> Chọn file video hiệu ứng tuyết. Để trống sẽ dùng <code>./snow1.mp4</code></li>
-        <li><strong>Max Concurrent:</strong> Số video tạo đồng thời (mặc định: 3)</li>
-        <li><strong>Segment Min/Max:</strong> Độ dài tối thiểu và tối đa của mỗi segment (giây)</li>
+        <li><strong>Folder ảnh input:</strong> 
+          <ul>
+            <li>Folder chứa các ảnh cần chuyển thành video</li>
+            <li>Hỗ trợ định dạng: .jpg, .jpeg, .png</li>
+            <li>Mỗi ảnh sẽ tạo một video segment riêng</li>
+            <li>Để trống sẽ dùng <code>./image_backgrounds</code></li>
+          </ul>
+        </li>
+        <li><strong>Folder output:</strong> 
+          <ul>
+            <li>Folder lưu video đã tạo</li>
+            <li>Video sẽ có tên giống ảnh gốc (đổi extension thành .mp4)</li>
+            <li>Ví dụ: <code>image1.jpg</code> → <code>image1.mp4</code></li>
+            <li>Để trống sẽ dùng <code>./output_segments</code></li>
+          </ul>
+        </li>
+        <li><strong>File Snow Video:</strong> 
+          <ul>
+            <li>File video hiệu ứng tuyết rơi sẽ được overlay lên ảnh</li>
+            <li>Video này sẽ được lặp lại để phủ toàn bộ thời lượng video</li>
+            <li>Đảm bảo file video có độ dài đủ để lặp</li>
+            <li>Để trống sẽ dùng <code>./snow1.mp4</code></li>
+          </ul>
+        </li>
+        <li><strong>Max Concurrent:</strong> 
+          <ul>
+            <li>Số video được tạo đồng thời (mặc định: 3)</li>
+            <li>Tăng số này sẽ nhanh hơn nhưng tốn nhiều CPU/RAM hơn</li>
+            <li>Khuyến nghị: 2-5 tùy vào cấu hình máy</li>
+          </ul>
+        </li>
+        <li><strong>Segment Min (giây):</strong> 
+          <ul>
+            <li>Độ dài tối thiểu của mỗi video segment (mặc định: 10 giây)</li>
+            <li>Mỗi video sẽ có độ dài ngẫu nhiên từ Min đến Max</li>
+          </ul>
+        </li>
+        <li><strong>Segment Max (giây):</strong> 
+          <ul>
+            <li>Độ dài tối đa của mỗi video segment (mặc định: 15 giây)</li>
+            <li>Ví dụ: Min=10, Max=15 → video sẽ dài 10-15 giây ngẫu nhiên</li>
+          </ul>
+        </li>
       </ul>
       
-      <h4>Lưu ý:</h4>
+      <h4>🔄 Quy trình hoạt động:</h4>
+      <ol>
+        <li>Đọc danh sách ảnh từ folder input</li>
+        <li>Với mỗi ảnh:
+          <ul>
+            <li>Chuyển ảnh thành video với độ dài ngẫu nhiên (Min-Max giây)</li>
+            <li>Overlay video hiệu ứng tuyết lên ảnh</li>
+            <li>Lưu video segment vào folder output</li>
+          </ul>
+        </li>
+        <li>Xử lý nhiều ảnh đồng thời theo Max Concurrent</li>
+      </ol>
+      
+      <h4>💡 Lưu ý:</h4>
       <ul>
-        <li>Ảnh sẽ được chuyển thành video với hiệu ứng tuyết overlay</li>
-        <li>Mỗi ảnh sẽ tạo một video segment</li>
+        <li>Ảnh sẽ được scale để phù hợp với video tuyết</li>
+        <li>Video output sẽ có chất lượng tốt, phù hợp để dùng làm background</li>
+        <li>Có thể dùng các video segment này cho chức năng "Tạo video backgrounds"</li>
+        <li>Đảm bảo file snow video có chất lượng tốt để overlay đẹp</li>
       </ul>
     `,
   },
@@ -1851,37 +1994,104 @@ const helpContents = {
   concat: {
     title: "Hướng dẫn Ghép video",
     content: `
-      <h4>Chức năng:</h4>
-      <p>Ghép nhiều video lại với nhau, có thể chèn thumbnail giữa các video</p>
+      <h4>📋 Chức năng:</h4>
+      <p>Ghép nhiều video ngắn lại thành video dài hơn. Có thể chèn thumbnail giữa các video để tạo hiệu ứng chuyển cảnh mượt mà, hoặc ghép trực tiếp không có thumbnail.</p>
       
-      <h4>Các bước sử dụng:</h4>
+      <h4>🔧 Các tham số chi tiết:</h4>
       <ul>
-        <li><strong>Folder video input:</strong> Chọn folder chứa các video cần ghép (bắt buộc)</li>
-        <li><strong>Folder output:</strong> Chọn folder lưu video đã ghép (bắt buộc)</li>
-        <li><strong>Chunk size:</strong> Số video sẽ ghép trong mỗi nhóm (mặc định: 2, tối thiểu: 2)</li>
-        <li><strong>Chèn thumbnail giữa các video:</strong>
+        <li><strong>Folder video input:</strong> 
           <ul>
-            <li>Nếu <strong>bật</strong>: Video sẽ được ghép với thumbnail chèn giữa</li>
-            <li>Nếu <strong>tắt</strong>: Video sẽ được ghép trực tiếp không có thumbnail</li>
+            <li>Folder chứa các video cần ghép (BẮT BUỘC)</li>
+            <li>Video phải có định dạng .mp4 hoặc .mov</li>
+            <li>Video sẽ được sắp xếp theo tên (alphabetical order)</li>
+            <li>Ví dụ: <code>video1.mp4, video2.mp4, video3.mp4</code></li>
           </ul>
         </li>
-        <li><strong>Folder chứa thumb:</strong> (Chỉ hiện khi bật chèn thumbnail) Chọn folder chứa thumbnail. Tên file thumbnail phải khớp với tên video (ví dụ: video.mp4 → video.jpg)</li>
-        <li><strong>Thời gian thumbnail:</strong> (Chỉ hiện khi bật chèn thumbnail) Thời gian hiển thị mỗi thumbnail (giây, mặc định: 3)</li>
+        <li><strong>Folder output:</strong> 
+          <ul>
+            <li>Folder lưu video đã ghép (BẮT BUỘC)</li>
+            <li>Video output sẽ có tên theo video đầu tiên trong mỗi nhóm</li>
+            <li>Ví dụ: Nhóm [video1, video2] → output: video1.mp4</li>
+          </ul>
+        </li>
+        <li><strong>Chunk size:</strong> 
+          <ul>
+            <li>Số video sẽ ghép trong mỗi nhóm (mặc định: 2, tối thiểu: 2)</li>
+            <li>Ví dụ: Chunk size = 2, có 6 video → tạo 3 video output</li>
+            <li>Ví dụ: Chunk size = 3, có 9 video → tạo 3 video output</li>
+            <li>Nhóm cuối cùng nếu ít hơn chunk size sẽ bị bỏ qua</li>
+          </ul>
+        </li>
+        <li><strong>Chèn thumbnail giữa các video:</strong>
+          <ul>
+            <li><strong>BẬT:</strong> Video sẽ được ghép với thumbnail chèn giữa</li>
+            <li style="margin-left: 20px;">Cấu trúc: Video1 → Thumbnail2 → Video2 → Thumbnail3 → Video3</li>
+            <li style="margin-left: 20px;">Thumbnail sẽ được chuyển thành video với độ dài chỉ định</li>
+            <li style="margin-left: 20px;">Tạo hiệu ứng chuyển cảnh mượt mà, chuyên nghiệp</li>
+            <li><strong>TẮT:</strong> Video sẽ được ghép trực tiếp không có thumbnail</li>
+            <li style="margin-left: 20px;">Cấu trúc: Video1 → Video2 → Video3</li>
+            <li style="margin-left: 20px;">Nhanh hơn, không cần folder thumbnail</li>
+          </ul>
+        </li>
+        <li><strong>Folder chứa thumb:</strong> (Chỉ hiện khi bật chèn thumbnail)
+          <ul>
+            <li>Folder chứa file thumbnail (ảnh .jpg)</li>
+            <li>Tên file thumbnail PHẢI khớp với tên video</li>
+            <li>Ví dụ: <code>video1.mp4</code> → <code>video1.jpg</code></li>
+            <li>Ví dụ: <code>clip_001.mp4</code> → <code>clip_001.jpg</code></li>
+            <li>Thumbnail sẽ được tìm tự động dựa trên tên video tiếp theo</li>
+          </ul>
+        </li>
+        <li><strong>Thời gian thumbnail:</strong> (Chỉ hiện khi bật chèn thumbnail)
+          <ul>
+            <li>Thời gian hiển thị mỗi thumbnail (giây, mặc định: 3)</li>
+            <li>Có thể điều chỉnh từ 0.1 giây trở lên</li>
+            <li>Thời gian ngắn (1-2s): Chuyển cảnh nhanh, nhịp độ nhanh</li>
+            <li>Thời gian dài (3-5s): Chuyển cảnh chậm, nhịp độ chậm</li>
+          </ul>
+        </li>
       </ul>
       
-      <h4>Cách hoạt động:</h4>
+      <h4>🔄 Quy trình hoạt động:</h4>
+      <ol>
+        <li>Đọc danh sách video từ folder input</li>
+        <li>Sắp xếp video theo tên (alphabetical)</li>
+        <li>Chia video thành các nhóm (chunk) theo chunk size</li>
+        <li>Với mỗi nhóm:
+          <ul>
+            <li>Nếu bật thumbnail: Ghép Video1 → Thumbnail2 → Video2 → Thumbnail3 → ...</li>
+            <li>Nếu tắt thumbnail: Ghép Video1 → Video2 → Video3 → ...</li>
+            <li>Sử dụng FFmpeg với codec copy (nhanh, không re-encode)</li>
+          </ul>
+        </li>
+        <li>Lưu video output với tên video đầu tiên trong nhóm</li>
+      </ol>
+      
+      <h4>💡 Ví dụ cụ thể:</h4>
+      <p><strong>Trường hợp 1: Có thumbnail, chunk size = 2</strong></p>
       <ul>
-        <li>Video sẽ được sắp xếp theo tên và chia thành các nhóm (chunk)</li>
-        <li>Mỗi nhóm sẽ được ghép lại thành một video</li>
-        <li>Nếu bật thumbnail: Giữa mỗi video sẽ có thumbnail của video tiếp theo</li>
-        <li>Nếu tắt thumbnail: Video sẽ được nối trực tiếp với nhau</li>
+        <li>Input: video1.mp4, video2.mp4, video3.mp4, video4.mp4</li>
+        <li>Thumbnails: video2.jpg, video3.jpg, video4.jpg</li>
+        <li>Output 1: video1.mp4 (chứa: video1 → video2.jpg → video2)</li>
+        <li>Output 2: video3.mp4 (chứa: video3 → video4.jpg → video4)</li>
       </ul>
       
-      <h4>Lưu ý:</h4>
+      <p><strong>Trường hợp 2: Không thumbnail, chunk size = 3</strong></p>
       <ul>
-        <li>Video trong folder input phải có định dạng .mp4 hoặc .mov</li>
-        <li>Nếu dùng thumbnail, đảm bảo tên file thumbnail khớp với tên video</li>
+        <li>Input: video1.mp4, video2.mp4, video3.mp4, video4.mp4</li>
+        <li>Output 1: video1.mp4 (chứa: video1 → video2 → video3)</li>
+        <li>Video4 bị bỏ qua (nhóm cuối chỉ có 1 video)</li>
+      </ul>
+      
+      <h4>⚠️ Lưu ý quan trọng:</h4>
+      <ul>
+        <li>Video input phải có định dạng .mp4 hoặc .mov</li>
+        <li>Nếu dùng thumbnail, đảm bảo tên file thumbnail khớp chính xác với tên video</li>
         <li>Video output sẽ có tên theo video đầu tiên trong mỗi nhóm</li>
+        <li>Nhóm cuối cùng nếu ít hơn chunk size sẽ bị bỏ qua</li>
+        <li>Quá trình ghép sử dụng codec copy nên rất nhanh, không làm giảm chất lượng</li>
+        <li>Thumbnail sẽ được chuyển thành video với thông số audio/video khớp với video gốc</li>
+        <li>Đảm bảo có đủ dung lượng ổ cứng cho video output</li>
       </ul>
     `,
   },
@@ -1977,13 +2187,11 @@ function toggleConcatThumbs() {
 }
 
 async function runConcat() {
-  const chunkSize = parseInt(
-    document.getElementById("concat-chunk-size").value
-  ) || 2;
+  const chunkSize =
+    parseInt(document.getElementById("concat-chunk-size").value) || 2;
   const useThumbs = document.getElementById("concat-use-thumbs").checked;
-  const thumbDuration = parseFloat(
-    document.getElementById("concat-thumb-duration").value
-  ) || 3;
+  const thumbDuration =
+    parseFloat(document.getElementById("concat-thumb-duration").value) || 3;
 
   if (!selectedConcatInputFolder) {
     alert("Vui lòng chọn folder video input!");

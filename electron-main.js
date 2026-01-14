@@ -173,6 +173,12 @@ app.on("activate", () => {
   }
 });
 
+// IPC handler để mở cửa sổ mới
+ipcMain.handle("open-new-window", async () => {
+  createWindow();
+  return { success: true };
+});
+
 // IPC Handlers
 ipcMain.handle("select-folder", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -250,14 +256,20 @@ ipcMain.handle(
           return String(err);
         };
 
+        // Tạo unique ID cho job để tránh conflict khi chạy đồng thời
+        const jobId = options.jobId || `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        
         // Tạo config file cho các script nếu cần
         if (options.renderConfig) {
           try {
-            const configPath = path.join(configDir, ".render-config.json");
+            // Sử dụng unique config file để tránh conflict khi chạy đồng thời
+            const configPath = path.join(configDir, `.render-config-${jobId}.json`);
             fs.writeFileSync(
               configPath,
               JSON.stringify(options.renderConfig, null, 2)
             );
+            // Set environment variable để script biết dùng config file nào
+            env.RENDER_CONFIG_FILE = `.render-config-${jobId}.json`;
           } catch (err) {
             console.error(
               `Error creating render config file: ${getErrorMessage(err)}`

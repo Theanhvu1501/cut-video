@@ -30,6 +30,40 @@
         overflow: hidden;
       }
 
+      .header-actions {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+        position: relative;
+        z-index: 1;
+      }
+
+      .btn-new-window {
+        background: rgba(255, 255, 255, 0.2);
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        color: white;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-new-window:hover {
+        background: rgba(255, 255, 255, 0.3);
+        border-color: rgba(255, 255, 255, 0.5);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn-new-window:active {
+        transform: translateY(0);
+      }
+
       .header::before {
         content: "";
         position: absolute;
@@ -446,6 +480,16 @@
       <div class="header-logo">
         <img src="assets/vidMaster.png" alt="VidMaster" />
         <h1 class="header-title">VidMaster</h1>
+      </div>
+      <div class="header-actions">
+        <button
+          class="btn-new-window"
+          onclick="openNewWindow()"
+          title="Mở cửa sổ mới để chạy job đồng thời"
+        >
+          <span>🪟</span>
+          <span>Mở cửa sổ mới</span>
+        </button>
       </div>
     </div>
 

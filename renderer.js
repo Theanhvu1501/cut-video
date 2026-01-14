@@ -7,6 +7,18 @@ function checkElectronAPI() {
   return true;
 }
 
+// Mở cửa sổ mới để chạy job đồng thời
+async function openNewWindow() {
+  if (!checkElectronAPI()) return;
+
+  try {
+    await window.electronAPI.openNewWindow();
+    // Có thể thêm thông báo nếu muốn
+  } catch (error) {
+    alert(`Lỗi khi mở cửa sổ mới: ${getErrorMessage(error)}`);
+  }
+}
+
 // Helper to extract error message from error object
 function getErrorMessage(error) {
   if (!error) return "Lỗi không xác định";

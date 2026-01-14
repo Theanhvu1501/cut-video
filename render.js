@@ -171,7 +171,9 @@ let y_offset = 490;
 // Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
 // Nếu không có, dùng __dirname (cho development)
 const configDir = process.env.CONFIG_DIR || __dirname;
-const configFilePath = path.join(configDir, ".render-config.json");
+// Sử dụng unique config file nếu có (để chạy đồng thời nhiều job)
+const configFileName = process.env.RENDER_CONFIG_FILE || ".render-config.json";
+const configFilePath = path.join(configDir, configFileName);
 if (fs.existsSync(configFilePath)) {
   try {
     const configContent = fs.readFileSync(configFilePath, "utf-8");

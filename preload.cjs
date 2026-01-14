@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   runScript: (scriptPath, args, options) => ipcRenderer.invoke('run-script', scriptPath, args, options),
   saveRenderConfig: (config) => ipcRenderer.invoke('save-render-config', config),
   loadRenderConfig: () => ipcRenderer.invoke('load-render-config'),
+  openNewWindow: () => ipcRenderer.invoke('open-new-window'),
   onScriptOutput: (callback) => {
     ipcRenderer.on('script-output', (event, data) => callback(data));
   },

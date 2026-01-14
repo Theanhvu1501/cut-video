@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>License đã bị khóa - VidMaster</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .dialog-container {
+        background: white;
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        max-width: 500px;
+        width: 100%;
+        overflow: hidden;
+        animation: slideIn 0.3s ease-out;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(-20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .dialog-header {
+        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .dialog-header .icon {
+        font-size: 64px;
+        margin-bottom: 15px;
+      }
+
+      .dialog-header h1 {
+        font-size: 24px;
+        font-weight: 600;
+        margin-bottom: 8px;
+      }
+
+      .dialog-header p {
+        font-size: 14px;
+        opacity: 0.95;
+      }
+
+      .dialog-body {
+        padding: 30px;
+      }
+
+      .message {
+        text-align: center;
+        color: #333;
+        margin-bottom: 25px;
+        line-height: 1.6;
+      }
+
+      .message-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: #dc3545;
+        margin-bottom: 12px;
+      }
+
+      .message-text {
+        font-size: 14px;
+        color: #666;
+      }
+
+      .error-details {
+        background: #f8d7da;
+        border-left: 4px solid #dc3545;
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 25px;
+      }
+
+      .error-details-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #721c24;
+        margin-bottom: 8px;
+      }
+
+      .error-details-text {
+        font-size: 13px;
+        color: #721c24;
+        line-height: 1.6;
+      }
+
+      .instructions {
+        background: #fff3cd;
+        border-left: 4px solid #ffc107;
+        padding: 15px;
+        border-radius: 6px;
+        margin-bottom: 25px;
+      }
+
+      .instructions-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #856404;
+        margin-bottom: 8px;
+      }
+
+      .instructions-text {
+        font-size: 13px;
+        color: #856404;
+        line-height: 1.6;
+      }
+
+      .dialog-footer {
+        padding: 0 30px 30px;
+        text-align: center;
+      }
+
+      .close-button {
+        padding: 12px 32px;
+        background: #dc3545;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .close-button:hover {
+        background: #c82333;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3);
+      }
+
+      .close-button:active {
+        transform: translateY(0);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="dialog-container">
+      <div class="dialog-header">
+        <div class="icon">🚫</div>
+        <h1>License đã bị khóa</h1>
+        <p>Quyền truy cập của bạn đã bị thu hồi</p>
+      </div>
+
+      <div class="dialog-body">
+        <div class="message">
+          <div class="message-title">Ứng dụng sẽ tự động đóng</div>
+          <div class="message-text">
+            License của bạn đã bị admin khóa hoặc thu hồi. Ứng dụng sẽ tự động
+            đóng sau khi bạn nhấn nút bên dưới.
+          </div>
+        </div>
+
+        <div class="error-details" id="errorDetails" style="display: none;">
+          <div class="error-details-title">📋 Chi tiết lỗi:</div>
+          <div class="error-details-text" id="errorText"></div>
+        </div>
+
+        <div class="instructions">
+          <div class="instructions-title">💡 Bạn cần làm gì?</div>
+          <div class="instructions-text">
+            1. Liên hệ với admin để được hỗ trợ<br />
+            2. Kiểm tra lại thông tin license của bạn<br />
+            3. Đợi admin kích hoạt lại license<br />
+            4. Khởi động lại ứng dụng sau khi được kích hoạt
+          </div>
+        </div>
+      </div>
+
+      <div class="dialog-footer">
+        <button class="close-button" id="closeButton">Đóng ứng dụng</button>
+      </div>
+    </div>
+
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        const closeButton = document.getElementById("closeButton");
+        const errorDetails = document.getElementById("errorDetails");
+        const errorText = document.getElementById("errorText");
+
+        // Kiểm tra xem có error message từ URL params không
+        const urlParams = new URLSearchParams(window.location.search);
+        const error = urlParams.get("error");
+
+        if (error) {
+          errorDetails.style.display = "block";
+          errorText.textContent = decodeURIComponent(error);
+        }
+
+        // Close button click - gửi message đến parent
+        closeButton.addEventListener("click", () => {
+          window.close();
+        });
+      });
+    </script>
+  </body>
+</html>

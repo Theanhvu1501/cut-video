@@ -93,6 +93,72 @@ function showUnregisteredDialog(machineId) {
 }
 
 /**
+ * Hiển thị dialog thông báo license đã bị khóa
+ */
+function showLicenseRevokedDialog(errorMessage) {
+  return new Promise((resolve) => {
+    const revokedWindow = new BrowserWindow({
+      width: 550,
+      height: 600,
+      resizable: false,
+      frame: false,
+      transparent: false,
+      backgroundColor: "#dc3545",
+      webPreferences: {
+        nodeIntegration: false,
+        contextIsolation: false,
+      },
+      modal: true,
+      show: false,
+    });
+
+    // Đọc file HTML
+    const dialogPath = path.join(__dirname, "license-revoked-dialog.html");
+    let htmlContent = fs.readFileSync(dialogPath, "utf-8");
+
+    // Inject error message vào HTML nếu có
+    if (errorMessage) {
+      // Escape HTML để tránh XSS
+      const escapedError = errorMessage
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+
+      // Thay thế error text và hiển thị error details
+      htmlContent = htmlContent.replace(
+        '<div id="errorText"></div>',
+        `<div id="errorText">${escapedError}</div>`
+      );
+      htmlContent = htmlContent.replace(
+        'id="errorDetails" style="display: none;">',
+        'id="errorDetails">'
+      );
+    }
+
+    // Load HTML từ data URL
+    revokedWindow.loadURL(
+      `data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`
+    );
+
+    // Hiển thị window khi sẵn sàng
+    revokedWindow.once("ready-to-show", () => {
+      revokedWindow.show();
+    });
+
+    // Khi window đóng, quit app
+    revokedWindow.on("closed", () => {
+      app.quit();
+      resolve();
+    });
+
+    // Prevent close by clicking outside (modal behavior)
+    revokedWindow.setAlwaysOnTop(true);
+  });
+}
+
+/**
  * Kiểm tra license trước khi mở app
  */
 async function checkLicenseBeforeStart() {
@@ -154,18 +220,91 @@ function createWindow() {
   // mainWindow.webContents.openDevTools();
 }
 
+// Biến lưu interval check license
+let licenseCheckInterval = null;
+
+// Cấu hình thời gian kiểm tra license (có thể thay đổi ở đây)
+// Mặc định: 30 phút = 30 * 60 * 1000 ms
+const LICENSE_CHECK_INTERVAL = 24 * 60 * 60 * 1000; // 24 giờ
+// Để thay đổi thời gian, sửa giá trị trên (ví dụ: 15 * 60 * 1000 = 15 phút)
+
+// Kiểm tra license định kỳ
+async function checkLicensePeriodically() {
+  try {
+    console.log("🔍 Đang kiểm tra license định kỳ...");
+    const licenseResult = await checkLicense();
+
+    if (!licenseResult.registered) {
+      console.log("❌ License không hợp lệ, đóng ứng dụng...");
+      // Hiển thị dialog đẹp thông báo license bị khóa
+      await showLicenseRevokedDialog(
+        licenseResult.error || "License của bạn đã bị admin khóa hoặc thu hồi."
+      );
+      // app.quit() sẽ được gọi trong showLicenseRevokedDialog
+    } else {
+      console.log("✅ License hợp lệ");
+    }
+  } catch (error) {
+    console.error("Error in periodic license check:", error);
+    // Nếu lỗi network, không đóng app (có thể là mạng tạm thời)
+    // Chỉ đóng app nếu chắc chắn license không hợp lệ
+  }
+}
+
+// Bắt đầu kiểm tra license định kỳ
+function startPeriodicLicenseCheck() {
+  // Dừng interval cũ nếu có
+  if (licenseCheckInterval) {
+    clearInterval(licenseCheckInterval);
+  }
+
+  console.log(
+    `⏰ Bắt đầu kiểm tra license định kỳ mỗi ${
+      LICENSE_CHECK_INTERVAL / 1000 / 60
+    } phút`
+  );
+
+  // Check ngay lần đầu sau 1 phút (để app khởi động xong)
+  setTimeout(() => {
+    checkLicensePeriodically();
+  }, 60 * 1000); // 1 phút
+
+  // Sau đó check định kỳ
+  licenseCheckInterval = setInterval(() => {
+    checkLicensePeriodically();
+  }, LICENSE_CHECK_INTERVAL);
+}
+
+// Dừng kiểm tra license định kỳ
+function stopPeriodicLicenseCheck() {
+  if (licenseCheckInterval) {
+    clearInterval(licenseCheckInterval);
+    licenseCheckInterval = null;
+    console.log("⏹️ Đã dừng kiểm tra license định kỳ");
+  }
+}
+
 app.whenReady().then(async () => {
   // Kiểm tra license trước khi mở window
   const canContinue = await checkLicenseBeforeStart();
   if (canContinue) {
     createWindow();
+    // Bắt đầu kiểm tra license định kỳ sau khi window được tạo
+    startPeriodicLicenseCheck();
   }
 });
 
 app.on("window-all-closed", () => {
+  // Dừng kiểm tra license khi đóng tất cả windows
+  stopPeriodicLicenseCheck();
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", () => {
+  // Dừng kiểm tra license trước khi quit
+  stopPeriodicLicenseCheck();
 });
 
 app.on("activate", () => {

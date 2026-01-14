@@ -1,3 +1,4 @@
+import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import { spawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
@@ -93,11 +94,42 @@ try {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Cấu hình FFmpeg - sử dụng từ thư mục bin
-const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
-const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
-ffmpeg.setFfmpegPath(FFMPEG_PATH);
-ffmpeg.setFfprobePath(FFPROBE_PATH);
+// Cấu hình FFmpeg - sử dụng @ffmpeg-installer như code cũ
+ffmpeg.setFfmpegPath(ffmpegPath);
+
+// Giữ FFMPEG_PATH cho các hàm khác nếu cần
+const FFMPEG_PATH = ffmpegPath;
+
+// Hàm kiểm tra FFmpeg có hỗ trợ GPU encoder không
+const checkGpuSupport = async (codec) => {
+  return new Promise((resolve) => {
+    const checkProcess = spawn(FFMPEG_PATH, ["-encoders"]);
+    let output = "";
+
+    checkProcess.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+
+    checkProcess.stderr.on("data", (data) => {
+      output += data.toString();
+    });
+
+    checkProcess.on("close", () => {
+      const hasSupport = output.includes(codec);
+      if (!hasSupport) {
+        log(
+          `⚠️ FFmpeg không hỗ trợ codec ${codec}. Kiểm tra: ffmpeg -encoders | grep ${codec}`,
+          LOG_LEVEL.WARN
+        );
+      }
+      resolve(hasSupport);
+    });
+
+    checkProcess.on("error", () => {
+      resolve(false);
+    });
+  });
+};
 
 let overlayFolder = "./overlays";
 let backgroundFolder = "./backgrounds";
@@ -475,24 +507,15 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
         );
         filterConfig = complexFilterTopTransparent();
       }
+
+      // Code cũ không có format filter, để nguyên filterConfig
+
       const command = ffmpeg(inputBackground);
 
-      // Thêm hardware acceleration cho GPU nếu cần
-      // Lưu ý: Chỉ dùng hwaccel cho decode, complex filters sẽ xử lý trên CPU
-      if (useGPU) {
-        // Xác định loại GPU dựa trên codec
-        if (gpuVideoCodec.includes("nvenc")) {
-          // NVIDIA GPU - chỉ dùng hwaccel cho decode, không force output format
-          // vì complex filters cần xử lý trên CPU
-          command.inputOptions(["-hwaccel", "cuda"]);
-        } else if (gpuVideoCodec.includes("qsv")) {
-          // Intel QuickSync
-          command.inputOptions(["-hwaccel", "qsv"]);
-        } else if (gpuVideoCodec.includes("amf")) {
-          // AMD AMF
-          command.inputOptions(["-hwaccel", "dxva2"]);
-        }
-      }
+      // Khi dùng complex filter với GPU encoding:
+      // - KHÔNG dùng hwaccel cho input vì complex filter xử lý trên CPU
+      // - Chỉ dùng GPU cho encoding (videoCodec)
+      // - Complex filter sẽ decode trên CPU, xử lý filter, rồi encode bằng GPU
 
       command
         .inputOptions(["-stream_loop", "-1"])
@@ -512,19 +535,51 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
           )}`,
           LOG_LEVEL.DEBUG
         );
-        command
-          .videoCodec(gpuVideoCodec) // Sử dụng encoder của NVIDIA
-          .outputOptions([
+
+        // Cấu hình GPU giống code cũ đã chạy được
+        if (gpuVideoCodec.includes("nvenc")) {
+          // NVIDIA NVENC - dùng cấu hình giống code cũ
+          command.videoCodec(gpuVideoCodec).outputOptions([
             "-pix_fmt yuv420p", // Chuẩn màu
             `-r ${FIXED_FPS}`, // FPS cố định
             `-g ${FIXED_GOP}`, // Khoảng cách Keyframe
             `-keyint_min ${FIXED_GOP}`, // Ép cứng Keyframe
             "-sc_threshold 0", // Tắt phát hiện cảnh
-            "-preset fast", // Tốc độ render
+            "-preset fast", // Tốc độ render (giống code cũ)
             `-cq:v ${VIDEO_QUALITY}`, // Chất lượng
             "-rc:v vbr", // Bitrate biến thiên
             "-movflags +faststart", // Hỗ trợ xem nhanh/web
           ]);
+        } else if (gpuVideoCodec.includes("qsv")) {
+          // Intel QuickSync
+          command
+            .videoCodec(gpuVideoCodec)
+            .outputOptions([
+              "-preset",
+              "medium",
+              "-pix_fmt",
+              "yuv420p",
+              "-movflags",
+              "+faststart",
+            ]);
+        } else if (gpuVideoCodec.includes("amf")) {
+          // AMD AMF
+          command
+            .videoCodec(gpuVideoCodec)
+            .outputOptions([
+              "-preset",
+              "medium",
+              "-pix_fmt",
+              "yuv420p",
+              "-movflags",
+              "+faststart",
+            ]);
+        } else {
+          // Fallback nếu codec không xác định
+          command
+            .videoCodec(gpuVideoCodec)
+            .outputOptions(["-pix_fmt", "yuv420p", "-movflags", "+faststart"]);
+        }
       } else {
         // Cấu hình CPU cũ
         log(
@@ -598,12 +653,35 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
             useGPU &&
             (errorDetails.includes("nvenc") ||
               errorDetails.includes("cuda") ||
-              exitCode === "4294967256")
+              exitCode === "4294967256" ||
+              ffmpegStderr.includes("Driver does not support") ||
+              ffmpegStderr.includes("minimum required Nvidia driver"))
           ) {
-            log(
-              `💡 Gợi ý: Có thể GPU không khả dụng hoặc FFmpeg không hỗ trợ GPU. Thử tắt useGPU hoặc kiểm tra driver NVIDIA.`,
-              LOG_LEVEL.ERROR
-            );
+            if (ffmpegStderr.includes("minimum required Nvidia driver")) {
+              const driverMatch = ffmpegStderr.match(
+                /minimum required Nvidia driver for nvenc is ([\d.]+)/
+              );
+              if (driverMatch) {
+                log(
+                  `❌ Driver NVIDIA quá cũ! Cần driver ${driverMatch[1]} hoặc mới hơn.`,
+                  LOG_LEVEL.ERROR
+                );
+                log(
+                  `💡 Giải pháp: Cập nhật driver NVIDIA từ https://www.nvidia.com/drivers hoặc tắt useGPU để dùng CPU.`,
+                  LOG_LEVEL.ERROR
+                );
+              } else {
+                log(
+                  `❌ Driver NVIDIA không hỗ trợ NVENC. Cần cập nhật driver NVIDIA.`,
+                  LOG_LEVEL.ERROR
+                );
+              }
+            } else {
+              log(
+                `💡 Gợi ý: Có thể GPU không khả dụng hoặc FFmpeg không hỗ trợ GPU. Thử tắt useGPU hoặc kiểm tra driver NVIDIA.`,
+                LOG_LEVEL.ERROR
+              );
+            }
           }
 
           processedVideos++;

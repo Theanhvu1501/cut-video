@@ -168,8 +168,8 @@ if (fs.existsSync(configFilePath)) {
     // Đọc đường dẫn từ config
     if (config.overlayFolder) {
       // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
-      overlayFolder = path.isAbsolute(config.overlayFolder) 
-        ? config.overlayFolder 
+      overlayFolder = path.isAbsolute(config.overlayFolder)
+        ? config.overlayFolder
         : path.resolve(__dirname, config.overlayFolder);
     }
     if (config.backgroundFolder) {
@@ -475,7 +475,26 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
         );
         filterConfig = complexFilterTopTransparent();
       }
-      const command = ffmpeg(inputBackground)
+      const command = ffmpeg(inputBackground);
+
+      // Thêm hardware acceleration cho GPU nếu cần
+      // Lưu ý: Chỉ dùng hwaccel cho decode, complex filters sẽ xử lý trên CPU
+      if (useGPU) {
+        // Xác định loại GPU dựa trên codec
+        if (gpuVideoCodec.includes("nvenc")) {
+          // NVIDIA GPU - chỉ dùng hwaccel cho decode, không force output format
+          // vì complex filters cần xử lý trên CPU
+          command.inputOptions(["-hwaccel", "cuda"]);
+        } else if (gpuVideoCodec.includes("qsv")) {
+          // Intel QuickSync
+          command.inputOptions(["-hwaccel", "qsv"]);
+        } else if (gpuVideoCodec.includes("amf")) {
+          // AMD AMF
+          command.inputOptions(["-hwaccel", "dxva2"]);
+        }
+      }
+
+      command
         .inputOptions(["-stream_loop", "-1"])
         .input(inputOverlay)
         .complexFilter(filterConfig)
@@ -526,7 +545,24 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
           ]);
       }
 
+      // Thu thập stderr để hiển thị lỗi chi tiết
+      let ffmpegStderr = "";
+
       command
+        .on("start", (commandLine) => {
+          log(`🔧 FFmpeg command: ${commandLine}`, LOG_LEVEL.DEBUG);
+        })
+        .on("stderr", (stderrLine) => {
+          ffmpegStderr += stderrLine + "\n";
+          // Log cảnh báo từ ffmpeg nếu có
+          if (
+            stderrLine.includes("error") ||
+            stderrLine.includes("Error") ||
+            stderrLine.includes("failed")
+          ) {
+            log(`⚠️ FFmpeg: ${stderrLine}`, LOG_LEVEL.WARN);
+          }
+        })
         .on("end", () => {
           const endTime = Date.now();
           log(
@@ -541,12 +577,35 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
           resolve();
         })
         .on("error", (error) => {
+          const errorDetails = error.message;
+          const exitCode = error.code || "unknown";
+
           log(
-            `❌ Lỗi khi xử lý video ${path.basename(outputPath)}: ${
-              error.message
-            }`,
+            `❌ Lỗi khi xử lý video ${path.basename(
+              outputPath
+            )}: ${errorDetails}`,
             LOG_LEVEL.ERROR
           );
+          log(`❌ Exit code: ${exitCode}`, LOG_LEVEL.ERROR);
+
+          // Hiển thị stderr nếu có
+          if (ffmpegStderr) {
+            log(`❌ FFmpeg stderr:\n${ffmpegStderr}`, LOG_LEVEL.ERROR);
+          }
+
+          // Gợi ý giải pháp nếu là lỗi GPU
+          if (
+            useGPU &&
+            (errorDetails.includes("nvenc") ||
+              errorDetails.includes("cuda") ||
+              exitCode === "4294967256")
+          ) {
+            log(
+              `💡 Gợi ý: Có thể GPU không khả dụng hoặc FFmpeg không hỗ trợ GPU. Thử tắt useGPU hoặc kiểm tra driver NVIDIA.`,
+              LOG_LEVEL.ERROR
+            );
+          }
+
           processedVideos++;
           errorVideos++;
           updateProgress();

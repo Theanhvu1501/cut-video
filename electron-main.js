@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
 import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
 import fs from "fs";
+import https from "https";
 import path from "path";
 import { fileURLToPath } from "url";
 import { checkLicense } from "./license-check.js";
@@ -179,6 +180,106 @@ ipcMain.handle("open-new-window", async () => {
   return { success: true };
 });
 
+// Helper function để tải file với redirect handling
+function downloadFile(url, filePath) {
+  return new Promise((resolve, reject) => {
+    const download = (currentUrl) => {
+      const file = fs.createWriteStream(filePath);
+
+      https
+        .get(currentUrl, (response) => {
+          // Xử lý redirect
+          if (
+            response.statusCode === 301 ||
+            response.statusCode === 302 ||
+            response.statusCode === 307 ||
+            response.statusCode === 308
+          ) {
+            file.close();
+            fs.unlinkSync(filePath);
+            const redirectUrl = response.headers.location;
+            if (!redirectUrl) {
+              reject({ success: false, error: "Redirect URL không hợp lệ" });
+              return;
+            }
+            // Follow redirect
+            download(redirectUrl);
+            return;
+          }
+
+          // Kiểm tra status code
+          if (response.statusCode !== 200) {
+            file.close();
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+            reject({
+              success: false,
+              error: `Lỗi HTTP: ${response.statusCode} ${response.statusMessage}`,
+            });
+            return;
+          }
+
+          // Lấy content length để hiển thị progress (optional)
+          const totalSize = parseInt(response.headers["content-length"], 10);
+          let downloadedSize = 0;
+
+          response.on("data", (chunk) => {
+            downloadedSize += chunk.length;
+          });
+
+          response.pipe(file);
+
+          file.on("finish", () => {
+            file.close();
+            resolve({
+              success: true,
+              message: `Đã tải yt-dlp mới nhất thành công!`,
+              size: downloadedSize,
+            });
+          });
+        })
+        .on("error", (err) => {
+          file.close();
+          if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+          }
+          reject({ success: false, error: `Lỗi kết nối: ${err.message}` });
+        });
+    };
+
+    download(url);
+  });
+}
+
+// IPC handler để tải yt-dlp mới nhất
+ipcMain.handle("download-ytdlp", async () => {
+  try {
+    const appPath = getAppPath();
+    const binDir = path.join(appPath, "bin");
+    const ytdlpPath = path.join(binDir, "yt-dlp.exe");
+    const downloadUrl =
+      "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe";
+
+    // Đảm bảo thư mục bin tồn tại
+    if (!fs.existsSync(binDir)) {
+      fs.mkdirSync(binDir, { recursive: true });
+    }
+
+    // Tải file
+    const result = await downloadFile(downloadUrl, ytdlpPath);
+    return {
+      ...result,
+      message: result.message || "Đã tải yt-dlp mới nhất thành công!",
+    };
+  } catch (error) {
+    const errorMsg =
+      error?.error || error?.message || error?.toString() || String(error);
+    console.error(`Error downloading yt-dlp: ${errorMsg}`);
+    return { success: false, error: errorMsg };
+  }
+});
+
 // IPC Handlers
 ipcMain.handle("select-folder", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -257,13 +358,18 @@ ipcMain.handle(
         };
 
         // Tạo unique ID cho job để tránh conflict khi chạy đồng thời
-        const jobId = options.jobId || `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+        const jobId =
+          options.jobId ||
+          `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
         // Tạo config file cho các script nếu cần
         if (options.renderConfig) {
           try {
             // Sử dụng unique config file để tránh conflict khi chạy đồng thời
-            const configPath = path.join(configDir, `.render-config-${jobId}.json`);
+            const configPath = path.join(
+              configDir,
+              `.render-config-${jobId}.json`
+            );
             fs.writeFileSync(
               configPath,
               JSON.stringify(options.renderConfig, null, 2)
@@ -500,7 +606,12 @@ ipcMain.handle(
         if (app.isPackaged) {
           // Folder bin/ được unpack vào app.asar.unpacked/bin/
           const possibleNodePaths = [
-            path.join(process.resourcesPath, "app.asar.unpacked", "bin", "node.exe"),
+            path.join(
+              process.resourcesPath,
+              "app.asar.unpacked",
+              "bin",
+              "node.exe"
+            ),
             path.join(process.resourcesPath, "bin", "node.exe"), // Fallback
           ];
 
@@ -518,7 +629,9 @@ ipcMain.handle(
           } else {
             // Nếu không tìm thấy node.exe, thử dùng node từ PATH
             console.warn(
-              `Node executable không tìm thấy. Đã kiểm tra: ${possibleNodePaths.join(", ")}. Sử dụng 'node' từ PATH`
+              `Node executable không tìm thấy. Đã kiểm tra: ${possibleNodePaths.join(
+                ", "
+              )}. Sử dụng 'node' từ PATH`
             );
           }
         }

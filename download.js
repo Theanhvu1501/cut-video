@@ -17,8 +17,12 @@ const __dirname = path.dirname(__filename);
 const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
 const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
 
-const youtubedl = createYoutubeDl("./bin/yt-dlp.exe");
-const YTDLP_PATH = path.resolve("./bin/yt-dlp");
+// Sử dụng absolute path để đảm bảo tìm đúng file sau khi tải mới
+const YTDLP_PATH = path.join(__dirname, "bin", "yt-dlp.exe");
+// Tạo helper function để luôn lấy yt-dlp mới nhất (sau khi tải update)
+const getYoutubeDl = () => createYoutubeDl(YTDLP_PATH);
+// Giữ object cũ để tương thích, nhưng nên dùng getYoutubeDl() để đảm bảo dùng file mới
+const youtubedl = getYoutubeDl();
 ffmpegFluent.setFfmpegPath(FFMPEG_PATH);
 ffmpegFluent.setFfprobePath(FFPROBE_PATH);
 
@@ -61,7 +65,8 @@ if (fs.existsSync(configFilePath)) {
  */
 const downloadVideo = async (url, outputPath) => {
   const output = path.join(outputPath, "%(title)s.%(ext)s");
-  await youtubedl(url, {
+  // Sử dụng getYoutubeDl() để đảm bảo luôn dùng yt-dlp mới nhất (sau khi update)
+  await getYoutubeDl()(url, {
     output: output,
     format:
       "bestvideo[height=720][ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[height=720][ext=mp4][vcodec^=avc]",

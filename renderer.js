@@ -1144,16 +1144,81 @@ async function selectDownloadCookiesFile() {
   }
 }
 
+async function downloadYtDlp() {
+  if (!checkElectronAPI()) return;
+
+  const btn = document.getElementById("download-ytdlp-btn");
+  const statusDiv = document.getElementById("ytdlp-download-status");
+
+  if (!btn || !statusDiv) return;
+
+  // Disable button and show status
+  btn.disabled = true;
+  btn.textContent = "⏳";
+  statusDiv.style.display = "block";
+  statusDiv.innerHTML = "🔄 Đang tải yt-dlp mới nhất từ GitHub...";
+  statusDiv.style.color = "#1565c0";
+  statusDiv.style.background = "#e3f2fd";
+
+  try {
+    const result = await window.electronAPI.downloadYtDlp();
+
+    if (result.success) {
+      statusDiv.innerHTML = `✅ ${
+        result.message || "Đã tải yt-dlp mới nhất thành công!"
+      }<br><small style="display: block; margin-top: 5px;">Bạn có thể sử dụng ngay mà không cần khởi động lại ứng dụng.</small>`;
+      statusDiv.style.color = "#2e7d32";
+      statusDiv.style.background = "#e8f5e9";
+      btn.textContent = "📥";
+    } else {
+      statusDiv.innerHTML = `❌ Lỗi: ${result.error || "Không thể tải yt-dlp"}`;
+      statusDiv.style.color = "#c62828";
+      statusDiv.style.background = "#ffebee";
+      btn.textContent = "📥";
+    }
+  } catch (error) {
+    statusDiv.innerHTML = `❌ Lỗi: ${getErrorMessage(error)}`;
+    statusDiv.style.color = "#c62828";
+    statusDiv.style.background = "#ffebee";
+    btn.textContent = "📥";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function runDownload() {
   if (!checkElectronAPI()) return;
 
   clearOutput("download");
   showOutput("download", "🚀 Đang tải video...\n\n");
 
+  let hasError = false;
+  let errorMessage = "";
+
   try {
     window.electronAPI.removeScriptOutputListener();
     window.electronAPI.onScriptOutput((data) => {
       showOutput("download", data);
+      // Kiểm tra các lỗi phổ biến của yt-dlp
+      const errorPatterns = [
+        /yt-dlp.*error/i,
+        /ERROR/i,
+        /Unable to download/i,
+        /This video is unavailable/i,
+        /Sign in to confirm your age/i,
+        /Video unavailable/i,
+        /Private video/i,
+        /yt-dlp.*not found/i,
+        /executable.*not found/i,
+      ];
+
+      const lowerData = data.toLowerCase();
+      if (errorPatterns.some((pattern) => pattern.test(data))) {
+        hasError = true;
+        if (!errorMessage) {
+          errorMessage = data;
+        }
+      }
     });
 
     const options = {
@@ -1167,9 +1232,26 @@ async function runDownload() {
     };
 
     await window.electronAPI.runScript("download.js", [], options);
-    showOutput("download", "\n\n✅ Hoàn thành!");
+
+    if (hasError) {
+      showOutput(
+        "download",
+        "\n\n⚠️ Có một số lỗi xảy ra trong quá trình tải.\n"
+      );
+      showOutput(
+        "download",
+        "💡 Gợi ý: Nếu gặp lỗi liên quan đến yt-dlp, vui lòng tải lại yt-dlp mới nhất ở phần trên.\n"
+      );
+    } else {
+      showOutput("download", "\n\n✅ Hoàn thành!");
+    }
   } catch (error) {
-    showOutput("download", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
+    const errorMsg = getErrorMessage(error);
+    showOutput("download", `\n\n❌ Lỗi: ${errorMsg}\n`);
+    showOutput(
+      "download",
+      "\n💡 Gợi ý: Nếu lỗi liên quan đến yt-dlp, vui lòng tải lại yt-dlp mới nhất ở phần trên.\n"
+    );
   }
 }
 

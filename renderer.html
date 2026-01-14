@@ -896,12 +896,54 @@
               >?</span
             >
           </div>
-          <div class="info-box">
-            <p>
-              <strong>Chức năng:</strong> Tải video từ danh sách URL trong file
-              urls.txt
-            </p>
+          <div
+            class="info-box"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 10px;
+            "
+          >
+            <div style="flex: 1">
+              <p style="margin: 0">
+                <strong>Chức năng:</strong> Tải video từ danh sách URL trong
+                file urls.txt
+              </p>
+              <p style="margin-top: 10px; margin-bottom: 0">
+                <strong>Chú ý:</strong> Nếu tải tất cả video không thành công
+                (Có thể do các lỗi của YT mới update), vui lòng tải lại bản mới
+                nhất.
+              </p>
+            </div>
+            <button
+              class="btn btn-secondary"
+              onclick="downloadYtDlp()"
+              id="download-ytdlp-btn"
+              style="
+                flex-shrink: 0;
+                padding: 8px 12px;
+                font-size: 16px;
+                min-width: auto;
+              "
+              title="Tải yt-dlp mới nhất từ GitHub"
+            >
+              📥
+            </button>
           </div>
+          <div
+            id="ytdlp-download-status"
+            style="
+              margin-top: 10px;
+              margin-bottom: 20px;
+              display: none;
+              padding: 10px;
+              background: #f5f5f5;
+              border-radius: 5px;
+              font-size: 12px;
+              color: #666;
+            "
+          ></div>
           <div class="form-group">
             <label>File URLs (urls.txt):</label>
             <div class="folder-select">

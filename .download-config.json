@@ -1,6 +1,7 @@
 {
-  "urlsFile": "C:\\Users\\INFODEVHP\\Desktop\\test\\urls.txt",
-  "downloadDir": "C:\\Users\\INFODEVHP\\Desktop\\test\\overlays",
-  "overlayImagesDir": "C:\\Users\\INFODEVHP\\Desktop\\test\\images",
-  "outputThumbsBaseDir": "C:\\Users\\INFODEVHP\\Desktop\\test\\thumbs"
+  "urlsFile": "D:\\test\\2ch\\urls.txt",
+  "downloadDir": "D:\\test\\2ch\\overlays",
+  "overlayImagesDir": "D:\\test\\2ch\\images",
+  "outputThumbsBaseDir": "D:\\test\\2ch\\thumbs",
+  "cookiesFile": "./cookies.txt"
 }

@@ -109,6 +109,17 @@ async function saveSettings() {
     normalize: {
       inputFolder: selectedNormalizeInputFolder,
     },
+    // Concat settings
+    concat: {
+      chunkSize: document.getElementById("concat-chunk-size")?.value || "2",
+      useThumbs:
+        document.getElementById("concat-use-thumbs")?.checked ?? true,
+      thumbDuration:
+        document.getElementById("concat-thumb-duration")?.value || "3",
+      inputFolder: selectedConcatInputFolder,
+      thumbsFolder: selectedConcatThumbsFolder,
+      outputFolder: selectedConcatOutputFolder,
+    },
   };
 
   // Lưu vào localStorage
@@ -628,6 +639,48 @@ async function loadSettings() {
         document.getElementById("normalize-input-path").style.display = "block";
       }
     }
+
+    // Load Concat settings
+    if (settings.concat) {
+      if (settings.concat.chunkSize)
+        document.getElementById("concat-chunk-size").value =
+          settings.concat.chunkSize;
+      if (settings.concat.useThumbs !== undefined) {
+        document.getElementById("concat-use-thumbs").checked =
+          settings.concat.useThumbs;
+        toggleConcatThumbs();
+      }
+      if (settings.concat.thumbDuration)
+        document.getElementById("concat-thumb-duration").value =
+          settings.concat.thumbDuration;
+      if (settings.concat.inputFolder) {
+        selectedConcatInputFolder = settings.concat.inputFolder;
+        document.getElementById("concat-input-folder").value =
+          settings.concat.inputFolder;
+        document.getElementById(
+          "concat-input-path"
+        ).textContent = `Đã chọn: ${settings.concat.inputFolder}`;
+        document.getElementById("concat-input-path").style.display = "block";
+      }
+      if (settings.concat.thumbsFolder) {
+        selectedConcatThumbsFolder = settings.concat.thumbsFolder;
+        document.getElementById("concat-thumbs-folder").value =
+          settings.concat.thumbsFolder;
+        document.getElementById(
+          "concat-thumbs-path"
+        ).textContent = `Đã chọn: ${settings.concat.thumbsFolder}`;
+        document.getElementById("concat-thumbs-path").style.display = "block";
+      }
+      if (settings.concat.outputFolder) {
+        selectedConcatOutputFolder = settings.concat.outputFolder;
+        document.getElementById("concat-output-folder").value =
+          settings.concat.outputFolder;
+        document.getElementById(
+          "concat-output-path"
+        ).textContent = `Đã chọn: ${settings.concat.outputFolder}`;
+        document.getElementById("concat-output-path").style.display = "block";
+      }
+    }
   } catch (error) {
     console.error("Error loading settings:", error);
   }
@@ -677,6 +730,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     "video-snow-max-concurrent",
     "video-snow-segment-min",
     "video-snow-segment-max",
+    "concat-chunk-size",
+    "concat-thumb-duration",
   ];
 
   inputsToWatch.forEach((id) => {
@@ -688,7 +743,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   // Watch checkboxes
-  const checkboxesToWatch = ["render-use-gpu", "render-keepcolor-crop"];
+  const checkboxesToWatch = [
+    "render-use-gpu",
+    "render-keepcolor-crop",
+    "concat-use-thumbs",
+  ];
 
   checkboxesToWatch.forEach((id) => {
     const element = document.getElementById(id);
@@ -696,6 +755,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       element.addEventListener("change", () => {
         saveSettings();
         if (id === "render-keepcolor-crop") toggleKeepColorCrop();
+        if (id === "concat-use-thumbs") toggleConcatThumbs();
       });
     }
   });
@@ -1567,5 +1627,127 @@ async function runNormalize() {
     showOutput("normalize", "\n\n✅ Hoàn thành!");
   } catch (error) {
     showOutput("normalize", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
+  }
+}
+
+// Concat Video
+let selectedConcatInputFolder = null;
+let selectedConcatThumbsFolder = null;
+let selectedConcatOutputFolder = null;
+
+async function selectConcatInputFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) {
+    selectedConcatInputFolder = folder;
+    document.getElementById("concat-input-folder").value = folder;
+    document.getElementById(
+      "concat-input-path"
+    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("concat-input-path").style.display = "block";
+    saveSettings();
+  }
+}
+
+async function selectConcatThumbsFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) {
+    selectedConcatThumbsFolder = folder;
+    document.getElementById("concat-thumbs-folder").value = folder;
+    document.getElementById(
+      "concat-thumbs-path"
+    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("concat-thumbs-path").style.display = "block";
+    saveSettings();
+  }
+}
+
+async function selectConcatOutputFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) {
+    selectedConcatOutputFolder = folder;
+    document.getElementById("concat-output-folder").value = folder;
+    document.getElementById(
+      "concat-output-path"
+    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("concat-output-path").style.display = "block";
+    saveSettings();
+  }
+}
+
+function toggleConcatThumbs() {
+  const useThumbs = document.getElementById("concat-use-thumbs").checked;
+  const thumbsOptions = document.getElementById("concat-thumbs-options");
+  if (thumbsOptions) {
+    thumbsOptions.style.display = useThumbs ? "block" : "none";
+  }
+}
+
+async function runConcat() {
+  const chunkSize = parseInt(
+    document.getElementById("concat-chunk-size").value
+  ) || 2;
+  const useThumbs = document.getElementById("concat-use-thumbs").checked;
+  const thumbDuration = parseFloat(
+    document.getElementById("concat-thumb-duration").value
+  ) || 3;
+
+  if (!selectedConcatInputFolder) {
+    alert("Vui lòng chọn folder video input!");
+    return;
+  }
+
+  if (!selectedConcatOutputFolder) {
+    alert("Vui lòng chọn folder output!");
+    return;
+  }
+
+  if (chunkSize < 2) {
+    alert("Chunk size phải lớn hơn hoặc bằng 2!");
+    return;
+  }
+
+  if (useThumbs) {
+    if (!selectedConcatThumbsFolder) {
+      alert("Vui lòng chọn folder chứa thumbnail!");
+      return;
+    }
+    if (thumbDuration <= 0) {
+      alert("Thời gian thumbnail phải lớn hơn 0!");
+      return;
+    }
+  }
+
+  if (!checkElectronAPI()) return;
+
+  clearOutput("concat");
+  showOutput(
+    "concat",
+    `🚀 Đang ghép video với input="${selectedConcatInputFolder}", chunkSize=${chunkSize}, useThumbs=${useThumbs}...\n\n`
+  );
+
+  try {
+    window.electronAPI.removeScriptOutputListener();
+    window.electronAPI.onScriptOutput((data) => {
+      showOutput("concat", data);
+    });
+
+    const options = {
+      concatConfig: {
+        chunkSize,
+        useThumbs,
+        thumbDuration: useThumbs ? thumbDuration : null,
+        inputFolder: selectedConcatInputFolder,
+        thumbsFolder: useThumbs ? selectedConcatThumbsFolder : null,
+        outputFolder: selectedConcatOutputFolder,
+      },
+    };
+
+    await window.electronAPI.runScript("concat-video.js", [], options);
+    showOutput("concat", "\n\n✅ Hoàn thành!");
+  } catch (error) {
+    showOutput("concat", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
   }
 }

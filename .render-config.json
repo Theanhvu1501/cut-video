@@ -1,9 +1,11 @@
 {
   "renderMode": "crop",
   "chromaKeyMode": "color",
-  "chromaKeyColor": null,
+  "chromaKeyColor": "D4F9D7",
   "chromaKeyFile": null,
-  "keepColorColors": null,
+  "keepColorColors": [
+    "FBFF02"
+  ],
   "keepColorCrop": false,
   "keepColorHeight": 220,
   "keepColorYOffset": 490,

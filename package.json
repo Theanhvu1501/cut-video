@@ -63,6 +63,7 @@
       "trim-videos.js",
       "thumb.js",
       "createVideoSnow.js",
+      "concat-video.js",
       "bin/**",
       "node_modules/**"
     ],

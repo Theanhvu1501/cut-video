@@ -1,5 +1,5 @@
 import ffmpeg from "fluent-ffmpeg";
-import { promises as fs } from "fs";
+import fsSync, { promises as fs } from "fs";
 import path, { dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -12,15 +12,63 @@ const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
 ffmpeg.setFfmpegPath(FFMPEG_PATH);
 ffmpeg.setFfprobePath(FFPROBE_PATH);
 
-const THUMBS_DIR = path.join(__dirname, "thumbs");
-const DONE_DIR = path.join(__dirname, "done");
-const OUTPUT_DIR = path.join(__dirname, "output");
+let THUMBS_DIR = path.join(__dirname, "thumbs");
+let DONE_DIR = path.join(__dirname, "done");
+let OUTPUT_DIR = path.join(__dirname, "output");
 const TEMP_DIR = path.join(__dirname, "temp");
 
-const THUMB_DURATION = 3;
+let THUMB_DURATION = 3;
 const THUMB_EXTENSION = ".jpg";
 const DEFAULT_CHUNK_SIZE = 2;
-const SILENT_AUDIO_PATH = path.join(__dirname, "silence.mp3");
+
+// Tìm file silence.mp3: ưu tiên trong bin/, sau đó là __dirname
+const BIN_SILENCE_PATH = path.join(__dirname, "bin", "silence.mp3");
+const ROOT_SILENCE_PATH = path.join(__dirname, "silence.mp3");
+const SILENT_AUDIO_PATH = fsSync.existsSync(BIN_SILENCE_PATH)
+  ? BIN_SILENCE_PATH
+  : ROOT_SILENCE_PATH;
+let USE_THUMBS = true; // Mặc định là true để giữ tương thích với code cũ
+
+// Các biến để lưu đường dẫn trực tiếp từ config (nếu có)
+let INPUT_FOLDER = null; // Folder input trực tiếp chứa video
+let OUTPUT_FOLDER = null; // Folder output trực tiếp
+let THUMBS_FOLDER = null; // Folder thumbs trực tiếp (nếu useThumbs)
+
+// Đọc config từ file nếu có
+// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
+// Nếu không có, dùng __dirname (cho development)
+const configDir = process.env.CONFIG_DIR || __dirname;
+const configFilePath = path.join(configDir, ".concat-config.json");
+if (fsSync.existsSync(configFilePath)) {
+  try {
+    const configContent = fsSync.readFileSync(configFilePath, "utf-8");
+    const config = JSON.parse(configContent);
+
+    // Ưu tiên sử dụng inputFolder/outputFolder trực tiếp (mode mới)
+    if (config.inputFolder) {
+      INPUT_FOLDER = config.inputFolder;
+    } else if (config.doneFolder) {
+      // Fallback cho mode cũ
+      DONE_DIR = config.doneFolder;
+    }
+
+    if (config.outputFolder) {
+      OUTPUT_FOLDER = config.outputFolder;
+    }
+
+    if (config.thumbsFolder) {
+      THUMBS_FOLDER = config.thumbsFolder;
+    }
+
+    if (config.useThumbs !== undefined) USE_THUMBS = config.useThumbs;
+    if (config.thumbDuration)
+      THUMB_DURATION = parseFloat(config.thumbDuration) || 3;
+
+    console.log(`Đã đọc config từ file: ${configFilePath}`);
+  } catch (error) {
+    console.error(`Lỗi khi đọc config file: ${error.message}`);
+  }
+}
 
 // Biến toàn cục để lưu trữ thông số của video gốc
 let sourceVideoMetadata = null;
@@ -115,13 +163,38 @@ function createVideoFromThumb(thumbPath, metadata) {
 
 async function processFolder(folderName, chunkSize) {
   console.log(`\n======================================================`);
-  console.log(
-    `🚀 Bắt đầu xử lý thư mục: "${folderName}"... (Chế độ ghép nối nhanh - c copy)`
-  );
+  const modeText = USE_THUMBS
+    ? "ghép nối với thumbnail"
+    : "ghép nối trực tiếp (không thumbnail)";
 
-  const videoFolderPath = path.join(DONE_DIR, folderName);
-  const thumbFolderPath = path.join(THUMBS_DIR, folderName);
-  const outputFolderPath = path.join(OUTPUT_DIR, folderName);
+  // Xác định đường dẫn: nếu có INPUT_FOLDER thì dùng trực tiếp, không cần folderName
+  let videoFolderPath;
+  let thumbFolderPath;
+  let outputFolderPath;
+
+  if (INPUT_FOLDER) {
+    // Mode mới: sử dụng folder input trực tiếp
+    videoFolderPath = INPUT_FOLDER;
+    outputFolderPath = OUTPUT_FOLDER || path.join(INPUT_FOLDER, "output");
+    if (USE_THUMBS && THUMBS_FOLDER) {
+      thumbFolderPath = THUMBS_FOLDER;
+    } else if (USE_THUMBS) {
+      // Fallback: tìm thumbs folder cùng tên với input folder
+      const inputFolderName = path.basename(INPUT_FOLDER);
+      thumbFolderPath = path.join(THUMBS_DIR, inputFolderName);
+    }
+    console.log(
+      `🚀 Bắt đầu xử lý folder: "${INPUT_FOLDER}"... (Chế độ ${modeText} - c copy)`
+    );
+  } else {
+    // Mode cũ: sử dụng DONE_DIR + folderName
+    videoFolderPath = path.join(DONE_DIR, folderName);
+    thumbFolderPath = path.join(THUMBS_DIR, folderName);
+    outputFolderPath = OUTPUT_FOLDER || path.join(OUTPUT_DIR, folderName);
+    console.log(
+      `🚀 Bắt đầu xử lý thư mục: "${folderName}"... (Chế độ ${modeText} - c copy)`
+    );
+  }
 
   try {
     await fs.mkdir(outputFolderPath, { recursive: true });
@@ -161,48 +234,52 @@ async function processFolder(folderName, chunkSize) {
       return;
     }
 
-    // Kiểm tra và tạo file silence.mp3 nếu chưa có hoặc không đúng chuẩn
-    try {
-      await fs.access(SILENT_AUDIO_PATH);
-      console.log("    ☑️  Đã tìm thấy silence.mp3.");
-      // Bạn có thể thêm bước kiểm tra metadata của silence.mp3 ở đây để đảm bảo nó khớp
-    } catch {
-      console.warn(
-        `\n    ⚠️  KHÔNG TÌM THẤY file 'silence.mp3' hoặc không thể truy cập.`
-      );
-      console.warn(
-        `    Sẽ cố gắng tạo một file tạm với thông số chuẩn từ video gốc.`
-      );
-      // Tạo một file silence tạm thời nếu silence.mp3 không tồn tại
-      await new Promise((resolve, reject) => {
-        const tempSilentPath = SILENT_AUDIO_PATH; // Sử dụng đường dẫn silence.mp3 luôn
-        const audioBitrate =
-          typeof sourceVideoMetadata.audio_bitrate === "number"
-            ? `${Math.round(sourceVideoMetadata.audio_bitrate / 1000)}k`
-            : sourceVideoMetadata.audio_bitrate || "128k";
+    // Chỉ kiểm tra và tạo file silence.mp3 nếu cần chèn thumbnail
+    if (USE_THUMBS) {
+      try {
+        await fs.access(SILENT_AUDIO_PATH);
+        console.log("    ☑️  Đã tìm thấy silence.mp3.");
+        // Bạn có thể thêm bước kiểm tra metadata của silence.mp3 ở đây để đảm bảo nó khớp
+      } catch {
+        console.warn(
+          `\n    ⚠️  KHÔNG TÌM THẤY file 'silence.mp3' hoặc không thể truy cập.`
+        );
+        console.warn(
+          `    Sẽ cố gắng tạo một file tạm với thông số chuẩn từ video gốc.`
+        );
+        // Tạo một file silence tạm thời nếu silence.mp3 không tồn tại
+        await new Promise((resolve, reject) => {
+          const tempSilentPath = SILENT_AUDIO_PATH; // Sử dụng đường dẫn silence.mp3 luôn
+          const audioBitrate =
+            typeof sourceVideoMetadata.audio_bitrate === "number"
+              ? `${Math.round(sourceVideoMetadata.audio_bitrate / 1000)}k`
+              : sourceVideoMetadata.audio_bitrate || "128k";
 
-        ffmpeg()
-          .addInput(
-            `anullsrc=r=${sourceVideoMetadata.sample_rate}:cl=${
-              sourceVideoMetadata.audio_channels === 1 ? "mono" : "stereo"
-            }`
-          )
-          .inputOptions(["-f lavfi"])
-          .duration(10) // Tạo 10 giây silence
-          .audioCodec(sourceVideoMetadata.audio_codec)
-          .audioBitrate(audioBitrate)
-          .on("end", () => {
-            console.log(`    ✅ Đã tạo file 'silence.mp3' tạm thời.`);
-            resolve();
-          })
-          .on("error", (err) => {
-            console.error(
-              `    ❌ LỖI TẠO silence.mp3 tạm thời: ${err.message}`
-            );
-            reject(new Error(`Không thể tạo file silence.mp3: ${err.message}`));
-          })
-          .save(tempSilentPath);
-      });
+          ffmpeg()
+            .addInput(
+              `anullsrc=r=${sourceVideoMetadata.sample_rate}:cl=${
+                sourceVideoMetadata.audio_channels === 1 ? "mono" : "stereo"
+              }`
+            )
+            .inputOptions(["-f lavfi"])
+            .duration(10) // Tạo 10 giây silence
+            .audioCodec(sourceVideoMetadata.audio_codec)
+            .audioBitrate(audioBitrate)
+            .on("end", () => {
+              console.log(`    ✅ Đã tạo file 'silence.mp3' tạm thời.`);
+              resolve();
+            })
+            .on("error", (err) => {
+              console.error(
+                `    ❌ LỖI TẠO silence.mp3 tạm thời: ${err.message}`
+              );
+              reject(
+                new Error(`Không thể tạo file silence.mp3: ${err.message}`)
+              );
+            })
+            .save(tempSilentPath);
+        });
+      }
     }
 
     for (let i = 0; i < videoFiles.length; i += chunkSize) {
@@ -231,8 +308,8 @@ async function processFolder(folderName, chunkSize) {
           chunk[j]
         )}'\n`;
 
-        // Nếu không phải là video cuối cùng trong chunk, thêm thumbnail
-        if (j < chunk.length - 1) {
+        // Nếu không phải là video cuối cùng trong chunk và bật chèn thumbnail, thêm thumbnail
+        if (j < chunk.length - 1 && USE_THUMBS) {
           const nextVideoName = chunk[j + 1];
           const thumbName =
             nextVideoName.replace(path.extname(nextVideoName), "") +
@@ -321,10 +398,37 @@ async function processFolder(folderName, chunkSize) {
     await fs.mkdir(OUTPUT_DIR, { recursive: true });
     await fs.mkdir(TEMP_DIR, { recursive: true }); // Tạo TEMP_DIR ngay từ đầu
 
+    // Đọc chunkSize, useThumbs, thumbDuration từ config nếu có (đã đọc ở trên, nhưng cần đọc lại để có giá trị mới nhất)
+    let configChunkSize = DEFAULT_CHUNK_SIZE;
+    if (fsSync.existsSync(configFilePath)) {
+      try {
+        const configContent = fsSync.readFileSync(configFilePath, "utf-8");
+        const config = JSON.parse(configContent);
+        if (config.chunkSize)
+          configChunkSize =
+            parseInt(config.chunkSize, 10) || DEFAULT_CHUNK_SIZE;
+        if (config.useThumbs !== undefined) USE_THUMBS = config.useThumbs;
+        if (config.thumbDuration)
+          THUMB_DURATION = parseFloat(config.thumbDuration) || 3;
+      } catch (error) {
+        console.error(`Lỗi khi đọc config: ${error.message}`);
+      }
+    }
+
     const args = process.argv.slice(2);
-    if (args[0] && args[1]) {
+    let folderName = null;
+    let chunkSize = DEFAULT_CHUNK_SIZE;
+
+    // Ưu tiên: INPUT_FOLDER từ config > command line args > auto mode
+    if (INPUT_FOLDER) {
+      // Mode mới: sử dụng folder input trực tiếp từ config
+      chunkSize = configChunkSize;
+      await processFolder(null, chunkSize); // folderName không cần thiết nữa
+    } else if (args[0] && args[1]) {
       // Chế độ thủ công: node concat-video.js <chunkSize> <folderName>
-      await processFolder(args[1], parseInt(args[0], 10));
+      chunkSize = parseInt(args[0], 10) || DEFAULT_CHUNK_SIZE;
+      folderName = args[1];
+      await processFolder(folderName, chunkSize);
     } else {
       // Chế độ tự động
       console.log(

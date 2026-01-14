@@ -256,6 +256,7 @@
         <button class="tab-button" data-tab="normalize">
           Sửa tên ảnh thu nhỏ
         </button>
+        <button class="tab-button" data-tab="concat">Ghép video</button>
       </div>
 
       <div class="content">
@@ -1214,6 +1215,130 @@
             </button>
           </div>
           <div id="normalize-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Concat Video Tab -->
+        <div id="concat" class="tab-content">
+          <h2>Ghép video</h2>
+          <div class="info-box">
+            <p>
+              <strong>Chức năng:</strong> Ghép nhiều video lại với nhau, chèn
+              thumbnail giữa các video
+            </p>
+          </div>
+          <div class="form-group">
+            <label>Folder video input:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="concat-input-folder"
+                placeholder="Chọn folder chứa video cần ghép"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectConcatInputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="concat-input-path"
+              class="folder-path"
+              style="display: none"
+            >            </div>
+          </div>
+          <div class="form-group">
+            <label>Folder output:</label>
+            <div class="folder-select">
+              <input
+                type="text"
+                id="concat-output-folder"
+                placeholder="Chọn folder lưu video đã ghép"
+                readonly
+              />
+              <button
+                class="btn btn-secondary"
+                onclick="selectConcatOutputFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <div
+              id="concat-output-path"
+              class="folder-path"
+              style="display: none"
+            ></div>
+          </div>
+          <div class="form-group">
+            <label>Chunk size (số video ghép mỗi nhóm):</label>
+            <input
+              type="number"
+              id="concat-chunk-size"
+              value="2"
+              min="2"
+              placeholder="2"
+            />
+          </div>
+          <div class="form-group">
+            <label
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-weight: normal;
+              "
+            >
+              <input
+                type="checkbox"
+                id="concat-use-thumbs"
+                checked
+                onchange="toggleConcatThumbs()"
+              />
+              <span>Chèn thumbnail giữa các video</span>
+            </label>
+          </div>
+          <div id="concat-thumbs-options" class="form-group">
+            <div class="form-group">
+              <label>Folder chứa thumb:</label>
+              <div class="folder-select">
+                <input
+                  type="text"
+                  id="concat-thumbs-folder"
+                  placeholder="Chọn folder chứa thumbnail"
+                  readonly
+                />
+                <button
+                  class="btn btn-secondary"
+                  onclick="selectConcatThumbsFolder()"
+                >
+                  Chọn Folder
+                </button>
+              </div>
+              <div
+                id="concat-thumbs-path"
+                class="folder-path"
+                style="display: none"
+              ></div>
+            </div>
+            <div class="form-group">
+              <label>Thời gian thumbnail (giây):</label>
+              <input
+                type="number"
+                id="concat-thumb-duration"
+                value="3"
+                min="0.1"
+                step="0.1"
+                placeholder="3"
+              />
+            </div>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="runConcat()">
+              Ghép video
+            </button>
+          </div>
+          <div id="concat-output" class="output" style="display: none"></div>
         </div>
       </div>
     </div>

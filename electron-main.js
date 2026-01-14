@@ -413,6 +413,24 @@ ipcMain.handle(
           }
         }
 
+        if (options.concatConfig) {
+          try {
+            const configPath = path.join(configDir, ".concat-config.json");
+            fs.writeFileSync(
+              configPath,
+              JSON.stringify(options.concatConfig, null, 2)
+            );
+          } catch (err) {
+            console.error(
+              `Error creating concat config file: ${getErrorMessage(err)}`
+            );
+            event.sender.send(
+              "script-output",
+              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
+            );
+          }
+        }
+
         // Xác định đường dẫn script và node executable
         let scriptFullPath = path.join(appPath, scriptPath);
 

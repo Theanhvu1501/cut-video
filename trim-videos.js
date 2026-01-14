@@ -17,6 +17,8 @@ ffmpeg.setFfprobePath(FFPROBE_PATH);
 let inputFolder = "./overlays";
 // Thư mục lưu video đã cắt
 let outputFolder = "./overlays_trimmed";
+// Thời điểm bắt đầu cắt (giây)
+let startTime = 0;
 // Thời lượng cần giữ lại (giây)
 let duration = 30;
 // Số lượng video xử lý đồng thời
@@ -34,8 +36,10 @@ if (fs.existsSync(configFilePath)) {
 
     if (config.inputFolder) inputFolder = config.inputFolder;
     if (config.outputFolder) outputFolder = config.outputFolder;
+    if (config.startTime !== undefined)
+      startTime = parseFloat(config.startTime) || 0;
     if (config.duration !== undefined)
-      duration = parseInt(config.duration) || 30;
+      duration = parseFloat(config.duration) || 30;
     if (config.concurrency !== undefined)
       concurrency = parseInt(config.concurrency) || 3;
 
@@ -46,11 +50,14 @@ if (fs.existsSync(configFilePath)) {
 }
 
 // Hàm cắt video
-const trimVideo = async (inputFile, outputFile, duration) => {
+const trimVideo = async (inputFile, outputFile, startTime, duration) => {
   return new Promise((resolve, reject) => {
-    console.log(`Đang cắt video: ${path.basename(inputFile)}`);
+    console.log(
+      `Đang cắt video: ${path.basename(inputFile)} (từ ${startTime}s, độ dài ${duration}s)`
+    );
 
     ffmpeg(inputFile)
+      .setStartTime(startTime)
       .setDuration(duration)
       .output(outputFile)
       .outputOptions([
@@ -118,14 +125,14 @@ const trimAllVideos = async () => {
       const inputFile = path.join(inputFolder, file);
       const outputFile = path.join(outputFolder, file);
 
-      return limit(() => trimVideo(inputFile, outputFile, duration));
+      return limit(() => trimVideo(inputFile, outputFile, startTime, duration));
     });
 
     // Chờ tất cả video được xử lý
     await Promise.all(promises);
 
     console.log(
-      `\n✅ Đã hoàn thành cắt ${files.length} video, mỗi video giữ lại ${duration} giây đầu tiên`
+      `\n✅ Đã hoàn thành cắt ${files.length} video, mỗi video cắt từ giây ${startTime}, độ dài ${duration} giây`
     );
     console.log(`Các video đã cắt được lưu trong thư mục: ${outputFolder}`);
   } catch (error) {

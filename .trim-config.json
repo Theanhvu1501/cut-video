@@ -1,4 +1,6 @@
 {
-  "inputFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\overlays",
-  "outputFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\overlays_trimmed"
+  "inputFolder": "D:\\test\\overlays",
+  "outputFolder": "D:\\test\\overlays_trimmed",
+  "startTime": 10,
+  "duration": 30
 }

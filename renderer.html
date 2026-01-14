@@ -314,7 +314,8 @@
       }
 
       @keyframes pulse {
-        0%, 100% {
+        0%,
+        100% {
           transform: scale(1);
           opacity: 0.3;
         }
@@ -461,7 +462,7 @@
         <button class="tab-button" data-tab="bg-video">
           Tạo video backgrounds
         </button>
-        <button class="tab-button" data-tab="trim">Cắt video -> 30s</button>
+        <button class="tab-button" data-tab="trim">Cắt video</button>
         <button class="tab-button" data-tab="cut-bg">
           Cắt video background
         </button>
@@ -478,7 +479,12 @@
         <div id="render" class="tab-content active">
           <div class="tab-header">
             <h2>Render Video</h2>
-            <span class="help-icon" onclick="showHelp('render')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('render')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p>
@@ -839,7 +845,12 @@
         <div id="download" class="tab-content">
           <div class="tab-header">
             <h2>Tải video</h2>
-            <span class="help-icon" onclick="showHelp('download')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('download')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p>
@@ -966,7 +977,12 @@
         <div id="retry" class="tab-content">
           <div class="tab-header">
             <h2>Tải lại video lỗi</h2>
-            <span class="help-icon" onclick="showHelp('retry')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('retry')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p>
@@ -985,7 +1001,12 @@
         <div id="video-snow" class="tab-content">
           <div class="tab-header">
             <h2>Tạo video từ ảnh</h2>
-            <span class="help-icon" onclick="showHelp('video-snow')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('video-snow')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo video từ ảnh với hiệu ứng</p>
@@ -1099,7 +1120,12 @@
         <div id="bg-video" class="tab-content">
           <div class="tab-header">
             <h2>Tạo video backgrounds</h2>
-            <span class="help-icon" onclick="showHelp('bg-video')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('bg-video')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo video backgrounds từ segments</p>
@@ -1172,11 +1198,16 @@
         <!-- Trim Tab -->
         <div id="trim" class="tab-content">
           <div class="tab-header">
-            <h2>Cắt video -> 30s</h2>
-            <span class="help-icon" onclick="showHelp('trim')" title="Hướng dẫn">?</span>
+            <h2>Cắt video</h2>
+            <span class="help-icon" onclick="showHelp('trim')" title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
-            <p><strong>Chức năng:</strong> Cắt video thành 30 giây đầu tiên</p>
+            <p>
+              <strong>Chức năng:</strong> Cắt video với thời gian và vị trí tùy
+              chỉnh
+            </p>
           </div>
           <div class="form-group">
             <label>Folder input:</label>
@@ -1222,6 +1253,34 @@
               style="display: none"
             ></div>
           </div>
+          <div class="form-group">
+            <label>Cắt từ giây thứ (Start time - giây):</label>
+            <input
+              type="number"
+              id="trim-start-time"
+              value="0"
+              min="0"
+              step="0.1"
+              placeholder="0"
+            />
+            <small style="color: #666; display: block; margin-top: 5px">
+              Giây bắt đầu cắt (0 = từ đầu video)
+            </small>
+          </div>
+          <div class="form-group">
+            <label>Thời gian cắt (Duration - giây):</label>
+            <input
+              type="number"
+              id="trim-duration"
+              value="30"
+              min="0.1"
+              step="0.1"
+              placeholder="30"
+            />
+            <small style="color: #666; display: block; margin-top: 5px">
+              Độ dài video sau khi cắt (giây)
+            </small>
+          </div>
           <div class="action-buttons">
             <button class="btn btn-primary" onclick="runTrim()">
               Cắt video
@@ -1234,7 +1293,12 @@
         <div id="cut-bg" class="tab-content">
           <div class="tab-header">
             <h2>Cắt video background</h2>
-            <span class="help-icon" onclick="showHelp('cut-bg')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('cut-bg')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p>
@@ -1298,7 +1362,12 @@
         <div id="thumb" class="tab-content">
           <div class="tab-header">
             <h2>Tạo ảnh thu nhỏ</h2>
-            <span class="help-icon" onclick="showHelp('thumb')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('thumb')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Tạo ảnh thumbnail từ video</p>
@@ -1381,7 +1450,12 @@
         <div id="get-url" class="tab-content">
           <div class="tab-header">
             <h2>Lấy URL</h2>
-            <span class="help-icon" onclick="showHelp('get-url')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('get-url')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p>
@@ -1426,7 +1500,12 @@
         <div id="normalize" class="tab-content">
           <div class="tab-header">
             <h2>Sửa tên ảnh thu nhỏ</h2>
-            <span class="help-icon" onclick="showHelp('normalize')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('normalize')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p><strong>Chức năng:</strong> Chuẩn hóa tên file ảnh thu nhỏ</p>
@@ -1465,7 +1544,12 @@
         <div id="concat" class="tab-content">
           <div class="tab-header">
             <h2>Ghép video</h2>
-            <span class="help-icon" onclick="showHelp('concat')" title="Hướng dẫn">?</span>
+            <span
+              class="help-icon"
+              onclick="showHelp('concat')"
+              title="Hướng dẫn"
+              >?</span
+            >
           </div>
           <div class="info-box">
             <p>
@@ -1493,7 +1577,7 @@
               id="concat-input-path"
               class="folder-path"
               style="display: none"
-            >            </div>
+            ></div>
           </div>
           <div class="form-group">
             <label>Folder output:</label>

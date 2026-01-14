@@ -88,6 +88,8 @@ async function saveSettings() {
     trim: {
       inputFolder: selectedTrimInputFolder,
       outputFolder: selectedTrimOutputFolder,
+      startTime: document.getElementById("trim-start-time")?.value || "0",
+      duration: document.getElementById("trim-duration")?.value || "30",
     },
     // Cut BG settings
     cutBg: {
@@ -555,6 +557,11 @@ async function loadSettings() {
         ).textContent = `Đã chọn: ${settings.trim.outputFolder}`;
         document.getElementById("trim-output-path").style.display = "block";
       }
+      if (settings.trim.startTime)
+        document.getElementById("trim-start-time").value =
+          settings.trim.startTime;
+      if (settings.trim.duration)
+        document.getElementById("trim-duration").value = settings.trim.duration;
     }
 
     // Load Cut BG settings
@@ -731,6 +738,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     "video-snow-segment-max",
     "concat-chunk-size",
     "concat-thumb-duration",
+    "trim-start-time",
+    "trim-duration",
   ];
 
   inputsToWatch.forEach((id) => {
@@ -1382,8 +1391,26 @@ async function selectTrimOutputFolder() {
 async function runTrim() {
   if (!checkElectronAPI()) return;
 
+  const startTime =
+    parseFloat(document.getElementById("trim-start-time").value) || 0;
+  const duration =
+    parseFloat(document.getElementById("trim-duration").value) || 30;
+
+  if (startTime < 0) {
+    alert("Thời gian bắt đầu phải lớn hơn hoặc bằng 0!");
+    return;
+  }
+
+  if (duration <= 0) {
+    alert("Thời gian cắt phải lớn hơn 0!");
+    return;
+  }
+
   clearOutput("trim");
-  showOutput("trim", "🚀 Đang cắt video thành 30s...\n\n");
+  showOutput(
+    "trim",
+    `🚀 Đang cắt video từ giây ${startTime}, độ dài ${duration}s...\n\n`
+  );
 
   try {
     window.electronAPI.removeScriptOutputListener();
@@ -1395,6 +1422,8 @@ async function runTrim() {
       trimConfig: {
         inputFolder: selectedTrimInputFolder || "./overlays",
         outputFolder: selectedTrimOutputFolder || "./overlays_trimmed",
+        startTime: startTime,
+        duration: duration,
       },
     };
 
@@ -1895,21 +1924,71 @@ const helpContents = {
     `,
   },
   trim: {
-    title: "Hướng dẫn Cắt video -> 30s",
+    title: "Hướng dẫn Cắt video",
     content: `
-      <h4>Chức năng:</h4>
-      <p>Cắt video thành 30 giây đầu tiên</p>
+      <h4>📋 Chức năng:</h4>
+      <p>Cắt video với thời gian và vị trí tùy chỉnh. Có thể cắt từ bất kỳ vị trí nào trong video và với độ dài tùy chọn.</p>
       
-      <h4>Các bước sử dụng:</h4>
+      <h4>🔧 Các tham số chi tiết:</h4>
       <ul>
-        <li><strong>Folder input:</strong> Chọn folder chứa video cần cắt. Để trống sẽ dùng <code>./overlays</code></li>
-        <li><strong>Folder output:</strong> Chọn folder lưu video đã cắt. Để trống sẽ dùng <code>./overlays_trimmed</code></li>
+        <li><strong>Folder input:</strong> 
+          <ul>
+            <li>Folder chứa video cần cắt</li>
+            <li>Hỗ trợ định dạng: .mp4, .mov, .avi, .mkv, .webm</li>
+            <li>Để trống sẽ dùng <code>./overlays</code></li>
+          </ul>
+        </li>
+        <li><strong>Folder output:</strong> 
+          <ul>
+            <li>Folder lưu video đã cắt</li>
+            <li>Video output sẽ giữ nguyên tên file gốc</li>
+            <li>Để trống sẽ dùng <code>./overlays_trimmed</code></li>
+          </ul>
+        </li>
+        <li><strong>Cắt từ giây thứ (Start time):</strong> 
+          <ul>
+            <li>Vị trí bắt đầu cắt trong video (giây)</li>
+            <li>Giá trị: 0 = từ đầu video, 10 = từ giây thứ 10</li>
+            <li>Có thể nhập số thập phân (ví dụ: 5.5 = 5 giây 500ms)</li>
+            <li>Mặc định: 0 (từ đầu video)</li>
+          </ul>
+        </li>
+        <li><strong>Thời gian cắt (Duration):</strong> 
+          <ul>
+            <li>Độ dài video sau khi cắt (giây)</li>
+            <li>Ví dụ: Start time = 10, Duration = 30 → cắt từ giây 10 đến giây 40</li>
+            <li>Có thể nhập số thập phân (ví dụ: 15.5 = 15 giây 500ms)</li>
+            <li>Mặc định: 30 giây</li>
+          </ul>
+        </li>
       </ul>
       
-      <h4>Lưu ý:</h4>
+      <h4>💡 Ví dụ cụ thể:</h4>
       <ul>
-        <li>Tất cả video trong folder input sẽ được cắt thành 30 giây đầu tiên</li>
-        <li>Video ngắn hơn 30 giây sẽ được giữ nguyên</li>
+        <li><strong>Ví dụ 1:</strong> Start time = 0, Duration = 30
+          <ul>
+            <li>→ Cắt 30 giây đầu tiên của video</li>
+          </ul>
+        </li>
+        <li><strong>Ví dụ 2:</strong> Start time = 10, Duration = 20
+          <ul>
+            <li>→ Cắt từ giây thứ 10 đến giây thứ 30 (20 giây)</li>
+          </ul>
+        </li>
+        <li><strong>Ví dụ 3:</strong> Start time = 60, Duration = 15
+          <ul>
+            <li>→ Cắt từ giây thứ 60 đến giây thứ 75 (15 giây)</li>
+          </ul>
+        </li>
+      </ul>
+      
+      <h4>⚠️ Lưu ý quan trọng:</h4>
+      <ul>
+        <li>Tất cả video trong folder input sẽ được cắt với cùng tham số</li>
+        <li>Nếu video ngắn hơn (startTime + duration), sẽ cắt đến hết video</li>
+        <li>Nếu startTime vượt quá độ dài video, video đó sẽ bị bỏ qua</li>
+        <li>Video output sẽ được encode lại với codec H.264 (có thể mất thời gian)</li>
+        <li>Chất lượng video được giữ ở mức tốt (CRF 23)</li>
       </ul>
     `,
   },

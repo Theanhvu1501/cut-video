@@ -1,6 +1,6 @@
 {
-  "inputFolder": "D:\\test\\overlays",
-  "outputFolder": "D:\\test\\overlays_trimmed",
-  "startTime": 10,
+  "inputFolder": "D:\\test\\2ch\\overlays",
+  "outputFolder": "D:\\test\\2ch\\overlays_trimmed",
+  "startTime": 0,
   "duration": 30
 }

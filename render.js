@@ -97,6 +97,10 @@ const __dirname = path.dirname(__filename);
 // Cấu hình FFmpeg - sử dụng @ffmpeg-installer như code cũ
 ffmpeg.setFfmpegPath(ffmpegPath);
 
+// Cấu hình FFprobe - sử dụng từ thư mục bin
+const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
+ffmpeg.setFfprobePath(FFPROBE_PATH);
+
 // Giữ FFMPEG_PATH cho các hàm khác nếu cần
 const FFMPEG_PATH = ffmpegPath;
 

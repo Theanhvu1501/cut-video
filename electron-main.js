@@ -722,6 +722,14 @@ ipcMain.handle(
           options.jobId ||
           `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+        // Set environment variables để scripts biết đọc config và tìm node_modules
+        // Phải khai báo env trước khi sử dụng
+        const env = {
+          ...process.env,
+          CONFIG_DIR: configDir,
+          ...options.env,
+        };
+
         // Tạo config file cho các script nếu cần
         if (options.renderConfig) {
           try {
@@ -996,12 +1004,7 @@ ipcMain.handle(
           }
         }
 
-        // Set environment variables để scripts biết đọc config và tìm node_modules
-        const env = {
-          ...process.env,
-          CONFIG_DIR: configDir,
-          ...options.env,
-        };
+        // env đã được khai báo ở trên, chỉ cần cập nhật NODE_PATH nếu cần
 
         // Trong production, set NODE_PATH để scripts có thể tìm node_modules
         if (app.isPackaged) {
@@ -1057,6 +1060,56 @@ ipcMain.handle(
         });
 
         child.on("close", (code) => {
+          // Cleanup: Xóa các config file tạm sau khi job hoàn thành
+          try {
+            // Xóa render config file nếu có
+            if (options.renderConfig && env.RENDER_CONFIG_FILE) {
+              const configPath = path.join(configDir, env.RENDER_CONFIG_FILE);
+              if (fs.existsSync(configPath)) {
+                fs.unlinkSync(configPath);
+                console.log(`Đã xóa config file: ${env.RENDER_CONFIG_FILE}`);
+              }
+            }
+            // Xóa các config file khác nếu có
+            if (options.downloadConfig) {
+              const downloadConfigPath = path.join(
+                configDir,
+                ".download-config.json"
+              );
+              if (fs.existsSync(downloadConfigPath)) {
+                fs.unlinkSync(downloadConfigPath);
+              }
+            }
+            if (options.trimConfig) {
+              const trimConfigPath = path.join(configDir, ".trim-config.json");
+              if (fs.existsSync(trimConfigPath)) {
+                fs.unlinkSync(trimConfigPath);
+              }
+            }
+            if (options.videoSnowConfig) {
+              const videoSnowConfigPath = path.join(
+                configDir,
+                ".video-snow-config.json"
+              );
+              if (fs.existsSync(videoSnowConfigPath)) {
+                fs.unlinkSync(videoSnowConfigPath);
+              }
+            }
+            if (options.bgVideoConfig) {
+              const bgVideoConfigPath = path.join(
+                configDir,
+                ".bg-video-config.json"
+              );
+              if (fs.existsSync(bgVideoConfigPath)) {
+                fs.unlinkSync(bgVideoConfigPath);
+              }
+            }
+          } catch (cleanupError) {
+            console.warn(
+              `Lỗi khi cleanup config files: ${cleanupError.message}`
+            );
+          }
+
           if (code === 0) {
             resolve({ success: true, output: stdout });
           } else {
@@ -1066,6 +1119,20 @@ ipcMain.handle(
         });
 
         child.on("error", (error) => {
+          // Cleanup config files khi có lỗi
+          try {
+            if (options.renderConfig && env.RENDER_CONFIG_FILE) {
+              const configPath = path.join(configDir, env.RENDER_CONFIG_FILE);
+              if (fs.existsSync(configPath)) {
+                fs.unlinkSync(configPath);
+              }
+            }
+          } catch (cleanupError) {
+            console.warn(
+              `Lỗi khi cleanup config files: ${cleanupError.message}`
+            );
+          }
+
           const errorMsg = getErrorMessage(error);
           console.error(`Error spawning script: ${errorMsg}`);
           reject({ success: false, error: errorMsg });

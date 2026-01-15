@@ -203,6 +203,13 @@ async function checkLicenseBeforeStart() {
       }
     }
 
+    // Nếu license hợp lệ (từ server hoặc cache), cho phép mở app
+    if (licenseResult.fromCache) {
+      console.log(
+        `⚠️ Đang sử dụng license cache (offline ${licenseResult.cacheAgeDays} ngày). Vui lòng kết nối mạng để cập nhật.`
+      );
+    }
+
     return true;
   } catch (error) {
     console.error("Error in license check:", error);
@@ -253,6 +260,8 @@ async function checkLicensePeriodically() {
     const licenseResult = await checkLicense();
 
     if (!licenseResult.registered) {
+      // Chỉ đóng app nếu chắc chắn license bị revoke (không phải lỗi network)
+      // Nếu là lỗi network, checkLicense() đã xử lý cache và có thể trả về registered: true từ cache
       console.log("❌ License không hợp lệ, đóng ứng dụng...");
       // Hiển thị dialog đẹp thông báo license bị khóa
       await showLicenseRevokedDialog(
@@ -260,12 +269,18 @@ async function checkLicensePeriodically() {
       );
       // app.quit() sẽ được gọi trong showLicenseRevokedDialog
     } else {
-      console.log("✅ License hợp lệ");
+      if (licenseResult.fromCache) {
+        console.log(
+          `✅ License hợp lệ (từ cache, offline ${licenseResult.cacheAgeDays} ngày)`
+        );
+      } else {
+        console.log("✅ License hợp lệ");
+      }
     }
   } catch (error) {
     console.error("Error in periodic license check:", error);
     // Nếu lỗi network, không đóng app (có thể là mạng tạm thời)
-    // Chỉ đóng app nếu chắc chắn license không hợp lệ
+    // checkLicense() đã xử lý cache, nên không cần làm gì thêm
   }
 }
 

@@ -1,8 +1,8 @@
 {
-  "renderMode": "chromaKey",
+  "renderMode": "topTransparent",
   "chromaKeyMode": "color",
-  "chromaKeyColor": "D5FAD9",
-  "chromaKeyFile": "D:\\test\\line\\chromaKey.txt",
+  "chromaKeyColor": "D4F9D7",
+  "chromaKeyFile": null,
   "keepColorColors": [
     "FBFF02"
   ],
@@ -10,12 +10,12 @@
   "keepColorHeight": 220,
   "keepColorYOffset": 490,
   "useGPU": false,
-  "maxConcurrentProcesses": 1,
+  "maxConcurrentProcesses": 2,
   "gpuVideoCodec": "h264_nvenc",
   "opacity": 0.7,
   "height": 220,
   "y_offset": 490,
-  "overlayFolder": "D:\\test\\2ch\\overlays_trimmed",
-  "backgroundFolder": "D:\\test\\2ch\\backgrounds",
-  "outputFolder": "D:\\test\\2ch\\done"
+  "overlayFolder": "D:\\test\\line\\overlays",
+  "backgroundFolder": "D:\\test\\line\\backgrounds",
+  "outputFolder": "D:\\test\\line\\done"
 }

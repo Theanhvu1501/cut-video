@@ -337,6 +337,209 @@ ipcMain.handle("open-new-window", async () => {
   return { success: true };
 });
 
+// Helper function để lấy projects directory
+function getProjectsDir() {
+  const configDir = getConfigDir();
+  return path.join(configDir, "projects");
+}
+
+// Helper function để đảm bảo projects directory tồn tại
+function ensureProjectsDir() {
+  const projectsDir = getProjectsDir();
+  if (!fs.existsSync(projectsDir)) {
+    fs.mkdirSync(projectsDir, { recursive: true });
+  }
+  return projectsDir;
+}
+
+// Helper function để lấy file path của project config
+function getProjectConfigPath(projectName) {
+  const projectsDir = ensureProjectsDir();
+  // Sanitize project name để tránh invalid file names
+  const sanitizedName = projectName.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return path.join(projectsDir, `${sanitizedName}.json`);
+}
+
+// Helper function để lấy file path của current project
+function getCurrentProjectPath() {
+  const configDir = getConfigDir();
+  return path.join(configDir, ".current-project.json");
+}
+
+// IPC handler để lấy danh sách projects
+ipcMain.handle("get-projects", async () => {
+  try {
+    const projectsDir = ensureProjectsDir();
+    const files = fs.readdirSync(projectsDir);
+    const projects = files
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => file.replace(".json", ""));
+    return { success: true, projects };
+  } catch (error) {
+    console.error("Error getting projects:", error);
+    return { success: false, error: error.message, projects: [] };
+  }
+});
+
+// IPC handler để tạo project mới
+ipcMain.handle("create-project", async (event, projectName) => {
+  try {
+    if (!projectName || projectName.trim() === "") {
+      return { success: false, error: "Tên dự án không được để trống" };
+    }
+
+    const sanitizedName = projectName.trim().replace(/[^a-zA-Z0-9_-]/g, "_");
+    if (sanitizedName === "") {
+      return { success: false, error: "Tên dự án không hợp lệ" };
+    }
+
+    const projectPath = getProjectConfigPath(sanitizedName);
+    if (fs.existsSync(projectPath)) {
+      return { success: false, error: "Dự án đã tồn tại" };
+    }
+
+    // Tạo config mặc định cho project mới
+    const defaultConfig = {
+      projectName: sanitizedName,
+      createdAt: new Date().toISOString(),
+      settings: {},
+    };
+
+    fs.writeFileSync(projectPath, JSON.stringify(defaultConfig, null, 2));
+    return { success: true, projectName: sanitizedName };
+  } catch (error) {
+    console.error("Error creating project:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler để xóa project
+ipcMain.handle("delete-project", async (event, projectName) => {
+  try {
+    if (!projectName || projectName.trim() === "") {
+      return { success: false, error: "Tên dự án không hợp lệ" };
+    }
+
+    const projectPath = getProjectConfigPath(projectName);
+    if (!fs.existsSync(projectPath)) {
+      return { success: false, error: "Dự án không tồn tại" };
+    }
+
+    // Kiểm tra xem có phải project hiện tại không
+    const currentProjectPath = getCurrentProjectPath();
+    let currentProject = null;
+    if (fs.existsSync(currentProjectPath)) {
+      try {
+        const currentContent = fs.readFileSync(currentProjectPath, "utf-8");
+        currentProject = JSON.parse(currentContent).projectName;
+      } catch (err) {
+        // Ignore
+      }
+    }
+
+    // Xóa file config
+    fs.unlinkSync(projectPath);
+
+    // Nếu là project hiện tại, xóa current project
+    if (currentProject === projectName) {
+      if (fs.existsSync(currentProjectPath)) {
+        fs.unlinkSync(currentProjectPath);
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error("Error deleting project:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler để lưu config của project
+ipcMain.handle("save-project-config", async (event, projectName, config) => {
+  try {
+    if (!projectName || projectName.trim() === "") {
+      return { success: false, error: "Tên dự án không hợp lệ" };
+    }
+
+    const projectPath = getProjectConfigPath(projectName);
+    let projectData = {
+      projectName: projectName,
+      settings: {},
+    };
+
+    // Đọc config hiện tại nếu có
+    if (fs.existsSync(projectPath)) {
+      try {
+        const existingContent = fs.readFileSync(projectPath, "utf-8");
+        projectData = JSON.parse(existingContent);
+      } catch (err) {
+        console.error(`Error reading existing project config: ${err.message}`);
+      }
+    }
+
+    // Cập nhật settings
+    projectData.settings = config;
+    projectData.updatedAt = new Date().toISOString();
+
+    fs.writeFileSync(projectPath, JSON.stringify(projectData, null, 2));
+    return { success: true };
+  } catch (error) {
+    console.error("Error saving project config:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+// IPC handler để load config của project
+ipcMain.handle("load-project-config", async (event, projectName) => {
+  try {
+    if (!projectName || projectName.trim() === "") {
+      return { success: true, config: {} };
+    }
+
+    const projectPath = getProjectConfigPath(projectName);
+    if (!fs.existsSync(projectPath)) {
+      return { success: true, config: {} };
+    }
+
+    const content = fs.readFileSync(projectPath, "utf-8");
+    const projectData = JSON.parse(content);
+    return { success: true, config: projectData.settings || {} };
+  } catch (error) {
+    console.error("Error loading project config:", error);
+    return { success: false, error: error.message, config: {} };
+  }
+});
+
+// IPC handler để lấy project hiện tại
+ipcMain.handle("get-current-project", async () => {
+  try {
+    const currentProjectPath = getCurrentProjectPath();
+    if (!fs.existsSync(currentProjectPath)) {
+      return { success: true, projectName: null };
+    }
+
+    const content = fs.readFileSync(currentProjectPath, "utf-8");
+    const data = JSON.parse(content);
+    return { success: true, projectName: data.projectName || null };
+  } catch (error) {
+    console.error("Error getting current project:", error);
+    return { success: false, error: error.message, projectName: null };
+  }
+});
+
+// IPC handler để set project hiện tại
+ipcMain.handle("set-current-project", async (event, projectName) => {
+  try {
+    const currentProjectPath = getCurrentProjectPath();
+    const data = { projectName: projectName || null };
+    fs.writeFileSync(currentProjectPath, JSON.stringify(data, null, 2));
+    return { success: true };
+  } catch (error) {
+    console.error("Error setting current project:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Helper function để tải file với redirect handling
 function downloadFile(url, filePath) {
   return new Promise((resolve, reject) => {

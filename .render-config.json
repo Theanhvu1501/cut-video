@@ -1,5 +1,5 @@
 {
-  "renderMode": "crop",
+  "renderMode": "topTransparent",
   "chromaKeyMode": "color",
   "chromaKeyColor": "D4F9D7",
   "chromaKeyFile": null,
@@ -15,7 +15,7 @@
   "opacity": 0.7,
   "height": 220,
   "y_offset": 490,
-  "overlayFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\overlays_trimmed",
-  "backgroundFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\backgrounds",
-  "outputFolder": "C:\\Users\\INFODEVHP\\Desktop\\test\\done"
+  "overlayFolder": "D:\\test\\line\\overlays",
+  "backgroundFolder": "D:\\test\\line\\backgrounds",
+  "outputFolder": "D:\\test\\line\\done"
 }

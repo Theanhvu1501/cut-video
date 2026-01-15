@@ -7,6 +7,83 @@ function checkElectronAPI() {
   return true;
 }
 
+// Settings Menu Functions
+function toggleSettingsMenu() {
+  const dropdown = document.getElementById("settings-dropdown");
+  const btn = document.getElementById("settings-btn");
+  if (dropdown && btn) {
+    const isActive = dropdown.classList.contains("active");
+    if (isActive) {
+      closeSettingsMenu();
+    } else {
+      // Tính toán vị trí dropdown dựa trên vị trí của button (fixed position)
+      const rect = btn.getBoundingClientRect();
+      dropdown.style.top = rect.bottom + 8 + "px";
+      dropdown.style.right = window.innerWidth - rect.right + "px";
+
+      dropdown.classList.add("active");
+      btn.classList.add("active");
+    }
+  }
+}
+
+function closeSettingsMenu() {
+  const dropdown = document.getElementById("settings-dropdown");
+  const btn = document.getElementById("settings-btn");
+  if (dropdown && btn) {
+    dropdown.classList.remove("active");
+    btn.classList.remove("active");
+  }
+}
+
+// Đóng settings menu khi click bên ngoài
+document.addEventListener("click", function (event) {
+  const settingsWrapper = document.querySelector(".settings-menu-wrapper");
+  const dropdown = document.getElementById("settings-dropdown");
+  if (settingsWrapper && dropdown && !settingsWrapper.contains(event.target)) {
+    closeSettingsMenu();
+  }
+});
+
+// Settings Menu Functions
+function toggleSettingsMenu() {
+  const dropdown = document.getElementById("settings-dropdown");
+  const btn = document.getElementById("settings-btn");
+  if (dropdown && btn) {
+    const isActive = dropdown.classList.contains("active");
+    if (isActive) {
+      closeSettingsMenu();
+    } else {
+      dropdown.classList.add("active");
+      btn.classList.add("active");
+    }
+  }
+}
+
+function closeSettingsMenu() {
+  const dropdown = document.getElementById("settings-dropdown");
+  const btn = document.getElementById("settings-btn");
+  if (dropdown && btn) {
+    dropdown.classList.remove("active");
+    btn.classList.remove("active");
+  }
+}
+
+// Đóng settings menu khi click bên ngoài
+if (typeof document !== "undefined") {
+  document.addEventListener("click", function (event) {
+    const settingsWrapper = document.querySelector(".settings-menu-wrapper");
+    const dropdown = document.getElementById("settings-dropdown");
+    if (
+      settingsWrapper &&
+      dropdown &&
+      !settingsWrapper.contains(event.target)
+    ) {
+      closeSettingsMenu();
+    }
+  });
+}
+
 // Mở cửa sổ mới để chạy job đồng thời
 async function openNewWindow() {
   if (!checkElectronAPI()) return;
@@ -135,8 +212,17 @@ async function saveSettings() {
     },
   };
 
-  // Lưu vào localStorage
+  // Lưu vào localStorage (backup)
   localStorage.setItem("cutVideoAppSettings", JSON.stringify(settings));
+
+  // Nếu có project hiện tại, lưu vào project config
+  if (currentProjectName && checkElectronAPI() && window.electronAPI) {
+    try {
+      await window.electronAPI.saveProjectConfig(currentProjectName, settings);
+    } catch (error) {
+      console.error("Error saving project config:", error);
+    }
+  }
 
   // Lưu render config vào file để giữ lại khi tắt/bật lại ứng dụng
   if (checkElectronAPI() && window.electronAPI && settings.render) {
@@ -236,9 +322,46 @@ async function saveSettings() {
 
 async function loadSettings() {
   try {
-    // Ưu tiên đọc từ file config trước (để giữ lại lựa chọn khi tắt/bật lại)
+    // Nếu có project hiện tại, load từ project config
+    let settings = {};
+    if (currentProjectName && checkElectronAPI() && window.electronAPI) {
+      try {
+        const result = await window.electronAPI.loadProjectConfig(
+          currentProjectName
+        );
+        if (
+          result.success &&
+          result.config &&
+          Object.keys(result.config).length > 0
+        ) {
+          settings = result.config;
+          console.log(
+            `Loaded settings from project: ${currentProjectName}`,
+            settings
+          );
+        }
+      } catch (error) {
+        console.error("Error loading project config:", error);
+      }
+    }
+
+    // Nếu không có project hoặc không có config từ project, đọc từ localStorage
+    if (Object.keys(settings).length === 0) {
+      const saved = localStorage.getItem("cutVideoAppSettings");
+      if (saved) {
+        settings = JSON.parse(saved);
+        console.log("Loaded settings from localStorage");
+      }
+    }
+
+    // Chỉ merge với file config nếu không có project hoặc không có settings từ project
+    // File config chỉ dùng cho render mode và một số settings chung
     let fileConfig = null;
-    if (checkElectronAPI() && window.electronAPI) {
+    if (
+      (!currentProjectName || Object.keys(settings).length === 0) &&
+      checkElectronAPI() &&
+      window.electronAPI
+    ) {
       try {
         const result = await window.electronAPI.loadRenderConfig();
         if (result.success && result.config) {
@@ -249,12 +372,12 @@ async function loadSettings() {
       }
     }
 
-    // Đọc từ localStorage
-    const saved = localStorage.getItem("cutVideoAppSettings");
-    let settings = saved ? JSON.parse(saved) : {};
+    // Chỉ merge với file config nếu KHÔNG có project config
+    // File config chỉ dùng khi không có project hoặc project config rỗng
+    const hasProjectConfig =
+      currentProjectName && Object.keys(settings).length > 0;
 
-    // Nếu có config từ file, merge vào settings (file config có ưu tiên cao hơn)
-    if (fileConfig && fileConfig.renderMode) {
+    if (fileConfig && fileConfig.renderMode && !hasProjectConfig) {
       if (!settings.render) settings.render = {};
 
       // Cập nhật settings từ file config
@@ -295,9 +418,6 @@ async function loadSettings() {
         settings.render.backgroundFolder = fileConfig.backgroundFolder;
       if (fileConfig.outputFolder)
         settings.render.outputFolder = fileConfig.outputFolder;
-
-      // Lưu lại vào localStorage để đồng bộ
-      localStorage.setItem("cutVideoAppSettings", JSON.stringify(settings));
     }
 
     // Load Render settings
@@ -704,9 +824,498 @@ async function loadSettings() {
   }
 }
 
+// Project management
+let currentProjectName = null;
+
+// Load danh sách projects và project hiện tại
+async function loadProjects() {
+  if (!checkElectronAPI()) return;
+
+  try {
+    // Load project hiện tại
+    const currentResult = await window.electronAPI.getCurrentProject();
+    if (currentResult.success) {
+      currentProjectName = currentResult.projectName;
+    }
+
+    // Load danh sách projects
+    const projectsResult = await window.electronAPI.getProjects();
+    const projectSelect = document.getElementById("project-select");
+
+    if (!projectSelect) return;
+
+    if (projectsResult.success) {
+      projectSelect.innerHTML = "";
+
+      // Cập nhật badge số lượng
+      const projectCountBadge = document.getElementById("project-count");
+      if (projectCountBadge) {
+        if (projectsResult.projects.length > 0) {
+          projectCountBadge.textContent = projectsResult.projects.length;
+          projectCountBadge.style.display = "inline-block";
+        } else {
+          projectCountBadge.style.display = "none";
+        }
+      }
+
+      // Thêm option "Mặc định"
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent =
+        projectsResult.projects.length === 0
+          ? "Mặc định (chưa có dự án)"
+          : "Mặc định";
+      projectSelect.appendChild(defaultOption);
+
+      // Thêm các projects
+      projectsResult.projects.forEach((project) => {
+        const option = document.createElement("option");
+        option.value = project;
+        option.textContent = project;
+        if (project === currentProjectName) {
+          option.selected = true;
+        }
+        projectSelect.appendChild(option);
+      });
+
+      // Cập nhật trạng thái nút xóa trong menu
+      const deleteMenuItem = document.getElementById(
+        "delete-project-menu-item"
+      );
+      if (deleteMenuItem) {
+        if (!currentProjectName || currentProjectName === "") {
+          deleteMenuItem.classList.add("disabled");
+          deleteMenuItem.disabled = true;
+        } else {
+          deleteMenuItem.classList.remove("disabled");
+          deleteMenuItem.disabled = false;
+        }
+      }
+    } else {
+      projectSelect.innerHTML =
+        '<option value="">Lỗi khi tải danh sách</option>';
+    }
+  } catch (error) {
+    console.error("Error loading projects:", error);
+  }
+}
+
+// Chuyển đổi project
+async function switchProject() {
+  if (!checkElectronAPI()) return;
+
+  const projectSelect = document.getElementById("project-select");
+  if (!projectSelect) return;
+
+  const selectedProject = projectSelect.value;
+
+  // Nếu chọn cùng project, không làm gì
+  if (selectedProject === currentProjectName) {
+    return;
+  }
+
+  // Lưu settings hiện tại trước khi chuyển
+  if (currentProjectName) {
+    await saveCurrentProjectSettings();
+  }
+
+  // Set project mới
+  currentProjectName = selectedProject || null;
+  await window.electronAPI.setCurrentProject(currentProjectName);
+
+  // Cập nhật trạng thái nút xóa trong menu
+  const deleteMenuItem = document.getElementById("delete-project-menu-item");
+  if (deleteMenuItem) {
+    if (!currentProjectName || currentProjectName === "") {
+      deleteMenuItem.classList.add("disabled");
+      deleteMenuItem.disabled = true;
+    } else {
+      deleteMenuItem.classList.remove("disabled");
+      deleteMenuItem.disabled = false;
+    }
+  }
+
+  // Load settings của project mới
+  await loadSettings();
+
+  // Hiển thị thông báo ngắn
+  if (currentProjectName) {
+    showProjectNotification(
+      `Đã chuyển sang dự án: ${currentProjectName}`,
+      "success"
+    );
+  } else {
+    showProjectNotification("Đã chuyển sang chế độ mặc định", "info");
+  }
+}
+
+// Hiển thị thông báo ngắn cho project
+function showProjectNotification(message, type = "info") {
+  // Tạo notification element nếu chưa có
+  let notification = document.getElementById("project-notification");
+  if (!notification) {
+    notification = document.createElement("div");
+    notification.id = "project-notification";
+    notification.style.cssText = `
+      position: fixed;
+      top: 100px;
+      right: 20px;
+      padding: 12px 20px;
+      border-radius: 8px;
+      color: white;
+      font-size: 13px;
+      font-weight: 600;
+      z-index: 10000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      transform: translateX(100px);
+      transition: all 0.3s ease;
+      pointer-events: none;
+    `;
+    document.body.appendChild(notification);
+  }
+
+  // Set màu theo type
+  const colors = {
+    success: "linear-gradient(135deg, #4caf50 0%, #45a049 100%)",
+    info: "linear-gradient(135deg, #2196f3 0%, #1976d2 100%)",
+    error: "linear-gradient(135deg, #f44336 0%, #d32f2f 100%)",
+  };
+  notification.style.background = colors[type] || colors.info;
+  notification.textContent = message;
+
+  // Hiển thị
+  setTimeout(() => {
+    notification.style.opacity = "1";
+    notification.style.transform = "translateX(0)";
+  }, 10);
+
+  // Ẩn sau 3 giây
+  setTimeout(() => {
+    notification.style.opacity = "0";
+    notification.style.transform = "translateX(100px)";
+  }, 3000);
+}
+
+// Mở dialog thêm project
+function openAddProjectDialog() {
+  const modal = document.getElementById("addProjectModal");
+  const nameInput = document.getElementById("new-project-name");
+  const statusDiv = document.getElementById("add-project-status");
+
+  if (!modal || !nameInput) return;
+
+  nameInput.value = "";
+  statusDiv.style.display = "none";
+  statusDiv.textContent = "";
+  modal.classList.add("active");
+  nameInput.focus();
+}
+
+// Đóng dialog thêm project
+function closeAddProjectDialog() {
+  const modal = document.getElementById("addProjectModal");
+  if (modal) {
+    modal.classList.remove("active");
+  }
+}
+
+// Tạo project mới
+async function createNewProject() {
+  if (!checkElectronAPI()) return;
+
+  const nameInput = document.getElementById("new-project-name");
+  const statusDiv = document.getElementById("add-project-status");
+
+  if (!nameInput || !statusDiv) return;
+
+  const projectName = nameInput.value.trim();
+
+  if (!projectName) {
+    statusDiv.style.display = "block";
+    statusDiv.style.background = "#ffebee";
+    statusDiv.style.color = "#c62828";
+    statusDiv.style.border = "1px solid #f44336";
+    statusDiv.innerHTML = "❌ <strong>Vui lòng nhập tên dự án</strong>";
+    nameInput.focus();
+    return;
+  }
+
+  // Validate tên dự án (ít nhất 2 ký tự)
+  if (projectName.length < 2) {
+    statusDiv.style.display = "block";
+    statusDiv.style.background = "#ffebee";
+    statusDiv.style.color = "#c62828";
+    statusDiv.style.border = "1px solid #f44336";
+    statusDiv.innerHTML =
+      "❌ <strong>Tên dự án phải có ít nhất 2 ký tự</strong>";
+    nameInput.focus();
+    return;
+  }
+
+  try {
+    statusDiv.style.display = "block";
+    statusDiv.style.background = "#e3f2fd";
+    statusDiv.style.color = "#1565c0";
+    statusDiv.style.border = "1px solid #2196f3";
+    statusDiv.innerHTML = "⏳ <strong>Đang tạo dự án...</strong>";
+
+    const result = await window.electronAPI.createProject(projectName);
+
+    if (result.success) {
+      statusDiv.style.background = "#e8f5e9";
+      statusDiv.style.color = "#2e7d32";
+      statusDiv.style.border = "1px solid #4caf50";
+      statusDiv.innerHTML = `✅ <strong>Đã tạo dự án "${result.projectName}" thành công!</strong><br><small>Đang chuyển sang dự án mới...</small>`;
+
+      // Reload danh sách projects
+      await loadProjects();
+
+      // Tự động chọn project mới
+      const projectSelect = document.getElementById("project-select");
+      if (projectSelect) {
+        projectSelect.value = result.projectName;
+        await switchProject();
+      }
+
+      // Đóng dialog sau 2 giây
+      setTimeout(() => {
+        closeAddProjectDialog();
+        showProjectNotification(
+          `Dự án "${result.projectName}" đã được tạo và kích hoạt!`,
+          "success"
+        );
+      }, 2000);
+    } else {
+      statusDiv.style.background = "#ffebee";
+      statusDiv.style.color = "#c62828";
+      statusDiv.style.border = "1px solid #f44336";
+      statusDiv.innerHTML = `❌ <strong>Lỗi:</strong> ${
+        result.error || "Không thể tạo dự án"
+      }`;
+      nameInput.focus();
+    }
+  } catch (error) {
+    statusDiv.style.background = "#ffebee";
+    statusDiv.style.color = "#c62828";
+    statusDiv.style.border = "1px solid #f44336";
+    statusDiv.innerHTML = `❌ <strong>Lỗi:</strong> ${getErrorMessage(error)}`;
+    nameInput.focus();
+  }
+}
+
+// Hiển thị dialog xác nhận xóa dự án
+function showDeleteProjectDialog() {
+  if (!checkElectronAPI()) return;
+
+  const projectSelect = document.getElementById("project-select");
+  if (!projectSelect) return;
+
+  const projectToDelete = projectSelect.value;
+
+  if (!projectToDelete) {
+    showProjectNotification("Vui lòng chọn dự án cần xóa", "error");
+    return;
+  }
+
+  // Hiển thị tên dự án trong dialog
+  const nameDisplay = document.getElementById("delete-project-name-display");
+  if (nameDisplay) {
+    nameDisplay.textContent = `Dự án "${projectToDelete}" sẽ bị xóa.`;
+  }
+
+  // Hiển thị dialog
+  const dialog = document.getElementById("deleteProjectDialog");
+  if (dialog) {
+    dialog.classList.add("active");
+  }
+}
+
+// Đóng dialog xác nhận xóa
+function closeDeleteProjectDialog() {
+  const dialog = document.getElementById("deleteProjectDialog");
+  if (dialog) {
+    dialog.classList.remove("active");
+  }
+}
+
+// Xác nhận xóa dự án
+async function confirmDeleteProject() {
+  if (!checkElectronAPI()) return;
+
+  const projectSelect = document.getElementById("project-select");
+  if (!projectSelect) return;
+
+  const projectToDelete = projectSelect.value;
+
+  if (!projectToDelete) {
+    closeDeleteProjectDialog();
+    showProjectNotification("Vui lòng chọn dự án cần xóa", "error");
+    return;
+  }
+
+  try {
+    const result = await window.electronAPI.deleteProject(projectToDelete);
+
+    if (result.success) {
+      // Đóng dialog
+      closeDeleteProjectDialog();
+
+      // Reload danh sách projects
+      await loadProjects();
+
+      // Load settings mặc định
+      currentProjectName = null;
+      await window.electronAPI.setCurrentProject(null);
+      await loadSettings();
+
+      showProjectNotification(
+        `Đã xóa dự án "${projectToDelete}" thành công!`,
+        "success"
+      );
+    } else {
+      closeDeleteProjectDialog();
+      showProjectNotification(
+        `Lỗi: ${result.error || "Không thể xóa dự án"}`,
+        "error"
+      );
+    }
+  } catch (error) {
+    closeDeleteProjectDialog();
+    showProjectNotification(`Lỗi: ${getErrorMessage(error)}`, "error");
+  }
+}
+
+// Xóa project hiện tại (giữ lại để tương thích)
+async function deleteCurrentProject() {
+  showDeleteProjectDialog();
+}
+
+// Lưu settings của project hiện tại
+async function saveCurrentProjectSettings() {
+  if (!currentProjectName) return;
+
+  if (!checkElectronAPI()) return;
+
+  try {
+    // Lấy tất cả settings hiện tại (sử dụng logic từ saveSettings)
+    const settings = {
+      // Render settings
+      render: {
+        day: document.getElementById("render-day")?.value || "1",
+        videos: document.getElementById("render-videos")?.value || "1",
+        renderMode:
+          document.querySelector('input[name="render-mode"]:checked')?.value ||
+          "topTransparent",
+        opacity: document.getElementById("render-opacity")?.value || "0.7",
+        chromaKeyMode:
+          document.querySelector('input[name="chromakey-mode"]:checked')
+            ?.value || "color",
+        chromaKeyColor:
+          document.getElementById("render-chromakey-color")?.value || "D4F9D7",
+        keepColorColors:
+          document.getElementById("render-keepcolor-colors")?.value || "FBFF02",
+        keepColorCrop:
+          document.getElementById("render-keepcolor-crop")?.checked || false,
+        keepColorHeight:
+          document.getElementById("render-keepcolor-height")?.value || "220",
+        keepColorYOffset:
+          document.getElementById("render-keepcolor-y-offset")?.value || "490",
+        useGPU: document.getElementById("render-use-gpu")?.checked || false,
+        maxConcurrentProcesses:
+          document.getElementById("render-max-concurrent")?.value || "2",
+        gpuVideoCodec:
+          document.getElementById("render-gpu-codec")?.value || "h264_nvenc",
+        height: document.getElementById("render-height")?.value || "220",
+        y_offset: document.getElementById("render-y-offset")?.value || "490",
+        overlayFolder: selectedRenderOverlayFolder,
+        backgroundFolder: selectedRenderBackgroundFolder,
+        outputFolder: selectedRenderOutputFolder,
+        chromaKeyFile: selectedRenderChromaKeyFile,
+      },
+      // Download settings
+      download: {
+        urlsFile: selectedUrlsFile,
+        outputFolder: selectedDownloadOutputFolder,
+        overlayImagesFolder: selectedDownloadOverlayImagesFolder,
+        thumbsFolder: selectedDownloadThumbsFolder,
+        cookiesFile: selectedDownloadCookiesFile,
+      },
+      // Video Snow settings
+      videoSnow: {
+        inputFolder: selectedVideoSnowInputFolder,
+        outputFolder: selectedVideoSnowOutputFolder,
+        snowFile: selectedVideoSnowSnowFile,
+        maxConcurrent:
+          document.getElementById("video-snow-max-concurrent")?.value || "3",
+        segmentMin:
+          document.getElementById("video-snow-segment-min")?.value || "10",
+        segmentMax:
+          document.getElementById("video-snow-segment-max")?.value || "15",
+      },
+      // Background Video settings
+      bgVideo: {
+        count: document.getElementById("bg-count")?.value || "3",
+        inputFolder: selectedBgInputFolder,
+        outputFolder: selectedBgOutputFolder,
+        targetDuration:
+          document.getElementById("bg-target-duration")?.value || "3600",
+        sourceCount: document.getElementById("bg-source-count")?.value || "10",
+        avgClipDuration:
+          document.getElementById("bg-avg-clip-duration")?.value || "12",
+      },
+      // Trim settings
+      trim: {
+        inputFolder: selectedTrimInputFolder,
+        outputFolder: selectedTrimOutputFolder,
+        startTime: document.getElementById("trim-start-time")?.value || "0",
+        duration: document.getElementById("trim-duration")?.value || "30",
+      },
+      // Cut BG settings
+      cutBg: {
+        inputFolder: selectedCutBgInputFolder,
+        outputFolder: selectedCutBgOutputFolder,
+      },
+      // Thumb settings
+      thumb: {
+        inputFolder: selectedThumbInputFolder,
+        overlayFolder: selectedThumbOverlayFolder,
+        outputFolder: selectedThumbOutputFolder,
+      },
+      // Get URL settings
+      getUrl: {
+        handle: document.getElementById("channel-handle")?.value || "",
+        outputFolder: selectedGetUrlOutputFolder,
+      },
+      // Normalize settings
+      normalize: {
+        inputFolder: selectedNormalizeInputFolder,
+      },
+      // Concat settings
+      concat: {
+        chunkSize: document.getElementById("concat-chunk-size")?.value || "2",
+        useThumbs:
+          document.getElementById("concat-use-thumbs")?.checked ?? true,
+        thumbDuration:
+          document.getElementById("concat-thumb-duration")?.value || "3",
+        inputFolder: selectedConcatInputFolder,
+        thumbsFolder: selectedConcatThumbsFolder,
+        outputFolder: selectedConcatOutputFolder,
+      },
+    };
+
+    await window.electronAPI.saveProjectConfig(currentProjectName, settings);
+  } catch (error) {
+    console.error("Error saving project settings:", error);
+  }
+}
+
 // Tab switching
 document.addEventListener("DOMContentLoaded", async () => {
-  // Load saved settings first
+  // Load projects first
+  await loadProjects();
+
+  // Load saved settings (sẽ load từ project nếu có)
   await loadSettings();
 
   document.querySelectorAll(".tab-button").forEach((button) => {

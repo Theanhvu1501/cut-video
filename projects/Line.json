@@ -1,0 +1,81 @@
+{
+  "projectName": "Line",
+  "createdAt": "2026-01-15T04:12:36.977Z",
+  "settings": {
+    "render": {
+      "day": "1",
+      "videos": "2",
+      "renderMode": "topTransparent",
+      "opacity": "0.7",
+      "chromaKeyMode": "color",
+      "chromaKeyColor": "D4F9D7",
+      "keepColorColors": "FBFF02",
+      "keepColorCrop": false,
+      "keepColorHeight": "220",
+      "keepColorYOffset": "490",
+      "useGPU": false,
+      "maxConcurrentProcesses": "2",
+      "gpuVideoCodec": "h264_nvenc",
+      "height": "220",
+      "y_offset": "490",
+      "overlayFolder": "D:\\test\\line\\overlays",
+      "backgroundFolder": "D:\\test\\line\\backgrounds",
+      "outputFolder": "D:\\test\\line\\done",
+      "chromaKeyFile": null
+    },
+    "download": {
+      "urlsFile": "D:\\test\\2ch\\urls.txt",
+      "outputFolder": "D:\\test\\2ch\\overlays",
+      "overlayImagesFolder": "D:\\test\\2ch\\images",
+      "thumbsFolder": "D:\\test\\line\\thumbs\\1",
+      "cookiesFile": null
+    },
+    "videoSnow": {
+      "inputFolder": null,
+      "outputFolder": null,
+      "snowFile": null,
+      "maxConcurrent": "3",
+      "segmentMin": "10",
+      "segmentMax": "15"
+    },
+    "bgVideo": {
+      "count": "3",
+      "inputFolder": null,
+      "outputFolder": null,
+      "targetDuration": "3600",
+      "sourceCount": "10",
+      "avgClipDuration": "12"
+    },
+    "trim": {
+      "inputFolder": null,
+      "outputFolder": null,
+      "startTime": "0",
+      "duration": "30"
+    },
+    "cutBg": {
+      "inputFolder": null,
+      "outputFolder": null
+    },
+    "thumb": {
+      "inputFolder": null,
+      "overlayFolder": null,
+      "outputFolder": null
+    },
+    "getUrl": {
+      "handle": "",
+      "outputFolder": null
+    },
+    "normalize": {
+      "inputFolder": null
+    },
+    "concat": {
+      "chunkSize": "2",
+      "useThumbs": true,
+      "thumbDuration": "3",
+      "inputFolder": null,
+      "thumbsFolder": null,
+      "outputFolder": null
+    }
+  },
+  "updatedAt": "2026-01-15T04:50:14.092Z"
+}

@@ -97,6 +97,11 @@ function showUnregisteredDialog(machineId) {
  */
 function showLicenseRevokedDialog(errorMessage) {
   return new Promise((resolve) => {
+    // Disable mainWindow để không thể tương tác
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.setEnabled(false);
+    }
+
     const revokedWindow = new BrowserWindow({
       width: 550,
       height: 600,
@@ -109,6 +114,7 @@ function showLicenseRevokedDialog(errorMessage) {
         contextIsolation: false,
       },
       modal: true,
+      parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
       show: false,
     });
 
@@ -145,6 +151,15 @@ function showLicenseRevokedDialog(errorMessage) {
     // Hiển thị window khi sẵn sàng
     revokedWindow.once("ready-to-show", () => {
       revokedWindow.show();
+      revokedWindow.focus();
+      revokedWindow.setAlwaysOnTop(true);
+    });
+
+    // Ngăn chặn đóng bằng cách khác (như Alt+F4, ESC)
+    revokedWindow.on("close", (event) => {
+      // Chỉ cho phép đóng khi người dùng click nút đóng
+      // Hoặc force quit
+      app.quit();
     });
 
     // Khi window đóng, quit app
@@ -153,8 +168,11 @@ function showLicenseRevokedDialog(errorMessage) {
       resolve();
     });
 
-    // Prevent close by clicking outside (modal behavior)
-    revokedWindow.setAlwaysOnTop(true);
+    // Ngăn chặn minimize
+    revokedWindow.on("minimize", (event) => {
+      event.preventDefault();
+      revokedWindow.show();
+    });
   });
 }
 

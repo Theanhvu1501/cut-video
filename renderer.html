@@ -915,7 +915,6 @@
           Render Video
         </button>
         <button class="tab-button" data-tab="download">Tải video</button>
-        <button class="tab-button" data-tab="retry">Tải lại video lỗi</button>
         <button class="tab-button" data-tab="video-snow">
           Tạo video từ ảnh
         </button>
@@ -1467,36 +1466,21 @@
               style="display: none"
             ></div>
           </div>
-          <div class="action-buttons">
+          <div class="action-buttons" style="display: flex; gap: 10px;">
             <button class="btn btn-primary" onclick="runDownload()">
               Tải video
             </button>
-          </div>
-          <div id="download-output" class="output" style="display: none"></div>
-        </div>
-
-        <!-- Retry Tab -->
-        <div id="retry" class="tab-content">
-          <div class="tab-header">
-            <h2>Tải lại video lỗi</h2>
-            <span
-              class="help-icon"
-              onclick="showHelp('retry')"
-              title="Hướng dẫn"
-              >?</span
-            >
-          </div>
-          <div class="info-box">
-            <p>
-              <strong>Chức năng:</strong> Tải lại các video đã bị lỗi từ log
-            </p>
-          </div>
-          <div class="action-buttons">
-            <button class="btn btn-primary" onclick="runRetry()">
-              Tải lại
+            <button class="btn btn-secondary" onclick="runRetry()">
+              Tải lại video lỗi
             </button>
           </div>
-          <div id="retry-output" class="output" style="display: none"></div>
+          <div class="info-box" style="margin-top: 20px;">
+            <p style="margin: 0;">
+              <strong>💡 Tải lại video lỗi:</strong> Nếu có video tải lỗi trong lần tải trước, 
+              bạn có thể dùng nút "Tải lại video lỗi" để tự động tải lại các video đã bị lỗi từ log file.
+            </p>
+          </div>
+          <div id="download-output" class="output" style="display: none"></div>
         </div>
 
         <!-- Video Snow Tab -->

@@ -1956,23 +1956,65 @@ async function runDownload() {
   }
 }
 
-// Retry
+// Retry - Tải lại video lỗi (đã chuyển vào tab download)
 async function runRetry() {
   if (!checkElectronAPI()) return;
 
-  clearOutput("retry");
-  showOutput("retry", "🚀 Đang tải lại video lỗi...\n\n");
+  clearOutput("download");
+  showOutput("download", "🚀 Đang tải lại video lỗi...\n\n");
+
+  // Đảm bảo load settings từ project hiện tại trước khi chạy
+  // để đảm bảo dùng settings mới nhất từ project file
+  if (currentProjectName && checkElectronAPI() && window.electronAPI) {
+    try {
+      const result = await window.electronAPI.loadProjectConfig(
+        currentProjectName
+      );
+      if (result.success && result.config && result.config.download) {
+        // Cập nhật các biến từ project config
+        if (result.config.download.urlsFile) {
+          selectedUrlsFile = result.config.download.urlsFile;
+        }
+        if (result.config.download.outputFolder) {
+          selectedDownloadOutputFolder = result.config.download.outputFolder;
+        }
+        if (result.config.download.overlayImagesFolder) {
+          selectedDownloadOverlayImagesFolder =
+            result.config.download.overlayImagesFolder;
+        }
+        if (result.config.download.thumbsFolder) {
+          selectedDownloadThumbsFolder = result.config.download.thumbsFolder;
+        }
+        if (result.config.download.cookiesFile) {
+          selectedDownloadCookiesFile = result.config.download.cookiesFile;
+        }
+      }
+    } catch (error) {
+      console.error("Error loading project config before retry:", error);
+    }
+  }
+
+  // Tạo downloadConfig để đảm bảo script dùng đúng settings
+  const options = {
+    downloadConfig: {
+      urlsFile: selectedUrlsFile || "./urls.txt",
+      downloadDir: selectedDownloadOutputFolder || "./overlays",
+      overlayImagesDir: selectedDownloadOverlayImagesFolder || "./images",
+      outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
+      cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
+    },
+  };
 
   try {
     window.electronAPI.removeScriptOutputListener();
     window.electronAPI.onScriptOutput((data) => {
-      showOutput("retry", data);
+      showOutput("download", data);
     });
 
-    await window.electronAPI.runScript("download.js", ["retry"]);
-    showOutput("retry", "\n\n✅ Hoàn thành!");
+    await window.electronAPI.runScript("download.js", ["retry"], options);
+    showOutput("download", "\n\n✅ Hoàn thành!");
   } catch (error) {
-    showOutput("retry", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
+    showOutput("download", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
   }
 }
 
@@ -2587,15 +2629,11 @@ const helpContents = {
         <li>Quá trình tải có thể mất nhiều thời gian tùy vào số lượng và độ dài video</li>
         <li>Đảm bảo có kết nối internet ổn định</li>
       </ul>
-    `,
-  },
-  retry: {
-    title: "Hướng dẫn Tải lại video lỗi",
-    content: `
-      <h4>📋 Chức năng:</h4>
-      <p>Tự động tải lại các video đã bị lỗi trong lần tải trước. Hệ thống sẽ đọc danh sách URL lỗi từ log file và thử tải lại.</p>
       
-      <h4>🔄 Cách hoạt động:</h4>
+      <h4>🔄 Tải lại video lỗi:</h4>
+      <p>Sau khi tải video, nếu có video bị lỗi, bạn có thể sử dụng nút <strong>"Tải lại video lỗi"</strong> để tự động tải lại các video đã bị lỗi.</p>
+      
+      <h4>📋 Cách hoạt động:</h4>
       <ol>
         <li>Hệ thống đọc file log <code>failed_urls.txt</code> (tự động tạo khi có video lỗi)</li>
         <li>Lấy từng URL từ log file</li>
@@ -2604,7 +2642,7 @@ const helpContents = {
         <li>Nếu vẫn lỗi: Giữ nguyên trong log để thử lại sau</li>
       </ol>
       
-      <h4>💡 Lưu ý:</h4>
+      <h4>💡 Lưu ý về tải lại:</h4>
       <ul>
         <li>Chức năng này chỉ hoạt động sau khi đã chạy "Tải video" và có video bị lỗi</li>
         <li>File <code>failed_urls.txt</code> được tạo tự động trong thư mục gốc</li>

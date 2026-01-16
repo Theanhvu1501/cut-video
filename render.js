@@ -410,47 +410,65 @@ const complexFilterKeepColor = () => {
   const filters = [];
   const count = keepColorsList.length;
 
-  const totalSplits = count * 2;
-
-  let splitOutputs = "";
-  for (let i = 0; i < count; i++) {
-    splitOutputs += `[src_${i}_detect][src_${i}_apply]`;
+  // Nếu không có màu nào thì trả về filter mặc định (không lọc)
+  if (count === 0) {
+    return [
+      "[1:v]scale=1280:720[final_isolated]",
+      `[0:v][final_isolated]overlay=0:H-h[combined_video]`,
+      "[1:a]volume=1.0[overlay_audio]",
+    ];
   }
 
+  // 1. CHUẨN BỊ NGUỒN (Xử lý Scale và Crop)
   let baseFilter = `[1:v]scale=1280:720`;
   if (keepColorCrop) {
-    baseFilter = `[1:v]scale=1280:720,crop=1280:${keepColorHeight}:0:${keepColorYOffset}`;
+    // Đảm bảo các biến có giá trị mặc định để tránh lỗi 'undefined'
+    const h = keepColorHeight || 720;
+    const y = keepColorYOffset || 0;
+    baseFilter += `,crop=1280:${h}:0:${y}`;
   }
-  filters.push(`${baseFilter},split=${totalSplits}${splitOutputs}`);
 
-  // 2. VÒNG LẶP XỬ LÝ MÀU
-  const outputs = [];
+  let splitOutputs = "[src_main]";
+  for (let i = 0; i < count; i++) {
+    splitOutputs += `[src_${i}_detect]`;
+  }
+
+  // SỬA LỖI TẠI ĐÂY: Thêm dấu phẩy trước split
+  filters.push(`${baseFilter},split=${count + 1}${splitOutputs}`);
+
+  // 2. TẠO MASK CHO TỪNG MÀU
+  const maskNames = [];
+  const similarity = keepSimilarity || 0.1;
+
   keepColorsList.forEach((hexColor, index) => {
-    filters.push(
-      `[src_${index}_detect]colorkey=0x${hexColor}:${keepSimilarity}:0.1[ck_temp_${index}]`
-    );
-    filters.push(`[ck_temp_${index}]alphaextract,negate[mask_${index}]`);
+    const maskName = `[mask_${index}]`;
+    // Loại bỏ dấu # nếu có trong mã màu
+    const cleanHex = hexColor.replace("#", "");
 
     filters.push(
-      `[src_${index}_apply][mask_${index}]alphamerge[isolated_${index}]`
+      `[src_${index}_detect]colorkey=0x${cleanHex}:${similarity}:0.1,alphaextract,negate${maskName}`
     );
-
-    outputs.push(`[isolated_${index}]`);
+    maskNames.push(maskName);
   });
 
-  let currentStream = outputs[0];
-  for (let i = 1; i < outputs.length; i++) {
-    const nextStream = outputs[i];
-    const outName = `[stack_${i}]`;
-    filters.push(`${currentStream}${nextStream}overlay=0:0${outName}`);
-    currentStream = outName;
+  // 3. GỘP CÁC MASK LẠI
+  let currentMask = maskNames[0];
+  for (let i = 1; i < maskNames.length; i++) {
+    const nextMask = maskNames[i];
+    const combinedMaskName = `[combined_mask_${i}]`;
+    // Sử dụng blend mode 'max' hoặc 'lighten' để gộp các vùng trắng
+    filters.push(
+      `${currentMask}${nextMask}blend=all_expr='max(A,B)'${combinedMaskName}`
+    );
+    currentMask = combinedMaskName;
   }
 
-  filters.push(`${currentStream}copy[final_overlay]`);
+  // 4. ÁP MASK TỔNG VÀO VIDEO GỐC
+  filters.push(`[src_main]${currentMask}alphamerge[final_isolated]`);
 
   return [
     filters.join(";"),
-    `[0:v][final_overlay]overlay=0:H-h[combined_video]`,
+    `[0:v][final_isolated]overlay=0:H-h:shortest=1[combined_video]`,
     "[1:a]volume=1.0[overlay_audio]",
   ];
 };

@@ -287,15 +287,25 @@ async function saveSettings() {
           "490"
       );
 
+      // Parse keepColorColors từ string "FBFF02,FF0000" thành array ["FBFF02", "FF0000"]
+      let keepColorColorsArray = null;
+      if (currentKeepColorColors) {
+        keepColorColorsArray = currentKeepColorColors
+          .split(",")
+          .map((c) => c.trim().toUpperCase())
+          .filter((c) => /^[0-9A-F]{6}$/.test(c));
+        if (keepColorColorsArray.length === 0) {
+          keepColorColorsArray = null;
+        }
+      }
+
       const renderConfig = {
         renderMode: currentRenderMode,
         opacity: currentOpacity,
         chromaKeyMode: currentChromaKeyMode,
         chromaKeyColor: currentChromaKeyColor,
         chromaKeyFile: currentChromaKeyFile,
-        keepColorColors: currentKeepColorColors
-          ? [currentKeepColorColors]
-          : null,
+        keepColorColors: keepColorColorsArray,
         keepColorCrop: currentKeepColorCrop,
         keepColorHeight: currentKeepColorHeight,
         keepColorYOffset: currentKeepColorYOffset,
@@ -391,8 +401,13 @@ async function loadSettings() {
         settings.render.chromaKeyColor = fileConfig.chromaKeyColor;
       if (fileConfig.chromaKeyFile)
         settings.render.chromaKeyFile = fileConfig.chromaKeyFile;
-      if (fileConfig.keepColorColors && fileConfig.keepColorColors.length > 0) {
-        settings.render.keepColorColors = fileConfig.keepColorColors[0];
+      // Convert keepColorColors từ array ["FBFF02", "FF0000"] thành string "FBFF02,FF0000"
+      if (
+        fileConfig.keepColorColors &&
+        Array.isArray(fileConfig.keepColorColors) &&
+        fileConfig.keepColorColors.length > 0
+      ) {
+        settings.render.keepColorColors = fileConfig.keepColorColors.join(",");
       }
       if (fileConfig.keepColorCrop !== undefined)
         settings.render.keepColorCrop = fileConfig.keepColorCrop;

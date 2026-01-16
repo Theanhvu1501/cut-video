@@ -938,6 +938,67 @@ async function switchProject() {
   // Load settings của project mới
   await loadSettings();
 
+  // Sync config files từ project settings để đảm bảo các script đọc đúng config
+  if (checkElectronAPI() && window.electronAPI) {
+    try {
+      const configsToSync = {};
+
+      // Sync download config
+      if (selectedDownloadOutputFolder || selectedUrlsFile) {
+        configsToSync.downloadConfig = {
+          urlsFile: selectedUrlsFile || "./urls.txt",
+          downloadDir: selectedDownloadOutputFolder || "./overlays",
+          overlayImagesDir: selectedDownloadOverlayImagesFolder || "./images",
+          outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
+          cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
+        };
+      }
+
+      // Sync thumb config
+      if (selectedThumbInputFolder || selectedThumbOverlayFolder) {
+        configsToSync.thumbConfig = {
+          downloadDir: selectedThumbInputFolder || "./overlays",
+          overlayImagesDir: selectedThumbOverlayFolder || "./images",
+          outputThumbsBaseDir: selectedThumbOutputFolder || "./thumbs",
+        };
+      }
+
+      // Sync video snow config
+      if (selectedVideoSnowInputFolder || selectedVideoSnowOutputFolder) {
+        configsToSync.videoSnowConfig = {
+          imageBackgroundFolder:
+            selectedVideoSnowInputFolder || "./image_backgrounds",
+          outputRootFolder:
+            selectedVideoSnowOutputFolder || "./output_segments",
+          snowOverlay: selectedVideoSnowSnowFile || "./snow1.mp4",
+          maxConcurrent:
+            document.getElementById("video-snow-max-concurrent")?.value || "3",
+          segmentMin:
+            document.getElementById("video-snow-segment-min")?.value || "10",
+          segmentMax:
+            document.getElementById("video-snow-segment-max")?.value || "15",
+        };
+      }
+
+      // Sync trim config
+      if (selectedTrimInputFolder || selectedTrimOutputFolder) {
+        configsToSync.trimConfig = {
+          inputFolder: selectedTrimInputFolder || "./overlays",
+          outputFolder: selectedTrimOutputFolder || "./overlays_trimmed",
+          startTime: document.getElementById("trim-start-time")?.value || "0",
+          duration: document.getElementById("trim-duration")?.value || "30",
+        };
+      }
+
+      if (Object.keys(configsToSync).length > 0) {
+        await window.electronAPI.syncConfigFiles(configsToSync);
+        console.log("Đã sync config files từ project settings");
+      }
+    } catch (error) {
+      console.error("Error syncing config files:", error);
+    }
+  }
+
   // Hiển thị thông báo ngắn
   if (currentProjectName) {
     showProjectNotification(
@@ -1800,6 +1861,37 @@ async function runDownload() {
 
   clearOutput("download");
   showOutput("download", "🚀 Đang tải video...\n\n");
+
+  // Đảm bảo load settings từ project hiện tại trước khi chạy
+  // để đảm bảo dùng settings mới nhất từ project file
+  if (currentProjectName && checkElectronAPI() && window.electronAPI) {
+    try {
+      const result = await window.electronAPI.loadProjectConfig(
+        currentProjectName
+      );
+      if (result.success && result.config && result.config.download) {
+        // Cập nhật các biến từ project config
+        if (result.config.download.urlsFile) {
+          selectedUrlsFile = result.config.download.urlsFile;
+        }
+        if (result.config.download.outputFolder) {
+          selectedDownloadOutputFolder = result.config.download.outputFolder;
+        }
+        if (result.config.download.overlayImagesFolder) {
+          selectedDownloadOverlayImagesFolder =
+            result.config.download.overlayImagesFolder;
+        }
+        if (result.config.download.thumbsFolder) {
+          selectedDownloadThumbsFolder = result.config.download.thumbsFolder;
+        }
+        if (result.config.download.cookiesFile) {
+          selectedDownloadCookiesFile = result.config.download.cookiesFile;
+        }
+      }
+    } catch (error) {
+      console.error("Error loading project config before download:", error);
+    }
+  }
 
   let hasError = false;
   let errorMessage = "";

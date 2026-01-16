@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   loadProjectConfig: (projectName) => ipcRenderer.invoke("load-project-config", projectName),
   getCurrentProject: () => ipcRenderer.invoke("get-current-project"),
   setCurrentProject: (projectName) => ipcRenderer.invoke("set-current-project", projectName),
+  syncConfigFiles: (configs) => ipcRenderer.invoke("sync-config-files", configs),
   onScriptOutput: (callback) => {
     ipcRenderer.on("script-output", (event, data) => callback(data));
   },

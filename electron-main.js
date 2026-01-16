@@ -713,6 +713,74 @@ ipcMain.handle("load-render-config", async () => {
   }
 });
 
+// IPC handler để sync config files từ project settings
+ipcMain.handle("sync-config-files", async (event, configs) => {
+  try {
+    const configDir = getConfigDir();
+    const errors = [];
+
+    // Sync download config
+    if (configs.downloadConfig) {
+      try {
+        const configPath = path.join(configDir, ".download-config.json");
+        fs.writeFileSync(
+          configPath,
+          JSON.stringify(configs.downloadConfig, null, 2)
+        );
+      } catch (err) {
+        errors.push(`Download config: ${err.message}`);
+      }
+    }
+
+    // Sync thumb config
+    if (configs.thumbConfig) {
+      try {
+        const configPath = path.join(configDir, ".thumb-config.json");
+        fs.writeFileSync(
+          configPath,
+          JSON.stringify(configs.thumbConfig, null, 2)
+        );
+      } catch (err) {
+        errors.push(`Thumb config: ${err.message}`);
+      }
+    }
+
+    // Sync video snow config
+    if (configs.videoSnowConfig) {
+      try {
+        const configPath = path.join(configDir, ".video-snow-config.json");
+        fs.writeFileSync(
+          configPath,
+          JSON.stringify(configs.videoSnowConfig, null, 2)
+        );
+      } catch (err) {
+        errors.push(`Video snow config: ${err.message}`);
+      }
+    }
+
+    // Sync trim config
+    if (configs.trimConfig) {
+      try {
+        const configPath = path.join(configDir, ".trim-config.json");
+        fs.writeFileSync(
+          configPath,
+          JSON.stringify(configs.trimConfig, null, 2)
+        );
+      } catch (err) {
+        errors.push(`Trim config: ${err.message}`);
+      }
+    }
+
+    if (errors.length > 0) {
+      return { success: false, errors };
+    }
+    return { success: true };
+  } catch (err) {
+    console.error(`Error syncing config files: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
+
 ipcMain.handle(
   "run-script",
   async (event, scriptPath, args = [], options = {}) => {

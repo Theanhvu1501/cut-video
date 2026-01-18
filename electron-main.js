@@ -90,26 +90,7 @@ autoUpdater.on("update-available", (info) => {
       releaseNotes: info.releaseNotes,
     });
   }
-
-  // Hiển thị dialog thông báo có update mới
-  dialog
-    .showMessageBox(mainWindow, {
-      type: "info",
-      title: "Cập nhật có sẵn",
-      message: `Phiên bản mới ${info.version} đã có sẵn!`,
-      detail:
-        (info.releaseNotes || "Có bản cập nhật mới.") +
-        "\n\nBạn có muốn tải về và cài đặt ngay bây giờ không?",
-      buttons: ["Tải về ngay", "Để sau"],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    .then((result) => {
-      if (result.response === 0) {
-        // Người dùng chọn "Tải về ngay"
-        autoUpdater.downloadUpdate();
-      }
-    });
+  // Không hiển thị dialog native, để renderer hiển thị custom dialog đẹp hơn
 });
 
 autoUpdater.on("update-not-available", (info) => {
@@ -148,29 +129,32 @@ autoUpdater.on("download-progress", (progressObj) => {
 autoUpdater.on("update-downloaded", (info) => {
   console.log(`✅ Đã tải xong bản cập nhật: ${info.version}`);
   if (mainWindow) {
+    // Lưu version để hiển thị thông báo sau khi update
+    const configDir = getConfigDir();
+    const updateVersionPath = path.join(
+      configDir,
+      ".last-updated-version.json"
+    );
+    try {
+      fs.writeFileSync(
+        updateVersionPath,
+        JSON.stringify({
+          version: info.version,
+          updatedAt: new Date().toISOString(),
+        }),
+        "utf-8"
+      );
+    } catch (err) {
+      console.error("Error saving update version:", err);
+    }
+
     mainWindow.webContents.send("update-status", {
       status: "downloaded",
       message: `Đã tải xong v${info.version}. Ứng dụng sẽ khởi động lại để cài đặt.`,
       version: info.version,
     });
   }
-
-  dialog
-    .showMessageBox(mainWindow, {
-      type: "info",
-      title: "Cập nhật đã sẵn sàng",
-      message: `Phiên bản ${info.version} đã được tải về.`,
-      detail: "Ứng dụng sẽ khởi động lại để cài đặt cập nhật.",
-      buttons: ["Khởi động lại ngay", "Để sau"],
-      defaultId: 0,
-      cancelId: 1,
-    })
-    .then((result) => {
-      if (result.response === 0) {
-        // Khởi động lại và cài đặt update
-        autoUpdater.quitAndInstall(false, true);
-      }
-    });
+  // Không hiển thị dialog native, để renderer hiển thị custom dialog đẹp hơn
 });
 
 // Hàm kiểm tra update (chỉ chạy trong production)
@@ -186,14 +170,10 @@ function checkForUpdates() {
   }
 }
 
-// Không tự động check update - người dùng sẽ check thủ công qua nút trong UI
-// Bỏ comment các dòng dưới nếu muốn tự động check:
-// setTimeout(() => {
-//   checkForUpdates();
-// }, 5000);
-// setInterval(() => {
-//   checkForUpdates();
-// }, 4 * 60 * 60 * 1000);
+// Tự động kiểm tra update sau 3 giây khi app khởi động
+setTimeout(() => {
+  checkForUpdates();
+}, 3000);
 
 /**
  * Hiển thị dialog thông báo chưa đăng ký và copy machineId
@@ -469,6 +449,83 @@ function stopPeriodicLicenseCheck() {
   }
 }
 
+// Hàm kiểm tra và hiển thị thông báo update thành công
+async function checkAndShowUpdateSuccess() {
+  try {
+    const configDir = getConfigDir();
+    const updateVersionPath = path.join(
+      configDir,
+      ".last-updated-version.json"
+    );
+
+    if (!fs.existsSync(updateVersionPath)) {
+      return; // Không có file, chưa từng update
+    }
+
+    const updateInfo = JSON.parse(fs.readFileSync(updateVersionPath, "utf-8"));
+    const currentVersion = app.getVersion();
+
+    // Logic: Nếu version trong file khớp với version hiện tại
+    // và file được tạo gần đây (trong 1 giờ) → đã update thành công
+    if (
+      updateInfo.version &&
+      updateInfo.version === currentVersion &&
+      updateInfo.updatedAt
+    ) {
+      const updateTime = new Date(updateInfo.updatedAt);
+      const now = new Date();
+      const hoursSinceUpdate = (now - updateTime) / (1000 * 60 * 60);
+
+      // Chỉ hiển thị nếu update trong vòng 1 giờ trước
+      if (hoursSinceUpdate < 1) {
+        // Gửi message để renderer hiển thị custom dialog đẹp
+        setTimeout(() => {
+          // Đợi window sẵn sàng
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send("update-status", {
+              status: "update-success",
+              message: `Đã cập nhật lên phiên bản ${currentVersion}`,
+              version: currentVersion,
+            });
+
+            // Xóa file sau khi đã gửi message
+            setTimeout(() => {
+              try {
+                fs.unlinkSync(updateVersionPath);
+              } catch (err) {
+                console.error("Error deleting update version file:", err);
+              }
+            }, 3000);
+          }
+        }, 2000); // Đợi 2 giây sau khi window load
+        return;
+      }
+    }
+
+    // Nếu không khớp điều kiện, xóa file để tránh hiển thị lại
+    try {
+      fs.unlinkSync(updateVersionPath);
+    } catch (err) {
+      console.error("Error deleting update version file:", err);
+    }
+  } catch (error) {
+    console.error("Error checking update success:", error);
+    // Xóa file nếu có lỗi parse
+    try {
+      const configDir = getConfigDir();
+      const updateVersionPath = path.join(
+        configDir,
+        ".last-updated-version.json"
+      );
+      if (fs.existsSync(updateVersionPath)) {
+        fs.unlinkSync(updateVersionPath);
+      }
+    } catch (err) {
+      // Ignore
+    }
+  }
+}
+
 app.whenReady().then(async () => {
   // Kiểm tra license trước khi mở window
   const canContinue = await checkLicenseBeforeStart();
@@ -476,6 +533,8 @@ app.whenReady().then(async () => {
     createWindow();
     // Bắt đầu kiểm tra license định kỳ sau khi window được tạo
     startPeriodicLicenseCheck();
+    // Kiểm tra và hiển thị thông báo update thành công
+    checkAndShowUpdateSuccess();
   }
 });
 
@@ -824,6 +883,27 @@ ipcMain.handle("install-update", async () => {
     };
   }
   try {
+    // Lưu version để hiển thị thông báo sau khi update
+    const updateVersionPath = path.join(
+      getConfigDir(),
+      ".last-updated-version.json"
+    );
+    try {
+      // Lấy version từ update info (nếu có trong memory hoặc từ event trước đó)
+      // Nếu không có, dùng current version + 1 (fallback)
+      const currentVersion = app.getVersion();
+      fs.writeFileSync(
+        updateVersionPath,
+        JSON.stringify({
+          version: currentVersion, // Sẽ được update khi app khởi động lại với version mới
+          updatedAt: new Date().toISOString(),
+        }),
+        "utf-8"
+      );
+    } catch (err) {
+      console.error("Error saving update version:", err);
+    }
+
     autoUpdater.quitAndInstall(false, true);
     return { success: true, message: "Đang khởi động lại để cài đặt..." };
   } catch (error) {

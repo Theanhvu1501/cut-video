@@ -432,6 +432,173 @@
         box-shadow: 0 4px 12px rgba(220, 53, 69, 0.4);
       }
 
+      /* Update Dialog Styles */
+      .update-dialog {
+        display: none;
+        position: fixed;
+        z-index: 10001;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        animation: fadeIn 0.3s;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .update-dialog.active {
+        display: flex;
+      }
+
+      .update-dialog-content {
+        background: white;
+        border-radius: 16px;
+        max-width: 500px;
+        width: 90%;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        animation: slideIn 0.3s;
+        overflow: hidden;
+      }
+
+      .update-dialog-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .update-dialog-header .icon {
+        font-size: 64px;
+        margin-bottom: 15px;
+        display: block;
+      }
+
+      .update-dialog-header h3 {
+        font-size: 22px;
+        font-weight: 600;
+        margin: 0;
+      }
+
+      .update-dialog-body {
+        padding: 30px;
+        text-align: center;
+      }
+
+      .update-message {
+        color: #333;
+        font-size: 15px;
+        line-height: 1.6;
+        margin-bottom: 20px;
+      }
+
+      .update-message strong {
+        color: #667eea;
+        font-size: 16px;
+        display: block;
+        margin-bottom: 10px;
+      }
+
+      .update-release-notes {
+        background: #f5f5f5;
+        border-radius: 8px;
+        padding: 15px;
+        margin: 15px 0;
+        text-align: left;
+        font-size: 13px;
+        color: #666;
+        max-height: 150px;
+        overflow-y: auto;
+      }
+
+      .update-progress-container {
+        margin: 20px 0;
+        display: none;
+      }
+
+      .update-progress-container.active {
+        display: block;
+      }
+
+      .update-progress-bar {
+        width: 100%;
+        height: 24px;
+        background: #e0e0e0;
+        border-radius: 12px;
+        overflow: hidden;
+        position: relative;
+        margin-bottom: 8px;
+      }
+
+      .update-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        border-radius: 12px;
+        transition: width 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .update-progress-text {
+        font-size: 13px;
+        color: #666;
+        margin-top: 5px;
+      }
+
+      .update-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 25px;
+      }
+
+      .update-btn {
+        flex: 1;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .update-btn.primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+      }
+
+      .update-btn.primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+      }
+
+      .update-btn.secondary {
+        background: #6c757d;
+        color: white;
+      }
+
+      .update-btn.secondary:hover {
+        background: #5a6268;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(108, 117, 125, 0.4);
+      }
+
+      .update-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none !important;
+      }
+
+      .update-success-icon {
+        color: #28a745;
+        font-size: 64px;
+        margin-bottom: 15px;
+      }
+
       .header::before {
         content: "";
         position: absolute;
@@ -2285,6 +2452,46 @@
               style="flex: 1"
             >
               Hủy
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Update Dialog -->
+    <div id="update-dialog" class="update-dialog">
+      <div class="update-dialog-content">
+        <div class="update-dialog-header">
+          <span class="icon" id="update-dialog-icon">🔄</span>
+          <h3 id="update-dialog-title">Cập nhật có sẵn</h3>
+        </div>
+        <div class="update-dialog-body">
+          <div class="update-message" id="update-message"></div>
+          <div
+            class="update-release-notes"
+            id="update-release-notes"
+            style="display: none"
+          ></div>
+          <div class="update-progress-container" id="update-progress-container">
+            <div class="update-progress-bar">
+              <div
+                class="update-progress-fill"
+                id="update-progress-fill"
+                style="width: 0%"
+              >
+                0%
+              </div>
+            </div>
+            <div class="update-progress-text" id="update-progress-text">
+              Đang tải cập nhật...
+            </div>
+          </div>
+          <div class="update-actions" id="update-actions">
+            <button class="update-btn primary" id="update-btn-primary">
+              Tải về ngay
+            </button>
+            <button class="update-btn secondary" id="update-btn-secondary">
+              Để sau
             </button>
           </div>
         </div>

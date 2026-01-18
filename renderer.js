@@ -100,6 +100,9 @@ async function openNewWindow() {
 async function checkForAppUpdate() {
   if (!checkElectronAPI()) return;
 
+  // Đánh dấu là check thủ công để hiển thị alert khi không có update
+  window.updateCheckManual = true;
+
   try {
     const result = await window.electronAPI.checkForUpdates();
     if (result.success) {
@@ -109,7 +112,7 @@ async function checkForAppUpdate() {
         position: fixed;
         top: 20px;
         right: 20px;
-        background: #667eea;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
         padding: 15px 20px;
         border-radius: 8px;
@@ -135,6 +138,122 @@ async function checkForAppUpdate() {
   }
 }
 
+// Update Dialog Management
+let currentUpdateVersion = null;
+
+function showUpdateDialog(type, data) {
+  const dialog = document.getElementById("update-dialog");
+  const icon = document.getElementById("update-dialog-icon");
+  const title = document.getElementById("update-dialog-title");
+  const message = document.getElementById("update-message");
+  const releaseNotes = document.getElementById("update-release-notes");
+  const progressContainer = document.getElementById(
+    "update-progress-container"
+  );
+  const progressFill = document.getElementById("update-progress-fill");
+  const progressText = document.getElementById("update-progress-text");
+  const actions = document.getElementById("update-actions");
+  const btnPrimary = document.getElementById("update-btn-primary");
+  const btnSecondary = document.getElementById("update-btn-secondary");
+
+  // Reset btnSecondary về hiển thị mặc định
+  btnSecondary.style.display = "block";
+
+  if (type === "available") {
+    currentUpdateVersion = data.version;
+    icon.textContent = "🔄";
+    icon.style.display = "block";
+    title.textContent = "Cập nhật có sẵn";
+    message.innerHTML = `<strong>Phiên bản mới ${
+      data.version
+    } đã có sẵn!</strong>${
+      data.releaseNotes ? "\n\n" + data.releaseNotes : ""
+    }`;
+
+    if (data.releaseNotes) {
+      releaseNotes.textContent = data.releaseNotes;
+      releaseNotes.style.display = "block";
+    } else {
+      releaseNotes.style.display = "none";
+    }
+
+    progressContainer.classList.remove("active");
+    btnPrimary.textContent = "Tải về ngay";
+    btnPrimary.onclick = () => {
+      btnPrimary.disabled = true;
+      btnSecondary.disabled = true;
+      progressContainer.classList.add("active");
+      if (checkElectronAPI() && window.electronAPI) {
+        window.electronAPI.downloadUpdate();
+      }
+    };
+    btnSecondary.textContent = "Để sau";
+    btnSecondary.onclick = () => {
+      dialog.classList.remove("active");
+    };
+    btnPrimary.disabled = false;
+    btnSecondary.disabled = false;
+    dialog.classList.add("active");
+  } else if (type === "downloaded") {
+    icon.textContent = "✅";
+    title.textContent = "Cập nhật đã sẵn sàng";
+    message.innerHTML = `<strong>Phiên bản ${data.version} đã được tải về thành công!</strong>\n\nỨng dụng sẽ khởi động lại để cài đặt cập nhật.`;
+    releaseNotes.style.display = "none";
+    progressContainer.classList.remove("active");
+    btnPrimary.textContent = "Khởi động lại ngay";
+    btnPrimary.onclick = () => {
+      if (checkElectronAPI() && window.electronAPI) {
+        window.electronAPI.installUpdate();
+      }
+    };
+    btnSecondary.textContent = "Để sau";
+    btnSecondary.onclick = () => {
+      dialog.classList.remove("active");
+    };
+    btnPrimary.disabled = false;
+    btnSecondary.disabled = false;
+    dialog.classList.add("active");
+  } else if (type === "update-success") {
+    icon.textContent = "🎉";
+    title.textContent = "Cập nhật thành công!";
+    message.innerHTML = `<strong>Đã cập nhật lên phiên bản ${data.version}</strong>\n\nỨng dụng đã được cập nhật thành công.`;
+    releaseNotes.style.display = "none";
+    progressContainer.classList.remove("active");
+    btnPrimary.textContent = "Tuyệt vời!";
+    btnPrimary.onclick = () => {
+      dialog.classList.remove("active");
+    };
+    btnSecondary.style.display = "none";
+    btnPrimary.disabled = false;
+    dialog.classList.add("active");
+  } else if (type === "error") {
+    icon.textContent = "❌";
+    title.textContent = "Lỗi cập nhật";
+    message.innerHTML = `<strong>Đã xảy ra lỗi khi cập nhật</strong>\n\n${data.message}`;
+    releaseNotes.style.display = "none";
+    progressContainer.classList.remove("active");
+    btnPrimary.textContent = "Đóng";
+    btnPrimary.onclick = () => {
+      dialog.classList.remove("active");
+    };
+    btnSecondary.style.display = "none";
+    btnPrimary.disabled = false;
+    dialog.classList.add("active");
+  }
+}
+
+function updateProgress(percent, transferred, total) {
+  const progressFill = document.getElementById("update-progress-fill");
+  const progressText = document.getElementById("update-progress-text");
+
+  progressFill.style.width = `${percent}%`;
+  progressFill.textContent = `${percent}%`;
+
+  const transferredMB = (transferred / 1024 / 1024).toFixed(1);
+  const totalMB = (total / 1024 / 1024).toFixed(1);
+  progressText.textContent = `Đang tải: ${transferredMB} MB / ${totalMB} MB (${percent}%)`;
+}
+
 // Setup listeners cho update status - sẽ được gọi trong DOMContentLoaded
 function setupUpdateListeners() {
   if (
@@ -146,22 +265,31 @@ function setupUpdateListeners() {
     window.electronAPI.onUpdateStatus((data) => {
       console.log("Update status:", data);
 
-      // Hiển thị thông báo dựa trên status
-      if (data.status === "not-available") {
-        alert(
-          `✅ ${data.message}\nPhiên bản hiện tại: ${data.version || "N/A"}`
-        );
+      // Hiển thị custom dialog đẹp thay vì alert
+      if (data.status === "available") {
+        showUpdateDialog("available", data);
+      } else if (data.status === "downloaded") {
+        showUpdateDialog("downloaded", data);
+      } else if (data.status === "update-success") {
+        showUpdateDialog("update-success", data);
+      } else if (data.status === "not-available") {
+        // Chỉ hiển thị alert khi check thủ công, không hiển thị khi auto check
+        if (window.updateCheckManual) {
+          alert(
+            `✅ ${data.message}\nPhiên bản hiện tại: ${data.version || "N/A"}`
+          );
+          window.updateCheckManual = false;
+        }
       } else if (data.status === "error") {
-        alert(`❌ ${data.message}`);
+        showUpdateDialog("error", data);
       }
-      // Status "available" và "downloaded" đã được xử lý bởi dialog trong electron-main.js
     });
 
-    // Listen for update progress (optional - có thể hiển thị progress bar)
+    // Listen for update progress
     if (window.electronAPI.onUpdateProgress) {
       window.electronAPI.onUpdateProgress((data) => {
         console.log(`Update progress: ${data.percent}%`);
-        // Có thể thêm progress bar nếu muốn
+        updateProgress(data.percent, data.transferred || 0, data.total || 0);
       });
     }
   }

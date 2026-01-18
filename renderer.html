@@ -904,6 +904,15 @@
               <span class="icon">🗑️</span>
               <span>Xóa dự án hiện tại</span>
             </button>
+            <div class="settings-divider"></div>
+            <button
+              class="settings-menu-item"
+              id="check-update-menu-item"
+              onclick="checkForAppUpdate(); closeSettingsMenu();"
+            >
+              <span class="icon">🔄</span>
+              <span>Kiểm tra cập nhật</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1466,7 +1475,7 @@
               style="display: none"
             ></div>
           </div>
-          <div class="action-buttons" style="display: flex; gap: 10px;">
+          <div class="action-buttons" style="display: flex; gap: 10px">
             <button class="btn btn-primary" onclick="runDownload()">
               Tải video
             </button>
@@ -1474,10 +1483,11 @@
               Tải lại video lỗi
             </button>
           </div>
-          <div class="info-box" style="margin-top: 20px;">
-            <p style="margin: 0;">
-              <strong>💡 Tải lại video lỗi:</strong> Nếu có video tải lỗi trong lần tải trước, 
-              bạn có thể dùng nút "Tải lại video lỗi" để tự động tải lại các video đã bị lỗi từ log file.
+          <div class="info-box" style="margin-top: 20px">
+            <p style="margin: 0">
+              <strong>💡 Tải lại video lỗi:</strong> Nếu có video tải lỗi trong
+              lần tải trước, bạn có thể dùng nút "Tải lại video lỗi" để tự động
+              tải lại các video đã bị lỗi từ log file.
             </p>
           </div>
           <div id="download-output" class="output" style="display: none"></div>

@@ -96,6 +96,77 @@ async function openNewWindow() {
   }
 }
 
+// Kiểm tra cập nhật ứng dụng (thủ công)
+async function checkForAppUpdate() {
+  if (!checkElectronAPI()) return;
+
+  try {
+    const result = await window.electronAPI.checkForUpdates();
+    if (result.success) {
+      // Hiển thị thông báo đang kiểm tra
+      const statusMsg = document.createElement("div");
+      statusMsg.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: #667eea;
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 10000;
+        font-size: 14px;
+        font-weight: 500;
+      `;
+      statusMsg.textContent = "🔄 Đang kiểm tra cập nhật...";
+      document.body.appendChild(statusMsg);
+
+      // Tự động xóa sau 3 giây
+      setTimeout(() => {
+        if (statusMsg.parentNode) {
+          statusMsg.parentNode.removeChild(statusMsg);
+        }
+      }, 3000);
+    } else {
+      alert(result.message || "Lỗi khi kiểm tra cập nhật");
+    }
+  } catch (error) {
+    alert("Lỗi: " + getErrorMessage(error));
+  }
+}
+
+// Setup listeners cho update status - sẽ được gọi trong DOMContentLoaded
+function setupUpdateListeners() {
+  if (
+    typeof window !== "undefined" &&
+    window.electronAPI &&
+    window.electronAPI.onUpdateStatus
+  ) {
+    // Listen for update status
+    window.electronAPI.onUpdateStatus((data) => {
+      console.log("Update status:", data);
+
+      // Hiển thị thông báo dựa trên status
+      if (data.status === "not-available") {
+        alert(
+          `✅ ${data.message}\nPhiên bản hiện tại: ${data.version || "N/A"}`
+        );
+      } else if (data.status === "error") {
+        alert(`❌ ${data.message}`);
+      }
+      // Status "available" và "downloaded" đã được xử lý bởi dialog trong electron-main.js
+    });
+
+    // Listen for update progress (optional - có thể hiển thị progress bar)
+    if (window.electronAPI.onUpdateProgress) {
+      window.electronAPI.onUpdateProgress((data) => {
+        console.log(`Update progress: ${data.percent}%`);
+        // Có thể thêm progress bar nếu muốn
+      });
+    }
+  }
+}
+
 // Helper to extract error message from error object
 function getErrorMessage(error) {
   if (!error) return "Lỗi không xác định";

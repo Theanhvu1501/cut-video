@@ -2,9 +2,13 @@ import { spawn } from "child_process";
 import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
 import fs from "fs";
 import https from "https";
+import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
 import { checkLicense } from "./license-check.js";
+
+const require = createRequire(import.meta.url);
+const { autoUpdater } = require("electron-updater");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,6 +46,154 @@ function getAppPath() {
 }
 
 let mainWindow;
+
+// =================================================================
+// AUTO UPDATER CONFIGURATION
+// =================================================================
+
+// Cấu hình auto-updater - GitHub Releases
+autoUpdater.setFeedURL({
+  provider: "github",
+  owner: "Theanhvu1501",
+  repo: "vid-master",
+});
+
+// Chỉ check update trong production (không check khi dev)
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+
+// Log update events
+autoUpdater.logger = {
+  info: (message) => console.log(`[AutoUpdater] ${message}`),
+  warn: (message) => console.warn(`[AutoUpdater] ${message}`),
+  error: (message) => console.error(`[AutoUpdater] ${message}`),
+};
+
+// Các event handlers cho auto-updater
+autoUpdater.on("checking-for-update", () => {
+  console.log("🔍 Đang kiểm tra cập nhật...");
+  if (mainWindow) {
+    mainWindow.webContents.send("update-status", {
+      status: "checking",
+      message: "Đang kiểm tra cập nhật...",
+    });
+  }
+});
+
+autoUpdater.on("update-available", (info) => {
+  console.log(`✅ Có bản cập nhật mới: ${info.version}`);
+  if (mainWindow) {
+    mainWindow.webContents.send("update-status", {
+      status: "available",
+      message: `Có bản cập nhật mới: v${info.version}`,
+      version: info.version,
+      releaseNotes: info.releaseNotes,
+    });
+  }
+
+  // Hiển thị dialog thông báo có update mới
+  dialog
+    .showMessageBox(mainWindow, {
+      type: "info",
+      title: "Cập nhật có sẵn",
+      message: `Phiên bản mới ${info.version} đã có sẵn!`,
+      detail:
+        (info.releaseNotes || "Có bản cập nhật mới.") +
+        "\n\nBạn có muốn tải về và cài đặt ngay bây giờ không?",
+      buttons: ["Tải về ngay", "Để sau"],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    .then((result) => {
+      if (result.response === 0) {
+        // Người dùng chọn "Tải về ngay"
+        autoUpdater.downloadUpdate();
+      }
+    });
+});
+
+autoUpdater.on("update-not-available", (info) => {
+  console.log(`✅ Đã sử dụng phiên bản mới nhất: ${info.version}`);
+  if (mainWindow) {
+    mainWindow.webContents.send("update-status", {
+      status: "not-available",
+      message: "Đã sử dụng phiên bản mới nhất",
+      version: info.version,
+    });
+  }
+});
+
+autoUpdater.on("error", (error) => {
+  console.error(`❌ Lỗi kiểm tra cập nhật: ${error.message}`);
+  if (mainWindow) {
+    mainWindow.webContents.send("update-status", {
+      status: "error",
+      message: `Lỗi: ${error.message}`,
+    });
+  }
+});
+
+autoUpdater.on("download-progress", (progressObj) => {
+  const percent = Math.round(progressObj.percent);
+  console.log(`📥 Đang tải: ${percent}%`);
+  if (mainWindow) {
+    mainWindow.webContents.send("update-progress", {
+      percent,
+      transferred: progressObj.transferred,
+      total: progressObj.total,
+    });
+  }
+});
+
+autoUpdater.on("update-downloaded", (info) => {
+  console.log(`✅ Đã tải xong bản cập nhật: ${info.version}`);
+  if (mainWindow) {
+    mainWindow.webContents.send("update-status", {
+      status: "downloaded",
+      message: `Đã tải xong v${info.version}. Ứng dụng sẽ khởi động lại để cài đặt.`,
+      version: info.version,
+    });
+  }
+
+  dialog
+    .showMessageBox(mainWindow, {
+      type: "info",
+      title: "Cập nhật đã sẵn sàng",
+      message: `Phiên bản ${info.version} đã được tải về.`,
+      detail: "Ứng dụng sẽ khởi động lại để cài đặt cập nhật.",
+      buttons: ["Khởi động lại ngay", "Để sau"],
+      defaultId: 0,
+      cancelId: 1,
+    })
+    .then((result) => {
+      if (result.response === 0) {
+        // Khởi động lại và cài đặt update
+        autoUpdater.quitAndInstall(false, true);
+      }
+    });
+});
+
+// Hàm kiểm tra update (chỉ chạy trong production)
+// Chỉ chạy khi người dùng yêu cầu (manual update)
+function checkForUpdates() {
+  if (app.isPackaged) {
+    console.log("🚀 Đang kiểm tra cập nhật...");
+    autoUpdater.checkForUpdates().catch((error) => {
+      console.error("Lỗi khi kiểm tra update:", error);
+    });
+  } else {
+    console.log("⚠️ Chế độ development - bỏ qua kiểm tra update");
+  }
+}
+
+// Không tự động check update - người dùng sẽ check thủ công qua nút trong UI
+// Bỏ comment các dòng dưới nếu muốn tự động check:
+// setTimeout(() => {
+//   checkForUpdates();
+// }, 5000);
+// setInterval(() => {
+//   checkForUpdates();
+// }, 4 * 60 * 60 * 1000);
 
 /**
  * Hiển thị dialog thông báo chưa đăng ký và copy machineId
@@ -626,6 +778,61 @@ function downloadFile(url, filePath) {
     download(url);
   });
 }
+
+// IPC handlers cho auto-updater
+ipcMain.handle("check-for-updates", async () => {
+  if (!app.isPackaged) {
+    return {
+      success: false,
+      message: "Chức năng này chỉ hoạt động trong phiên bản đã build",
+    };
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+    return { success: true, message: "Đang kiểm tra cập nhật..." };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || "Lỗi khi kiểm tra cập nhật",
+    };
+  }
+});
+
+ipcMain.handle("download-update", async () => {
+  if (!app.isPackaged) {
+    return {
+      success: false,
+      message: "Chức năng này chỉ hoạt động trong phiên bản đã build",
+    };
+  }
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true, message: "Đang tải cập nhật..." };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || "Lỗi khi tải cập nhật",
+    };
+  }
+});
+
+ipcMain.handle("install-update", async () => {
+  if (!app.isPackaged) {
+    return {
+      success: false,
+      message: "Chức năng này chỉ hoạt động trong phiên bản đã build",
+    };
+  }
+  try {
+    autoUpdater.quitAndInstall(false, true);
+    return { success: true, message: "Đang khởi động lại để cài đặt..." };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || "Lỗi khi cài đặt cập nhật",
+    };
+  }
+});
 
 // IPC handler để tải yt-dlp mới nhất
 ipcMain.handle("download-ytdlp", async () => {

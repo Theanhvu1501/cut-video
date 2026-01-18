@@ -416,6 +416,10 @@ async function saveSettings() {
       overlayImagesFolder: selectedDownloadOverlayImagesFolder,
       thumbsFolder: selectedDownloadThumbsFolder,
       cookiesFile: selectedDownloadCookiesFile,
+      proxy:
+        document.getElementById("download-proxy")?.value?.trim() ||
+        selectedDownloadProxy ||
+        null,
     },
     // Video Snow settings
     videoSnow: {
@@ -867,6 +871,13 @@ async function loadSettings() {
         ).textContent = `Đã chọn: ${settings.download.cookiesFile}`;
         document.getElementById("download-cookies-path").style.display =
           "block";
+      }
+      if (settings.download.proxy !== undefined) {
+        selectedDownloadProxy = settings.download.proxy;
+        const proxyInput = document.getElementById("download-proxy");
+        if (proxyInput) {
+          proxyInput.value = settings.download.proxy || "";
+        }
       }
     }
 
@@ -1583,6 +1594,10 @@ async function saveCurrentProjectSettings() {
         overlayImagesFolder: selectedDownloadOverlayImagesFolder,
         thumbsFolder: selectedDownloadThumbsFolder,
         cookiesFile: selectedDownloadCookiesFile,
+        proxy:
+          document.getElementById("download-proxy")?.value?.trim() ||
+          selectedDownloadProxy ||
+          null,
       },
       // Video Snow settings
       videoSnow: {
@@ -2007,6 +2022,7 @@ let selectedDownloadOutputFolder = null;
 let selectedDownloadOverlayImagesFolder = null;
 let selectedDownloadThumbsFolder = null;
 let selectedDownloadCookiesFile = null;
+let selectedDownloadProxy = null;
 
 async function selectDownloadFile() {
   if (!checkElectronAPI()) return;
@@ -2172,10 +2188,23 @@ async function runDownload() {
         if (result.config.download.cookiesFile) {
           selectedDownloadCookiesFile = result.config.download.cookiesFile;
         }
+        if (result.config.download.proxy !== undefined) {
+          selectedDownloadProxy = result.config.download.proxy;
+          const proxyInput = document.getElementById("download-proxy");
+          if (proxyInput) {
+            proxyInput.value = result.config.download.proxy || "";
+          }
+        }
       }
     } catch (error) {
       console.error("Error loading project config before download:", error);
     }
+  }
+
+  // Lấy proxy từ input field (nếu có thay đổi)
+  const proxyInput = document.getElementById("download-proxy");
+  if (proxyInput) {
+    selectedDownloadProxy = proxyInput.value.trim() || null;
   }
 
   let hasError = false;
@@ -2214,6 +2243,7 @@ async function runDownload() {
         overlayImagesDir: selectedDownloadOverlayImagesFolder || "./images",
         outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
         cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
+        proxy: selectedDownloadProxy || null,
       },
     };
 

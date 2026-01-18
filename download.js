@@ -32,6 +32,7 @@ let DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbna
 let OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
 let OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
 let COOKIES_FILE = "./cookies.txt"; // File cookies.txt
+let PROXY = null; // Proxy để sử dụng khi download (vd: http://proxy.example.com:8080)
 
 // Đọc config từ file nếu có
 // Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
@@ -49,6 +50,7 @@ if (fs.existsSync(configFilePath)) {
     if (config.outputThumbsBaseDir)
       OUTPUT_THUMBS_BASE_DIR = config.outputThumbsBaseDir;
     if (config.cookiesFile) COOKIES_FILE = config.cookiesFile;
+    if (config.proxy !== undefined && config.proxy) PROXY = config.proxy;
 
     console.log(`Đã đọc config từ file: ${configFilePath}`);
   } catch (error) {
@@ -65,8 +67,9 @@ if (fs.existsSync(configFilePath)) {
  */
 const downloadVideo = async (url, outputPath) => {
   const output = path.join(outputPath, "%(title)s.%(ext)s");
-  // Sử dụng getYoutubeDl() để đảm bảo luôn dùng yt-dlp mới nhất (sau khi update)
-  await getYoutubeDl()(url, {
+
+  // Chuẩn bị options
+  const options = {
     output: output,
     format:
       "bestvideo[height=720][ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[height=720][ext=mp4][vcodec^=avc]",
@@ -82,7 +85,16 @@ const downloadVideo = async (url, outputPath) => {
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
     extractorArgs: ["youtube:player-client=default,-tv_simply"],
-  });
+  };
+
+  // Thêm proxy nếu có
+  if (PROXY) {
+    options.proxy = PROXY;
+    console.log(`🔒 Sử dụng proxy: ${PROXY}`);
+  }
+
+  // Sử dụng getYoutubeDl() để đảm bảo luôn dùng yt-dlp mới nhất (sau khi update)
+  await getYoutubeDl()(url, options);
   console.log(`✅ Tải/Kiểm tra thành công: ${url}`);
 };
 

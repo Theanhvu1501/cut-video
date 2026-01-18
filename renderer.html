@@ -1779,6 +1779,31 @@
               style="display: none"
             ></div>
           </div>
+          <div class="form-group">
+            <label>Proxy (tùy chọn):</label>
+            <input
+              type="text"
+              id="download-proxy"
+              placeholder="vd: http://proxy.example.com:8080 hoặc socks5://127.0.0.1:1080"
+              style="
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+              "
+            />
+            <small
+              style="
+                color: #666;
+                font-size: 12px;
+                display: block;
+                margin-top: 5px;
+              "
+            >
+              💡 Dùng proxy nếu bị chặn bot khi tải nhiều video. Để trống nếu
+              không cần.
+            </small>
+          </div>
           <div class="action-buttons" style="display: flex; gap: 10px">
             <button class="btn btn-primary" onclick="runDownload()">
               Tải video

@@ -100,41 +100,64 @@ async function openNewWindow() {
 async function checkForAppUpdate() {
   if (!checkElectronAPI()) return;
 
-  // Đánh dấu là check thủ công để hiển thị alert khi không có update
+  // Đánh dấu là check thủ công để hiển thị dialog khi không có update
   window.updateCheckManual = true;
+
+  // Hiển thị notification nhỏ khi đang check (không phải dialog)
+  const statusMsg = document.createElement("div");
+  statusMsg.id = "update-checking-notification";
+  statusMsg.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 16px 24px;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(102, 126, 234, 0.4);
+    z-index: 10000;
+    font-size: 14px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: slideInRight 0.3s ease-out;
+  `;
+  statusMsg.innerHTML =
+    '<span style="font-size: 20px;">🔄</span> <span>Đang kiểm tra cập nhật...</span>';
+  document.body.appendChild(statusMsg);
 
   try {
     const result = await window.electronAPI.checkForUpdates();
-    if (result.success) {
-      // Hiển thị thông báo đang kiểm tra
-      const statusMsg = document.createElement("div");
-      statusMsg.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 15px 20px;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-        z-index: 10000;
-        font-size: 14px;
-        font-weight: 500;
-      `;
-      statusMsg.textContent = "🔄 Đang kiểm tra cập nhật...";
-      document.body.appendChild(statusMsg);
 
-      // Tự động xóa sau 3 giây
-      setTimeout(() => {
-        if (statusMsg.parentNode) {
-          statusMsg.parentNode.removeChild(statusMsg);
-        }
-      }, 3000);
-    } else {
-      alert(result.message || "Lỗi khi kiểm tra cập nhật");
+    // Xóa notification sau 1 giây (để user thấy đã check xong)
+    setTimeout(() => {
+      if (statusMsg.parentNode) {
+        statusMsg.style.animation = "slideOutRight 0.3s ease-out";
+        setTimeout(() => {
+          if (statusMsg.parentNode) {
+            statusMsg.parentNode.removeChild(statusMsg);
+          }
+        }, 300);
+      }
+    }, 1000);
+
+    if (!result.success) {
+      // Nếu có lỗi, hiển thị dialog error
+      showUpdateDialog("error", {
+        message: result.message || "Lỗi khi kiểm tra cập nhật",
+      });
     }
+    // Nếu success, dialog sẽ được hiển thị từ event listeners (available/not-available)
   } catch (error) {
-    alert("Lỗi: " + getErrorMessage(error));
+    // Xóa notification nếu có lỗi
+    if (statusMsg.parentNode) {
+      statusMsg.parentNode.removeChild(statusMsg);
+    }
+    // Hiển thị dialog error
+    showUpdateDialog("error", {
+      message: "Lỗi: " + getErrorMessage(error),
+    });
   }
 }
 
@@ -226,10 +249,28 @@ function showUpdateDialog(type, data) {
     btnSecondary.style.display = "none";
     btnPrimary.disabled = false;
     dialog.classList.add("active");
+  } else if (type === "not-available") {
+    icon.textContent = "✅";
+    icon.style.display = "block";
+    title.textContent = "Đã là phiên bản mới nhất";
+    const currentVersion = data.version || "N/A";
+    message.innerHTML = `<strong>Bạn đang sử dụng phiên bản mới nhất!</strong><br><br>Phiên bản hiện tại: <span style="color: #667eea; font-weight: 600;">${currentVersion}</span>`;
+    releaseNotes.style.display = "none";
+    progressContainer.classList.remove("active");
+    btnPrimary.textContent = "Tuyệt vời!";
+    btnPrimary.onclick = () => {
+      dialog.classList.remove("active");
+    };
+    btnSecondary.style.display = "none";
+    btnPrimary.disabled = false;
+    dialog.classList.add("active");
   } else if (type === "error") {
     icon.textContent = "❌";
+    icon.style.display = "block";
     title.textContent = "Lỗi cập nhật";
-    message.innerHTML = `<strong>Đã xảy ra lỗi khi cập nhật</strong>\n\n${data.message}`;
+    message.innerHTML = `<strong>Đã xảy ra lỗi khi cập nhật</strong><br><br><span style="color: #dc3545;">${
+      data.message || "Lỗi không xác định"
+    }</span>`;
     releaseNotes.style.display = "none";
     progressContainer.classList.remove("active");
     btnPrimary.textContent = "Đóng";
@@ -281,11 +322,9 @@ function setupUpdateListeners() {
         showUpdateDialog("update-success", data);
       } else if (data.status === "not-available") {
         console.log("ℹ️ No update available");
-        // Chỉ hiển thị alert khi check thủ công, không hiển thị khi auto check
+        // Chỉ hiển thị dialog khi check thủ công, không hiển thị khi auto check
         if (window.updateCheckManual) {
-          alert(
-            `✅ ${data.message}\nPhiên bản hiện tại: ${data.version || "N/A"}`
-          );
+          showUpdateDialog("not-available", data);
           window.updateCheckManual = false;
         }
       } else if (data.status === "error") {

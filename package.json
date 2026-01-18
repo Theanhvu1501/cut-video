@@ -1,6 +1,6 @@
 {
   "name": "vid-master",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "main": "electron-main.js",
   "type": "module",
   "scripts": {

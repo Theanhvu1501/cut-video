@@ -1,6 +1,6 @@
 {
   "name": "vid-master",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "main": "electron-main.js",
   "type": "module",
   "scripts": {
@@ -54,7 +54,8 @@
           ]
         }
       ],
-      "publisherName": "VidMaster"
+      "publisherName": "VidMaster",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,

@@ -256,23 +256,31 @@ function updateProgress(percent, transferred, total) {
 
 // Setup listeners cho update status - sẽ được gọi trong DOMContentLoaded
 function setupUpdateListeners() {
+  console.log("🔧 Setting up update listeners...");
+
   if (
     typeof window !== "undefined" &&
     window.electronAPI &&
     window.electronAPI.onUpdateStatus
   ) {
+    console.log("✅ ElectronAPI available, setting up listeners");
+
     // Listen for update status
     window.electronAPI.onUpdateStatus((data) => {
-      console.log("Update status:", data);
+      console.log("📨 Update status received:", data);
 
       // Hiển thị custom dialog đẹp thay vì alert
       if (data.status === "available") {
+        console.log("✅ Update available, showing dialog");
         showUpdateDialog("available", data);
       } else if (data.status === "downloaded") {
+        console.log("✅ Update downloaded, showing dialog");
         showUpdateDialog("downloaded", data);
       } else if (data.status === "update-success") {
+        console.log("🎉 Update success, showing dialog");
         showUpdateDialog("update-success", data);
       } else if (data.status === "not-available") {
+        console.log("ℹ️ No update available");
         // Chỉ hiển thị alert khi check thủ công, không hiển thị khi auto check
         if (window.updateCheckManual) {
           alert(
@@ -281,17 +289,38 @@ function setupUpdateListeners() {
           window.updateCheckManual = false;
         }
       } else if (data.status === "error") {
+        console.error("❌ Update error:", data.message);
         showUpdateDialog("error", data);
+      } else if (data.status === "checking") {
+        console.log("🔍 Checking for updates...");
       }
     });
 
     // Listen for update progress
     if (window.electronAPI.onUpdateProgress) {
       window.electronAPI.onUpdateProgress((data) => {
-        console.log(`Update progress: ${data.percent}%`);
+        console.log(`📥 Update progress: ${data.percent}%`);
         updateProgress(data.percent, data.transferred || 0, data.total || 0);
       });
     }
+  } else {
+    console.warn("⚠️ ElectronAPI not available for update listeners");
+  }
+}
+
+// Setup listeners ngay khi script load (trước DOMContentLoaded)
+// Để đảm bảo listeners sẵn sàng khi electron-main gửi messages
+if (typeof window !== "undefined") {
+  // Thử setup ngay nếu electronAPI đã sẵn
+  if (window.electronAPI) {
+    setupUpdateListeners();
+  } else {
+    // Nếu chưa sẵn, đợi một chút rồi thử lại
+    setTimeout(() => {
+      if (window.electronAPI) {
+        setupUpdateListeners();
+      }
+    }, 500);
   }
 }
 
@@ -1587,6 +1616,9 @@ async function saveCurrentProjectSettings() {
 
 // Tab switching
 document.addEventListener("DOMContentLoaded", async () => {
+  // Setup update listeners trước
+  setupUpdateListeners();
+
   // Load projects first
   await loadProjects();
 

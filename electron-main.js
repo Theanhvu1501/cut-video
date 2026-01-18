@@ -62,6 +62,32 @@ autoUpdater.setFeedURL({
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = true;
 
+// Flag để test auto-update trong dev mode (set = true để test)
+const ENABLE_DEV_UPDATE_TEST = false; // ⚠️ CHỈ BẬT KHI CẦN TEST, NHỚ TẮT LẠI SAU!
+
+// Override app.isPackaged để force test update trong dev mode
+// CHỈ BẬT KHI ENABLE_DEV_UPDATE_TEST = true
+if (ENABLE_DEV_UPDATE_TEST && !app.isPackaged) {
+  console.log("🧪 [DEV MODE] Overriding app.isPackaged để test auto-update");
+  Object.defineProperty(app, "isPackaged", {
+    get: () => true,
+    configurable: true,
+  });
+
+  // Force dev update config trong electron-updater (nếu có property này)
+  try {
+    if (
+      autoUpdater &&
+      typeof autoUpdater.forceDevUpdateConfig !== "undefined"
+    ) {
+      autoUpdater.forceDevUpdateConfig = true;
+      console.log("🧪 [DEV MODE] Đã set forceDevUpdateConfig = true");
+    }
+  } catch (e) {
+    // Property có thể không tồn tại, không sao
+  }
+}
+
 // Log update events
 autoUpdater.logger = {
   info: (message) => console.log(`[AutoUpdater] ${message}`),
@@ -71,42 +97,56 @@ autoUpdater.logger = {
 
 // Các event handlers cho auto-updater
 autoUpdater.on("checking-for-update", () => {
-  console.log("🔍 Đang kiểm tra cập nhật...");
-  if (mainWindow) {
+  console.log("🔍 [AutoUpdater] Đang kiểm tra cập nhật...");
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("update-status", {
       status: "checking",
       message: "Đang kiểm tra cập nhật...",
     });
+  } else {
+    console.warn("⚠️ [AutoUpdater] mainWindow chưa sẵn sàng để gửi message");
   }
 });
 
 autoUpdater.on("update-available", (info) => {
-  console.log(`✅ Có bản cập nhật mới: ${info.version}`);
-  if (mainWindow) {
+  console.log(`✅ [AutoUpdater] Có bản cập nhật mới: ${info.version}`);
+  console.log(`📋 [AutoUpdater] Release notes:`, info.releaseNotes);
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("update-status", {
       status: "available",
       message: `Có bản cập nhật mới: v${info.version}`,
       version: info.version,
       releaseNotes: info.releaseNotes,
     });
+    console.log(
+      "✅ [AutoUpdater] Đã gửi update-status 'available' đến renderer"
+    );
+  } else {
+    console.warn("⚠️ [AutoUpdater] mainWindow chưa sẵn sàng để gửi message");
   }
   // Không hiển thị dialog native, để renderer hiển thị custom dialog đẹp hơn
 });
 
 autoUpdater.on("update-not-available", (info) => {
-  console.log(`✅ Đã sử dụng phiên bản mới nhất: ${info.version}`);
-  if (mainWindow) {
+  const currentVersion = app.getVersion();
+  console.log(
+    `✅ [AutoUpdater] Đã sử dụng phiên bản mới nhất: ${info?.version || "N/A"}`
+  );
+  console.log(`📌 [AutoUpdater] Phiên bản hiện tại của app: ${currentVersion}`);
+  console.log(`📋 [AutoUpdater] Info object:`, JSON.stringify(info, null, 2));
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("update-status", {
       status: "not-available",
       message: "Đã sử dụng phiên bản mới nhất",
-      version: info.version,
+      version: info?.version || currentVersion,
     });
   }
 });
 
 autoUpdater.on("error", (error) => {
-  console.error(`❌ Lỗi kiểm tra cập nhật: ${error.message}`);
-  if (mainWindow) {
+  console.error(`❌ [AutoUpdater] Lỗi kiểm tra cập nhật: ${error.message}`);
+  console.error(`❌ [AutoUpdater] Error stack:`, error.stack);
+  if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send("update-status", {
       status: "error",
       message: `Lỗi: ${error.message}`,
@@ -157,23 +197,101 @@ autoUpdater.on("update-downloaded", (info) => {
   // Không hiển thị dialog native, để renderer hiển thị custom dialog đẹp hơn
 });
 
-// Hàm kiểm tra update (chỉ chạy trong production)
+// Hàm kiểm tra update (chỉ chạy trong production, hoặc dev nếu ENABLE_DEV_UPDATE_TEST = true)
 // Chỉ chạy khi người dùng yêu cầu (manual update)
 function checkForUpdates() {
-  if (app.isPackaged) {
-    console.log("🚀 Đang kiểm tra cập nhật...");
-    autoUpdater.checkForUpdates().catch((error) => {
-      console.error("Lỗi khi kiểm tra update:", error);
-    });
+  const shouldCheck = app.isPackaged || ENABLE_DEV_UPDATE_TEST;
+
+  if (shouldCheck) {
+    if (!app.isPackaged && ENABLE_DEV_UPDATE_TEST) {
+      console.log("🧪 [DEV MODE] Auto-update testing được bật!");
+    }
+    const currentVersion = app.getVersion();
+    console.log(
+      `🚀 Đang kiểm tra cập nhật... (Phiên bản hiện tại: ${currentVersion})`
+    );
+    console.log(`📦 GitHub repo: Theanhvu1501/vid-master`);
+
+    // Đảm bảo mainWindow sẵn sàng trước khi check
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      console.warn("⚠️ mainWindow chưa sẵn sàng, bỏ qua check update");
+      return;
+    }
+
+    // Set timeout để detect nếu không có response
+    let timeoutId = setTimeout(() => {
+      console.warn(
+        "⚠️ Timeout: Không nhận được phản hồi từ auto-updater sau 30 giây"
+      );
+      console.warn(
+        "⚠️ Có thể do: GitHub không accessible, hoặc không có event được trigger"
+      );
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send("update-status", {
+          status: "error",
+          message:
+            "Timeout: Không thể kiểm tra cập nhật. Vui lòng thử lại sau.",
+        });
+      }
+    }, 30000); // 30 giây timeout
+
+    // Clear timeout khi có event nào đó
+    const clearTimeoutWrapper = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    };
+
+    // Lắng nghe tạm thời các event để clear timeout
+    const checkHandler = () => clearTimeoutWrapper();
+    autoUpdater.once("update-available", checkHandler);
+    autoUpdater.once("update-not-available", checkHandler);
+    autoUpdater.once("error", checkHandler);
+
+    autoUpdater
+      .checkForUpdates()
+      .then((result) => {
+        clearTimeoutWrapper();
+        console.log("✅ [checkForUpdates] Promise resolved");
+        if (result && result.updateInfo) {
+          console.log(
+            `📋 [checkForUpdates] Update info:`,
+            JSON.stringify(result.updateInfo, null, 2)
+          );
+        } else {
+          console.log(
+            `📋 [checkForUpdates] Result:`,
+            JSON.stringify(result, null, 2)
+          );
+        }
+      })
+      .catch((error) => {
+        clearTimeoutWrapper();
+        console.error("❌ [checkForUpdates] Lỗi khi kiểm tra update:", error);
+        console.error("❌ [checkForUpdates] Error details:", {
+          message: error.message,
+          stack: error.stack,
+          code: error.code,
+          errno: error.errno,
+        });
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("update-status", {
+            status: "error",
+            message: `Lỗi kiểm tra cập nhật: ${error.message}`,
+          });
+        }
+      });
   } else {
     console.log("⚠️ Chế độ development - bỏ qua kiểm tra update");
+    console.log(
+      "💡 Để test update trong dev mode, set ENABLE_DEV_UPDATE_TEST = true ở dòng 175"
+    );
   }
 }
 
-// Tự động kiểm tra update sau 3 giây khi app khởi động
-setTimeout(() => {
-  checkForUpdates();
-}, 3000);
+// Auto check update sẽ được gọi sau khi window load xong (trong createWindow)
+// Không cần gọi ở đây nữa vì có thể window chưa sẵn sàng
 
 /**
  * Hiển thị dialog thông báo chưa đăng ký và copy machineId
@@ -372,6 +490,16 @@ function createWindow() {
   });
 
   mainWindow.loadFile("renderer.html");
+
+  // Đợi window load xong rồi mới check update
+  // Đảm bảo renderer.js đã load và setup listeners
+  mainWindow.webContents.once("did-finish-load", () => {
+    console.log("✅ Window đã load xong, bắt đầu check update sau 2 giây...");
+    // Đợi thêm 2 giây để đảm bảo renderer.js đã setup listeners
+    setTimeout(() => {
+      checkForUpdates();
+    }, 2000);
+  });
 
   // Open DevTools in development (uncomment to enable)
   // mainWindow.webContents.openDevTools();

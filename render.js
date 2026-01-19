@@ -466,6 +466,25 @@ const complexFilterKeepColor = () => {
   // 4. ÁP MASK TỔNG VÀO VIDEO GỐC
   filters.push(`[src_main]${currentMask}alphamerge[final_isolated]`);
 
+  // 5. THÊM LỚP ĐEN MỜ (opacity 0.3) NẾU CÓ CROP
+  if (keepColorCrop) {
+    const h = keepColorHeight || 720;
+    // Tạo lớp đen mờ từ video gốc để có cùng duration
+    // Lớp đen có kích thước bằng phần crop và opacity 0.3 (alpha = 76.5 ≈ 77)
+    let blackFilter = `[1:v]scale=1280:720,crop=1280:${h}:0:${keepColorYOffset || 0}`;
+    filters.push(
+      `${blackFilter},geq=r=0:g=0:b=0:a=300,format=yuva420p[black_layer]`,
+      // Overlay lớp đen lên background trước, sau đó overlay video keepColor lên trên
+      `[0:v][black_layer]overlay=0:H-h:shortest=1[bg_with_black]`,
+      `[bg_with_black][final_isolated]overlay=0:H-h:shortest=1[combined_video]`
+    );
+    
+    return [
+      filters.join(";"),
+      "[1:a]volume=1.0[overlay_audio]",
+    ];
+  }
+
   return [
     filters.join(";"),
     `[0:v][final_isolated]overlay=0:H-h:shortest=1[combined_video]`,

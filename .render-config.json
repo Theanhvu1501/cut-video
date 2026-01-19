@@ -1,21 +1,21 @@
 {
-  "renderMode": "topTransparent",
+  "renderMode": "keepColor",
   "chromaKeyMode": "color",
   "chromaKeyColor": "D4F9D7",
   "chromaKeyFile": null,
   "keepColorColors": [
-    "FBFF02"
+    "F6FF00"
   ],
-  "keepColorCrop": false,
-  "keepColorHeight": 220,
-  "keepColorYOffset": 490,
+  "keepColorCrop": true,
+  "keepColorHeight": 150,
+  "keepColorYOffset": 550,
   "useGPU": false,
   "maxConcurrentProcesses": 2,
   "gpuVideoCodec": "h264_nvenc",
   "opacity": 0.7,
   "height": 220,
   "y_offset": 490,
-  "overlayFolder": "D:\\test\\line\\overlays",
-  "backgroundFolder": "D:\\test\\line\\backgrounds",
-  "outputFolder": "D:\\test\\line\\done"
+  "overlayFolder": "D:\\test\\2ch\\overlays_trimmed",
+  "backgroundFolder": "D:\\test\\2ch\\backgrounds",
+  "outputFolder": "D:\\test\\2ch\\done"
 }

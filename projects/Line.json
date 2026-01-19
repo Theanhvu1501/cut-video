@@ -50,13 +50,13 @@
       "avgClipDuration": "12"
     },
     "trim": {
-      "inputFolder": null,
-      "outputFolder": null,
+      "inputFolder": "G:\\My Drive\\Youtube\\Line\\overlays",
+      "outputFolder": "G:\\My Drive\\Youtube\\Line\\overlays_trimmed",
       "startTime": "0",
       "duration": "30"
     },
     "cutBg": {
-      "inputFolder": null,
+      "inputFolder": "G:\\My Drive\\Youtube\\Line\\channels",
       "outputFolder": null
     },
     "thumb": {
@@ -75,10 +75,10 @@
       "chunkSize": "2",
       "useThumbs": true,
       "thumbDuration": "3",
-      "inputFolder": null,
+      "inputFolder": "G:\\My Drive\\Youtube\\Line",
       "thumbsFolder": null,
       "outputFolder": null
     }
   },
-  "updatedAt": "2026-01-19T17:38:27.606Z"
+  "updatedAt": "2026-01-19T18:21:14.074Z"
 }

@@ -1,0 +1,19 @@
+{
+  "renderMode": "topTransparent",
+  "chromaKeyMode": "color",
+  "chromaKeyColor": null,
+  "chromaKeyFile": null,
+  "keepColorColors": null,
+  "keepColorCrop": false,
+  "keepColorHeight": 220,
+  "keepColorYOffset": 490,
+  "useGPU": true,
+  "maxConcurrentProcesses": 2,
+  "gpuVideoCodec": "h264_nvenc",
+  "opacity": 0.7,
+  "height": 220,
+  "y_offset": 490,
+  "overlayFolder": "G:\\My Drive\\Youtube\\Line\\overlays_trimmed",
+  "backgroundFolder": "G:\\My Drive\\Youtube\\US_Gia\\backgrounds",
+  "outputFolder": "G:\\My Drive\\Youtube\\Line\\done"
+}

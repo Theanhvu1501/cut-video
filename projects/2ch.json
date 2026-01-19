@@ -28,7 +28,10 @@
       "outputFolder": "D:\\test\\2ch\\overlays",
       "overlayImagesFolder": "D:\\test\\2ch\\images",
       "thumbsFolder": "D:\\test\\line\\thumbs\\1",
-      "cookiesFile": null
+      "cookiesFile": null,
+      "proxy": null,
+      "downloadDrive": false,
+      "driveLanguage": "jp"
     },
     "videoSnow": {
       "inputFolder": null,
@@ -47,13 +50,13 @@
       "avgClipDuration": "12"
     },
     "trim": {
-      "inputFolder": null,
-      "outputFolder": null,
+      "inputFolder": "G:\\My Drive\\Youtube\\Line\\overlays",
+      "outputFolder": "G:\\My Drive\\Youtube\\Line\\overlays_trimmed",
       "startTime": "0",
       "duration": "30"
     },
     "cutBg": {
-      "inputFolder": null,
+      "inputFolder": "G:\\My Drive\\Youtube\\Line\\channels",
       "outputFolder": null
     },
     "thumb": {
@@ -62,8 +65,8 @@
       "outputFolder": null
     },
     "getUrl": {
-      "handle": "",
-      "outputFolder": null
+      "handle": "@line4091",
+      "outputFolder": "D:\\Youtube\\test\\channels"
     },
     "normalize": {
       "inputFolder": null
@@ -72,10 +75,10 @@
       "chunkSize": "2",
       "useThumbs": true,
       "thumbDuration": "3",
-      "inputFolder": null,
+      "inputFolder": "G:\\My Drive\\Youtube\\Line",
       "thumbsFolder": null,
       "outputFolder": null
     }
   },
-  "updatedAt": "2026-01-15T06:49:10.757Z"
+  "updatedAt": "2026-01-19T18:23:12.739Z"
 }

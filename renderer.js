@@ -16,10 +16,50 @@ function toggleSettingsMenu() {
     if (isActive) {
       closeSettingsMenu();
     } else {
-      // Tính toán vị trí dropdown dựa trên vị trí của button (fixed position)
+      // Tính toán vị trí dropdown
       const rect = btn.getBoundingClientRect();
-      dropdown.style.top = rect.bottom + 8 + "px";
-      dropdown.style.right = window.innerWidth - rect.right + "px";
+      const dropdownWidth = 220; // min-width của dropdown
+      const estimatedHeight = 250; // Ước tính chiều cao dropdown
+
+      // Reset styles
+      dropdown.style.maxHeight = "";
+      dropdown.style.overflowY = "";
+
+      // Tính vị trí right - căn chỉnh với cạnh phải của button
+      const rightEdge = window.innerWidth - rect.right;
+      dropdown.style.right = rightEdge + "px";
+      dropdown.style.left = "auto";
+
+      // Kiểm tra và điều chỉnh nếu dropdown bị tràn ra ngoài
+      const leftEdge = rect.right - dropdownWidth;
+      if (leftEdge < 20) {
+        // Nếu không đủ chỗ bên trái, đặt cách lề phải 20px
+        dropdown.style.right = "20px";
+      }
+
+      // Tính vị trí top/bottom
+      const spaceAbove = rect.top;
+      const spaceBelow = window.innerHeight - rect.bottom;
+
+      if (spaceAbove >= estimatedHeight + 20) {
+        // Có đủ chỗ ở trên, hiển thị ở trên
+        dropdown.style.top = rect.top - estimatedHeight - 8 + "px";
+        dropdown.style.bottom = "auto";
+      } else if (spaceBelow >= estimatedHeight + 20) {
+        // Có đủ chỗ ở dưới, hiển thị ở dưới
+        dropdown.style.top = rect.bottom + 8 + "px";
+        dropdown.style.bottom = "auto";
+      } else {
+        // Không đủ chỗ, hiển thị ở trên với scroll
+        dropdown.style.top =
+          Math.max(20, rect.top - estimatedHeight - 8) + "px";
+        dropdown.style.bottom = "auto";
+        dropdown.style.maxHeight = window.innerHeight - 40 + "px";
+        dropdown.style.overflowY = "auto";
+      }
+
+      dropdown.style.zIndex = "99999";
+      dropdown.style.position = "fixed";
 
       dropdown.classList.add("active");
       btn.classList.add("active");
@@ -787,35 +827,25 @@ async function loadSettings() {
         selectedRenderOverlayFolder = settings.render.overlayFolder;
         document.getElementById("render-overlay-folder").value =
           settings.render.overlayFolder;
-        document.getElementById("render-overlay-path").textContent =
-          `Đã chọn: ${settings.render.overlayFolder}`;
-        document.getElementById("render-overlay-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.render.backgroundFolder) {
         selectedRenderBackgroundFolder = settings.render.backgroundFolder;
         document.getElementById("render-background-folder").value =
           settings.render.backgroundFolder;
-        document.getElementById("render-background-path").textContent =
-          `Đã chọn: ${settings.render.backgroundFolder}`;
-        document.getElementById("render-background-path").style.display =
-          "block";
+        // Removed folder path display
       }
       if (settings.render.outputFolder) {
         selectedRenderOutputFolder = settings.render.outputFolder;
         document.getElementById("render-output-folder").value =
           settings.render.outputFolder;
-        document.getElementById("render-output-path").textContent =
-          `Đã chọn: ${settings.render.outputFolder}`;
-        document.getElementById("render-output-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.render.chromaKeyFile) {
         selectedRenderChromaKeyFile = settings.render.chromaKeyFile;
         document.getElementById("render-chromakey-file").value =
           settings.render.chromaKeyFile;
-        document.getElementById("render-chromakey-file-path").textContent =
-          `Đã chọn: ${settings.render.chromaKeyFile}`;
-        document.getElementById("render-chromakey-file-path").style.display =
-          "block";
+        // Removed folder path display
       }
     }
 
@@ -825,44 +855,32 @@ async function loadSettings() {
         selectedUrlsFile = settings.download.urlsFile;
         document.getElementById("download-urls-file").value =
           settings.download.urlsFile;
-        document.getElementById("download-urls-path").textContent =
-          `Đã chọn: ${settings.download.urlsFile}`;
-        document.getElementById("download-urls-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.download.outputFolder) {
         selectedDownloadOutputFolder = settings.download.outputFolder;
         document.getElementById("download-output-folder").value =
           settings.download.outputFolder;
-        document.getElementById("download-output-path").textContent =
-          `Đã chọn: ${settings.download.outputFolder}`;
-        document.getElementById("download-output-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.download.overlayImagesFolder) {
         selectedDownloadOverlayImagesFolder =
           settings.download.overlayImagesFolder;
         document.getElementById("download-overlay-images-folder").value =
           settings.download.overlayImagesFolder;
-        document.getElementById("download-overlay-images-path").textContent =
-          `Đã chọn: ${settings.download.overlayImagesFolder}`;
-        document.getElementById("download-overlay-images-path").style.display =
-          "block";
+        // Removed folder path display
       }
       if (settings.download.thumbsFolder) {
         selectedDownloadThumbsFolder = settings.download.thumbsFolder;
         document.getElementById("download-thumbs-folder").value =
           settings.download.thumbsFolder;
-        document.getElementById("download-thumbs-path").textContent =
-          `Đã chọn: ${settings.download.thumbsFolder}`;
-        document.getElementById("download-thumbs-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.download.cookiesFile) {
         selectedDownloadCookiesFile = settings.download.cookiesFile;
         document.getElementById("download-cookies-file").value =
           settings.download.cookiesFile;
-        document.getElementById("download-cookies-path").textContent =
-          `Đã chọn: ${settings.download.cookiesFile}`;
-        document.getElementById("download-cookies-path").style.display =
-          "block";
+        // Removed folder path display
       }
       if (settings.download.proxy !== undefined) {
         selectedDownloadProxy = settings.download.proxy;
@@ -900,27 +918,19 @@ async function loadSettings() {
         selectedVideoSnowInputFolder = settings.videoSnow.inputFolder;
         document.getElementById("video-snow-input-folder").value =
           settings.videoSnow.inputFolder;
-        document.getElementById("video-snow-input-path").textContent =
-          `Đã chọn: ${settings.videoSnow.inputFolder}`;
-        document.getElementById("video-snow-input-path").style.display =
-          "block";
+        // Removed folder path display
       }
       if (settings.videoSnow.outputFolder) {
         selectedVideoSnowOutputFolder = settings.videoSnow.outputFolder;
         document.getElementById("video-snow-output-folder").value =
           settings.videoSnow.outputFolder;
-        document.getElementById("video-snow-output-path").textContent =
-          `Đã chọn: ${settings.videoSnow.outputFolder}`;
-        document.getElementById("video-snow-output-path").style.display =
-          "block";
+        // Removed folder path display
       }
       if (settings.videoSnow.snowFile) {
         selectedVideoSnowSnowFile = settings.videoSnow.snowFile;
         document.getElementById("video-snow-snow-file").value =
           settings.videoSnow.snowFile;
-        document.getElementById("video-snow-snow-path").textContent =
-          `Đã chọn: ${settings.videoSnow.snowFile}`;
-        document.getElementById("video-snow-snow-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.videoSnow.maxConcurrent) {
         document.getElementById("video-snow-max-concurrent").value =
@@ -944,17 +954,13 @@ async function loadSettings() {
         selectedBgInputFolder = settings.bgVideo.inputFolder;
         document.getElementById("bg-input-folder").value =
           settings.bgVideo.inputFolder;
-        document.getElementById("bg-input-path").textContent =
-          `Đã chọn: ${settings.bgVideo.inputFolder}`;
-        document.getElementById("bg-input-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.bgVideo.outputFolder) {
         selectedBgOutputFolder = settings.bgVideo.outputFolder;
         document.getElementById("bg-output-folder").value =
           settings.bgVideo.outputFolder;
-        document.getElementById("bg-output-path").textContent =
-          `Đã chọn: ${settings.bgVideo.outputFolder}`;
-        document.getElementById("bg-output-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.bgVideo.targetDuration) {
         document.getElementById("bg-target-duration").value =
@@ -976,17 +982,13 @@ async function loadSettings() {
         selectedTrimInputFolder = settings.trim.inputFolder;
         document.getElementById("trim-input-folder").value =
           settings.trim.inputFolder;
-        document.getElementById("trim-input-path").textContent =
-          `Đã chọn: ${settings.trim.inputFolder}`;
-        document.getElementById("trim-input-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.trim.outputFolder) {
         selectedTrimOutputFolder = settings.trim.outputFolder;
         document.getElementById("trim-output-folder").value =
           settings.trim.outputFolder;
-        document.getElementById("trim-output-path").textContent =
-          `Đã chọn: ${settings.trim.outputFolder}`;
-        document.getElementById("trim-output-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.trim.startTime)
         document.getElementById("trim-start-time").value =
@@ -1001,17 +1003,13 @@ async function loadSettings() {
         selectedCutBgInputFolder = settings.cutBg.inputFolder;
         document.getElementById("cut-bg-input-folder").value =
           settings.cutBg.inputFolder;
-        document.getElementById("cut-bg-input-path").textContent =
-          `Đã chọn: ${settings.cutBg.inputFolder}`;
-        document.getElementById("cut-bg-input-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.cutBg.outputFolder) {
         selectedCutBgOutputFolder = settings.cutBg.outputFolder;
         document.getElementById("cut-bg-output-folder").value =
           settings.cutBg.outputFolder;
-        document.getElementById("cut-bg-output-path").textContent =
-          `Đã chọn: ${settings.cutBg.outputFolder}`;
-        document.getElementById("cut-bg-output-path").style.display = "block";
+        // Removed folder path display
       }
     }
 
@@ -1021,25 +1019,19 @@ async function loadSettings() {
         selectedThumbInputFolder = settings.thumb.inputFolder;
         document.getElementById("thumb-input-folder").value =
           settings.thumb.inputFolder;
-        document.getElementById("thumb-input-path").textContent =
-          `Đã chọn: ${settings.thumb.inputFolder}`;
-        document.getElementById("thumb-input-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.thumb.overlayFolder) {
         selectedThumbOverlayFolder = settings.thumb.overlayFolder;
         document.getElementById("thumb-overlay-folder").value =
           settings.thumb.overlayFolder;
-        document.getElementById("thumb-overlay-path").textContent =
-          `Đã chọn: ${settings.thumb.overlayFolder}`;
-        document.getElementById("thumb-overlay-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.thumb.outputFolder) {
         selectedThumbOutputFolder = settings.thumb.outputFolder;
         document.getElementById("thumb-output-folder").value =
           settings.thumb.outputFolder;
-        document.getElementById("thumb-output-path").textContent =
-          `Đã chọn: ${settings.thumb.outputFolder}`;
-        document.getElementById("thumb-output-path").style.display = "block";
+        // Removed folder path display
       }
     }
 
@@ -1052,9 +1044,7 @@ async function loadSettings() {
         selectedGetUrlOutputFolder = settings.getUrl.outputFolder;
         document.getElementById("get-url-output-folder").value =
           settings.getUrl.outputFolder;
-        document.getElementById("get-url-output-path").textContent =
-          `Đã chọn: ${settings.getUrl.outputFolder}`;
-        document.getElementById("get-url-output-path").style.display = "block";
+        // Removed folder path display
       }
     }
 
@@ -1064,9 +1054,7 @@ async function loadSettings() {
         selectedNormalizeInputFolder = settings.normalize.inputFolder;
         document.getElementById("normalize-input-folder").value =
           settings.normalize.inputFolder;
-        document.getElementById("normalize-input-path").textContent =
-          `Đã chọn: ${settings.normalize.inputFolder}`;
-        document.getElementById("normalize-input-path").style.display = "block";
+        // Removed folder path display
       }
     }
 
@@ -1087,25 +1075,19 @@ async function loadSettings() {
         selectedConcatInputFolder = settings.concat.inputFolder;
         document.getElementById("concat-input-folder").value =
           settings.concat.inputFolder;
-        document.getElementById("concat-input-path").textContent =
-          `Đã chọn: ${settings.concat.inputFolder}`;
-        document.getElementById("concat-input-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.concat.thumbsFolder) {
         selectedConcatThumbsFolder = settings.concat.thumbsFolder;
         document.getElementById("concat-thumbs-folder").value =
           settings.concat.thumbsFolder;
-        document.getElementById("concat-thumbs-path").textContent =
-          `Đã chọn: ${settings.concat.thumbsFolder}`;
-        document.getElementById("concat-thumbs-path").style.display = "block";
+        // Removed folder path display
       }
       if (settings.concat.outputFolder) {
         selectedConcatOutputFolder = settings.concat.outputFolder;
         document.getElementById("concat-output-folder").value =
           settings.concat.outputFolder;
-        document.getElementById("concat-output-path").textContent =
-          `Đã chọn: ${settings.concat.outputFolder}`;
-        document.getElementById("concat-output-path").style.display = "block";
+        // Removed folder path display
       }
     }
   } catch (error) {
@@ -1844,10 +1826,7 @@ async function selectRenderChromaKeyFile() {
     if (filePath) {
       selectedRenderChromaKeyFile = filePath;
       document.getElementById("render-chromakey-file").value = filePath;
-      document.getElementById("render-chromakey-file-path").textContent =
-        `Đã chọn: ${filePath}`;
-      document.getElementById("render-chromakey-file-path").style.display =
-        "block";
+      // Removed folder path display
       saveSettings();
     }
   } catch (error) {
@@ -1862,9 +1841,7 @@ async function selectRenderOverlayFolder() {
   if (folder) {
     selectedRenderOverlayFolder = folder;
     document.getElementById("render-overlay-folder").value = folder;
-    document.getElementById("render-overlay-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("render-overlay-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -1875,9 +1852,7 @@ async function selectRenderBackgroundFolder() {
   if (folder) {
     selectedRenderBackgroundFolder = folder;
     document.getElementById("render-background-folder").value = folder;
-    document.getElementById("render-background-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("render-background-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -1888,9 +1863,7 @@ async function selectRenderOutputFolder() {
   if (folder) {
     selectedRenderOutputFolder = folder;
     document.getElementById("render-output-folder").value = folder;
-    document.getElementById("render-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("render-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2032,9 +2005,7 @@ async function selectDownloadFile() {
     if (filePath) {
       selectedUrlsFile = filePath;
       document.getElementById("download-urls-file").value = filePath;
-      document.getElementById("download-urls-path").textContent =
-        `Đã chọn: ${filePath}`;
-      document.getElementById("download-urls-path").style.display = "block";
+      // Removed folder path display
       saveSettings();
     }
   } catch (error) {
@@ -2049,9 +2020,7 @@ async function selectDownloadOutputFolder() {
   if (folder) {
     selectedDownloadOutputFolder = folder;
     document.getElementById("download-output-folder").value = folder;
-    document.getElementById("download-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("download-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2062,10 +2031,7 @@ async function selectDownloadOverlayImagesFolder() {
   if (folder) {
     selectedDownloadOverlayImagesFolder = folder;
     document.getElementById("download-overlay-images-folder").value = folder;
-    document.getElementById("download-overlay-images-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("download-overlay-images-path").style.display =
-      "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2076,9 +2042,7 @@ async function selectDownloadThumbsFolder() {
   if (folder) {
     selectedDownloadThumbsFolder = folder;
     document.getElementById("download-thumbs-folder").value = folder;
-    document.getElementById("download-thumbs-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("download-thumbs-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2095,9 +2059,7 @@ async function selectDownloadCookiesFile() {
     if (filePath) {
       selectedDownloadCookiesFile = filePath;
       document.getElementById("download-cookies-file").value = filePath;
-      document.getElementById("download-cookies-path").textContent =
-        `Đã chọn: ${filePath}`;
-      document.getElementById("download-cookies-path").style.display = "block";
+      // Removed folder path display
       saveSettings();
     }
   } catch (error) {
@@ -2399,9 +2361,7 @@ async function selectVideoSnowInputFolder() {
   if (folder) {
     selectedVideoSnowInputFolder = folder;
     document.getElementById("video-snow-input-folder").value = folder;
-    document.getElementById("video-snow-input-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("video-snow-input-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2412,9 +2372,7 @@ async function selectVideoSnowOutputFolder() {
   if (folder) {
     selectedVideoSnowOutputFolder = folder;
     document.getElementById("video-snow-output-folder").value = folder;
-    document.getElementById("video-snow-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("video-snow-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2431,9 +2389,7 @@ async function selectVideoSnowSnowFile() {
     if (filePath) {
       selectedVideoSnowSnowFile = filePath;
       document.getElementById("video-snow-snow-file").value = filePath;
-      document.getElementById("video-snow-snow-path").textContent =
-        `Đã chọn: ${filePath}`;
-      document.getElementById("video-snow-snow-path").style.display = "block";
+      // Removed folder path display
       saveSettings();
     }
   } catch (error) {
@@ -2490,8 +2446,7 @@ async function selectBgInputFolder() {
   if (folder) {
     selectedBgInputFolder = folder;
     document.getElementById("bg-input-folder").value = folder;
-    document.getElementById("bg-input-path").textContent = `Đã chọn: ${folder}`;
-    document.getElementById("bg-input-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2502,9 +2457,7 @@ async function selectBgOutputFolder() {
   if (folder) {
     selectedBgOutputFolder = folder;
     document.getElementById("bg-output-folder").value = folder;
-    document.getElementById("bg-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("bg-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2569,9 +2522,7 @@ async function selectTrimInputFolder() {
   if (folder) {
     selectedTrimInputFolder = folder;
     document.getElementById("trim-input-folder").value = folder;
-    document.getElementById("trim-input-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("trim-input-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2582,9 +2533,7 @@ async function selectTrimOutputFolder() {
   if (folder) {
     selectedTrimOutputFolder = folder;
     document.getElementById("trim-output-folder").value = folder;
-    document.getElementById("trim-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("trim-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2645,9 +2594,7 @@ async function selectCutBgInputFolder() {
   if (folder) {
     selectedCutBgInputFolder = folder;
     document.getElementById("cut-bg-input-folder").value = folder;
-    document.getElementById("cut-bg-input-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("cut-bg-input-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2658,9 +2605,7 @@ async function selectCutBgOutputFolder() {
   if (folder) {
     selectedCutBgOutputFolder = folder;
     document.getElementById("cut-bg-output-folder").value = folder;
-    document.getElementById("cut-bg-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("cut-bg-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2702,9 +2647,7 @@ async function selectThumbInputFolder() {
   if (folder) {
     selectedThumbInputFolder = folder;
     document.getElementById("thumb-input-folder").value = folder;
-    document.getElementById("thumb-input-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("thumb-input-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2715,9 +2658,7 @@ async function selectThumbOverlayFolder() {
   if (folder) {
     selectedThumbOverlayFolder = folder;
     document.getElementById("thumb-overlay-folder").value = folder;
-    document.getElementById("thumb-overlay-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("thumb-overlay-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2728,9 +2669,7 @@ async function selectThumbOutputFolder() {
   if (folder) {
     selectedThumbOutputFolder = folder;
     document.getElementById("thumb-output-folder").value = folder;
-    document.getElementById("thumb-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("thumb-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2771,9 +2710,7 @@ async function selectGetUrlOutputFolder() {
   if (folder) {
     selectedGetUrlOutputFolder = folder;
     document.getElementById("get-url-output-folder").value = folder;
-    document.getElementById("get-url-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("get-url-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -2820,9 +2757,7 @@ async function selectNormalizeInputFolder() {
   if (folder) {
     selectedNormalizeInputFolder = folder;
     document.getElementById("normalize-input-folder").value = folder;
-    document.getElementById("normalize-input-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("normalize-input-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -3411,9 +3346,7 @@ async function selectConcatInputFolder() {
   if (folder) {
     selectedConcatInputFolder = folder;
     document.getElementById("concat-input-folder").value = folder;
-    document.getElementById("concat-input-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("concat-input-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -3424,9 +3357,7 @@ async function selectConcatThumbsFolder() {
   if (folder) {
     selectedConcatThumbsFolder = folder;
     document.getElementById("concat-thumbs-folder").value = folder;
-    document.getElementById("concat-thumbs-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("concat-thumbs-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }
@@ -3437,9 +3368,7 @@ async function selectConcatOutputFolder() {
   if (folder) {
     selectedConcatOutputFolder = folder;
     document.getElementById("concat-output-folder").value = folder;
-    document.getElementById("concat-output-path").textContent =
-      `Đã chọn: ${folder}`;
-    document.getElementById("concat-output-path").style.display = "block";
+    // Removed folder path display
     saveSettings();
   }
 }

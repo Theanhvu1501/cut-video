@@ -63,8 +63,8 @@
       "outputFolder": null
     },
     "getUrl": {
-      "handle": "",
-      "outputFolder": null
+      "handle": "@line4091",
+      "outputFolder": "D:\\Youtube\\test\\channels"
     },
     "normalize": {
       "inputFolder": null
@@ -78,5 +78,5 @@
       "outputFolder": null
     }
   },
-  "updatedAt": "2026-01-19T06:22:22.074Z"
+  "updatedAt": "2026-01-19T16:40:53.335Z"
 }

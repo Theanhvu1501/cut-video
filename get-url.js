@@ -2,6 +2,7 @@ import fs from "fs";
 import { google } from "googleapis";
 import path from "path";
 import { fileURLToPath } from "url";
+import * as XLSX from "xlsx";
 
 // __dirname trong ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -67,14 +68,11 @@ async function getVideoUrls(handle) {
 
   // === B2: Lấy tất cả video từ playlist uploads ===
   let nextPageToken = "";
-  const directoryPath = path.join(
-    outputBaseFolder,
-    handle.replace(/^@/, "")
-  );
+  const directoryPath = path.join(outputBaseFolder, handle.replace(/^@/, ""));
   if (!fs.existsSync(directoryPath))
     fs.mkdirSync(directoryPath, { recursive: true });
 
-  const filePath = path.join(directoryPath, "youtube.txt");
+  const filePath = path.join(directoryPath, "youtube.xlsx");
   const videosData = [];
 
   do {
@@ -86,12 +84,12 @@ async function getVideoUrls(handle) {
     });
 
     const videoIds = playlistItemsResponse.data.items.map(
-      (item) => item.snippet.resourceId.videoId
+      (item) => item.snippet.resourceId.videoId,
     );
 
     if (videoIds.length > 0) {
       const videosResponse = await youtube.videos.list({
-        part: ["contentDetails", "statistics"],
+        part: ["contentDetails", "statistics", "snippet"],
         id: videoIds,
       });
 
@@ -99,12 +97,16 @@ async function getVideoUrls(handle) {
         const durationSec = parseDuration(video.contentDetails.duration);
         const viewCount = Number(video.statistics?.viewCount || 0);
         const vid = video.id;
+        const title = video.snippet?.title || "";
+        const publishedAt = video.snippet?.publishedAt || "";
 
         if (durationSec > minSeconds) {
           videosData.push({
             id: vid,
             viewCount,
             url: `https://www.youtube.com/watch?v=${vid}`,
+            title: title,
+            publishedAt: publishedAt,
           });
         }
       }
@@ -116,14 +118,53 @@ async function getVideoUrls(handle) {
   // === B3: Sắp xếp theo lượt view giảm dần ===
   // videosData.sort((a, b) => b.viewCount - a.viewCount);
 
-  // === B4: Ghi file chỉ gồm URL + view count ===
-  fs.writeFileSync(
-    filePath,
-    videosData.map((v) => `${v.url}`).join("\n"),
-    "utf8"
-  );
+  // === B4: Ghi file Excel với các cột: url, title, viewCount, date publish ===
+  if (videosData.length > 0) {
+    // Chuẩn bị dữ liệu cho Excel
+    const excelData = videosData.map((v) => {
+      // Format ngày tháng
+      let datePublish = "";
+      if (v.publishedAt) {
+        const date = new Date(v.publishedAt);
+        datePublish = date.toLocaleDateString("vi-VN", {
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        });
+      }
 
-  console.log(`\n✅ Hoàn thành! Đã lưu file: ${filePath}`);
+      return {
+        URL: v.url,
+        Title: v.title,
+        ViewCount: v.viewCount,
+        "Date Publish": datePublish,
+      };
+    });
+
+    // Tạo workbook và worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+
+    // Đặt độ rộng cột
+    ws["!cols"] = [
+      { wch: 50 }, // URL
+      { wch: 60 }, // Title
+      { wch: 15 }, // ViewCount
+      { wch: 20 }, // Date Publish
+    ];
+
+    // Thêm worksheet vào workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Videos");
+
+    // Ghi file Excel
+    XLSX.writeFile(wb, filePath);
+
+    console.log(
+      `\n✅ Hoàn thành! Đã lưu ${videosData.length} video vào file Excel: ${filePath}`,
+    );
+  } else {
+    console.log(`\n⚠️ Không có video nào thỏa mãn điều kiện (>${minSeconds}s)`);
+  }
 }
 
 // === MAIN ===

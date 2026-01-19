@@ -413,6 +413,52 @@ function getErrorMessage(error) {
   return String(error);
 }
 
+// Hàm xử lý khi bật/tắt GPU - tự động phát hiện codec
+async function handleGpuToggle() {
+  const useGpuCheckbox = document.getElementById("render-use-gpu");
+  const gpuCodecInput = document.getElementById("render-gpu-codec");
+  const gpuCodecGroup = document.getElementById("render-gpu-codec-group");
+  
+  if (!useGpuCheckbox || !gpuCodecInput) return;
+  
+  // Hiển thị/ẩn field GPU codec
+  if (gpuCodecGroup) {
+    gpuCodecGroup.style.display = useGpuCheckbox.checked ? "block" : "none";
+  }
+  
+  if (useGpuCheckbox.checked) {
+    // Khi bật GPU, tự động phát hiện codec
+    if (checkElectronAPI() && window.electronAPI) {
+      try {
+        gpuCodecInput.value = "Đang phát hiện...";
+        const result = await window.electronAPI.detectGpuCodec();
+        if (result.success && result.codec) {
+          gpuCodecInput.value = result.codec;
+          console.log(`✅ Đã tự động phát hiện GPU codec: ${result.codec}`);
+          saveSettings();
+        } else {
+          // Nếu không phát hiện được GPU, tắt checkbox và cảnh báo
+          useGpuCheckbox.checked = false;
+          if (gpuCodecGroup) {
+            gpuCodecGroup.style.display = "none";
+          }
+          alert("⚠️ Không phát hiện GPU encoder nào trên hệ thống. Vui lòng kiểm tra driver GPU hoặc sử dụng CPU.");
+          saveSettings();
+        }
+      } catch (error) {
+        console.error("Lỗi khi phát hiện GPU codec:", error);
+        // Nếu có lỗi, vẫn giữ giá trị mặc định
+        if (!gpuCodecInput.value || gpuCodecInput.value === "Đang phát hiện...") {
+          gpuCodecInput.value = "h264_nvenc";
+        }
+      }
+    }
+  } else {
+    // Khi tắt GPU, xóa giá trị codec
+    gpuCodecInput.value = "";
+  }
+}
+
 // Settings management
 async function saveSettings() {
   const settings = {
@@ -810,6 +856,11 @@ async function loadSettings() {
       if (settings.render.useGPU !== undefined) {
         document.getElementById("render-use-gpu").checked =
           settings.render.useGPU;
+        // Cập nhật hiển thị field GPU codec
+        const gpuCodecGroup = document.getElementById("render-gpu-codec-group");
+        if (gpuCodecGroup) {
+          gpuCodecGroup.style.display = settings.render.useGPU ? "block" : "none";
+        }
       }
       if (settings.render.maxConcurrentProcesses)
         document.getElementById("render-max-concurrent").value =
@@ -1726,6 +1777,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         saveSettings();
         if (id === "render-keepcolor-crop") toggleKeepColorCrop();
         if (id === "concat-use-thumbs") toggleConcatThumbs();
+        if (id === "render-use-gpu") {
+          handleGpuToggle();
+        }
       });
     }
   });
@@ -1877,8 +1931,30 @@ async function runRender() {
   const useGPU = document.getElementById("render-use-gpu").checked;
   const maxConcurrentProcesses =
     parseInt(document.getElementById("render-max-concurrent").value) || 2;
-  const gpuVideoCodec =
-    document.getElementById("render-gpu-codec").value || "h264_nvenc";
+  
+  // Tự động phát hiện GPU codec nếu useGPU được bật nhưng chưa có codec
+  let gpuVideoCodec = document.getElementById("render-gpu-codec").value;
+  if (useGPU && !gpuVideoCodec) {
+    if (checkElectronAPI() && window.electronAPI) {
+      try {
+        const result = await window.electronAPI.detectGpuCodec();
+        if (result.success && result.codec) {
+          gpuVideoCodec = result.codec;
+          document.getElementById("render-gpu-codec").value = gpuVideoCodec;
+        } else {
+          alert("⚠️ Không phát hiện GPU encoder nào. Vui lòng kiểm tra driver GPU.");
+          return;
+        }
+      } catch (error) {
+        console.error("Lỗi khi phát hiện GPU codec:", error);
+        gpuVideoCodec = "h264_nvenc"; // Fallback
+      }
+    } else {
+      gpuVideoCodec = "h264_nvenc"; // Fallback
+    }
+  } else if (!useGPU) {
+    gpuVideoCodec = "h264_nvenc"; // Giá trị mặc định, không được sử dụng
+  }
 
   const opacity =
     parseFloat(document.getElementById("render-opacity").value) || 0.7;

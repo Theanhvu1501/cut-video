@@ -1070,6 +1070,70 @@ ipcMain.handle("download-ytdlp", async () => {
   }
 });
 
+// IPC handler để tự động phát hiện GPU codec
+ipcMain.handle("detect-gpu-codec", async () => {
+  return new Promise((resolve) => {
+    try {
+      const appPath = getAppPath();
+      const ffmpegPath = path.join(appPath, "bin", "ffmpeg.exe");
+      
+      // Kiểm tra xem ffmpeg có tồn tại không
+      if (!fs.existsSync(ffmpegPath)) {
+        console.warn(`FFmpeg không tìm thấy tại: ${ffmpegPath}`);
+        resolve({ success: false, codec: null, error: "FFmpeg không tìm thấy" });
+        return;
+      }
+
+      const checkProcess = spawn(ffmpegPath, ["-encoders"]);
+      let output = "";
+
+      checkProcess.stdout.on("data", (data) => {
+        output += data.toString();
+      });
+
+      checkProcess.stderr.on("data", (data) => {
+        output += data.toString();
+      });
+
+      checkProcess.on("close", () => {
+        // Ưu tiên theo thứ tự: NVIDIA > Intel > AMD
+        // Kiểm tra NVIDIA NVENC
+        if (output.includes("h264_nvenc")) {
+          console.log("✅ Phát hiện GPU: NVIDIA (h264_nvenc)");
+          resolve({ success: true, codec: "h264_nvenc" });
+          return;
+        }
+        
+        // Kiểm tra Intel QuickSync
+        if (output.includes("h264_qsv")) {
+          console.log("✅ Phát hiện GPU: Intel QuickSync (h264_qsv)");
+          resolve({ success: true, codec: "h264_qsv" });
+          return;
+        }
+        
+        // Kiểm tra AMD AMF
+        if (output.includes("h264_amf")) {
+          console.log("✅ Phát hiện GPU: AMD AMF (h264_amf)");
+          resolve({ success: true, codec: "h264_amf" });
+          return;
+        }
+        
+        // Không tìm thấy GPU encoder nào
+        console.warn("⚠️ Không phát hiện GPU encoder nào");
+        resolve({ success: false, codec: null, error: "Không tìm thấy GPU encoder" });
+      });
+
+      checkProcess.on("error", (error) => {
+        console.error(`❌ Lỗi khi kiểm tra GPU encoder: ${error.message}`);
+        resolve({ success: false, codec: null, error: error.message });
+      });
+    } catch (error) {
+      console.error(`❌ Lỗi trong detect-gpu-codec: ${error.message}`);
+      resolve({ success: false, codec: null, error: error.message });
+    }
+  });
+});
+
 // IPC Handlers
 ipcMain.handle("select-folder", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

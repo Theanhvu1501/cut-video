@@ -135,6 +135,55 @@ const checkGpuSupport = async (codec) => {
   });
 };
 
+// Hàm tự động phát hiện GPU và chọn codec phù hợp
+const detectGpuCodec = async () => {
+  return new Promise((resolve) => {
+    const checkProcess = spawn(FFMPEG_PATH, ["-encoders"]);
+    let output = "";
+
+    checkProcess.stdout.on("data", (data) => {
+      output += data.toString();
+    });
+
+    checkProcess.stderr.on("data", (data) => {
+      output += data.toString();
+    });
+
+    checkProcess.on("close", () => {
+      // Ưu tiên theo thứ tự: NVIDIA > Intel > AMD
+      // Kiểm tra NVIDIA NVENC
+      if (output.includes("h264_nvenc")) {
+        log("✅ Phát hiện GPU: NVIDIA (h264_nvenc)", LOG_LEVEL.INFO);
+        resolve("h264_nvenc");
+        return;
+      }
+      
+      // Kiểm tra Intel QuickSync
+      if (output.includes("h264_qsv")) {
+        log("✅ Phát hiện GPU: Intel QuickSync (h264_qsv)", LOG_LEVEL.INFO);
+        resolve("h264_qsv");
+        return;
+      }
+      
+      // Kiểm tra AMD AMF
+      if (output.includes("h264_amf")) {
+        log("✅ Phát hiện GPU: AMD AMF (h264_amf)", LOG_LEVEL.INFO);
+        resolve("h264_amf");
+        return;
+      }
+      
+      // Không tìm thấy GPU encoder nào
+      log("⚠️ Không phát hiện GPU encoder nào. Sẽ sử dụng CPU (libx264)", LOG_LEVEL.WARN);
+      resolve(null);
+    });
+
+    checkProcess.on("error", () => {
+      log("❌ Lỗi khi kiểm tra GPU encoder", LOG_LEVEL.ERROR);
+      resolve(null);
+    });
+  });
+};
+
 let overlayFolder = "./overlays";
 let backgroundFolder = "./backgrounds";
 let combinedVideosFolder = "./combined_videos";
@@ -191,7 +240,10 @@ if (fs.existsSync(configFilePath)) {
     if (config.useGPU !== undefined) useGPU = config.useGPU;
     if (config.maxConcurrentProcesses !== undefined)
       maxConcurrentProcesses = parseInt(config.maxConcurrentProcesses) || 2;
-    if (config.gpuVideoCodec) gpuVideoCodec = config.gpuVideoCodec;
+    if (config.gpuVideoCodec) {
+      gpuVideoCodec = config.gpuVideoCodec;
+    }
+    // Nếu useGPU được bật nhưng chưa có codec, sẽ tự động phát hiện khi bắt đầu render
     if (config.keepColorColors && Array.isArray(config.keepColorColors)) {
       keepColorsList = config.keepColorColors;
     }
@@ -743,6 +795,18 @@ const processAllVideos = async () => {
   const startTime = Date.now();
   let totalVideoBackgrounds;
   try {
+    // 0. Tự động phát hiện GPU codec nếu useGPU được bật nhưng chưa có codec
+    if (useGPU && (!gpuVideoCodec || gpuVideoCodec === "h264_nvenc")) {
+      const detectedCodec = await detectGpuCodec();
+      if (detectedCodec) {
+        gpuVideoCodec = detectedCodec;
+        log(`✅ Đã tự động phát hiện GPU codec: ${gpuVideoCodec}`, LOG_LEVEL.INFO);
+      } else {
+        log(`⚠️ Không phát hiện GPU encoder, sẽ sử dụng CPU`, LOG_LEVEL.WARN);
+        useGPU = false; // Tắt GPU nếu không phát hiện được
+      }
+    }
+    
     // 1. Kiểm tra video overlay
     const totalOverlays = overlayFiles.length;
     if (totalOverlays === 0) {

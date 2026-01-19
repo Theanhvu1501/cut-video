@@ -43,4 +43,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   removeScriptOutputListener: () => {
     ipcRenderer.removeAllListeners("script-output");
   },
+  detectGpuCodec: () => ipcRenderer.invoke("detect-gpu-codec"),
 });

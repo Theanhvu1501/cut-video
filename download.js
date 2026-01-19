@@ -33,6 +33,8 @@ let OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
 let OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
 let COOKIES_FILE = "./cookies.txt"; // File cookies.txt
 let PROXY = null; // Proxy để sử dụng khi download (vd: http://proxy.example.com:8080)
+let DOWNLOAD_DRIVE = false; // Bật tải Drive với giới hạn độ dài tên file
+let DRIVE_LANGUAGE = "jp"; // Ngôn ngữ cho Drive: "auto", "jp", "cn", "kr", "vi", "en", etc.
 
 // Đọc config từ file nếu có
 // Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
@@ -51,6 +53,10 @@ if (fs.existsSync(configFilePath)) {
       OUTPUT_THUMBS_BASE_DIR = config.outputThumbsBaseDir;
     if (config.cookiesFile) COOKIES_FILE = config.cookiesFile;
     if (config.proxy !== undefined && config.proxy) PROXY = config.proxy;
+    if (config.downloadDrive !== undefined)
+      DOWNLOAD_DRIVE = config.downloadDrive;
+    if (config.driveLanguage !== undefined)
+      DRIVE_LANGUAGE = config.driveLanguage;
 
     console.log(`Đã đọc config từ file: ${configFilePath}`);
   } catch (error) {
@@ -62,11 +68,35 @@ if (fs.existsSync(configFilePath)) {
 // 1. CÁC HÀM CỐT LÕI
 // =================================================================
 
+const getDriveFilenameLimit = (language) => {
+  const limits = {
+    jp: 240, // Tiếng Nhật: 240 bytes (khoảng 60-80 ký tự)
+    cn: 240, // Tiếng Trung: 240 bytes
+    kr: 240, // Tiếng Hàn: 240 bytes
+    th: 255, // Tiếng Thái: 255 bytes
+    ar: 255, // Tiếng Ả Rập: 255 bytes
+    vi: 255, // Tiếng Việt: 255 bytes (có thể có dấu)
+    en: 255, // Tiếng Anh và Latin: 255 bytes (1 byte/ký tự)
+    default: 240, // Mặc định
+  };
+
+  return limits[language] || limits.default;
+};
+
 /**
  * Tải một video YouTube duy nhất.
  */
 const downloadVideo = async (url, outputPath) => {
-  const output = path.join(outputPath, "%(title)s.%(ext)s");
+  let output;
+
+  if (DOWNLOAD_DRIVE) {
+    // Xác định ngôn ngữ (mặc định là jp)
+    let language = DRIVE_LANGUAGE || "jp";
+    const byteLimit = getDriveFilenameLimit(language);
+    output = path.join(outputPath, `%(title).${byteLimit}B.%(ext)s`);
+  } else {
+    output = path.join(outputPath, "%(title)s.%(ext)s");
+  }
 
   // Chuẩn bị options
   const options = {
@@ -153,7 +183,7 @@ const downloadVideosFromList = async (urls, savePath) => {
         console.error(`🔴 Đã bắt được lỗi cho URL: ${url}`, reason);
         return { status: "rejected", url: url, reason: reason };
       }
-    })
+    }),
   );
 
   const results = await Promise.all(downloadPromises);
@@ -167,7 +197,7 @@ const downloadVideosFromList = async (urls, savePath) => {
 const convertCodec = async (directory) => {
   if (!fs.existsSync(directory)) {
     console.warn(
-      `⚠️ Thư mục không tồn tại: ${directory}, bỏ qua convert codec.`
+      `⚠️ Thư mục không tồn tại: ${directory}, bỏ qua convert codec.`,
     );
     return;
   }
@@ -204,7 +234,7 @@ const convertCodec = async (directory) => {
         });
       } catch (error) {
         console.error(
-          `❌ Không thể chuyển đổi codec cho ${file}: ${error.message}`
+          `❌ Không thể chuyển đổi codec cho ${file}: ${error.message}`,
         );
       }
     }
@@ -241,18 +271,18 @@ async function processAllThumbnailsWithMultipleOverlays(
   inputThumbDir, // Thư mục chứa các thumbnail gốc đã tải
   overlayImagesDir, // Thư mục chứa nhiều ảnh overlay
   outputBaseDir, // Thư mục gốc để lưu kết quả (sẽ có các thư mục con)
-  overlaySize
+  overlaySize,
 ) {
   try {
     if (!fs.existsSync(inputThumbDir)) {
       console.warn(
-        `⚠️ Thiếu thư mục thumbnail gốc: ${inputThumbDir}, bỏ qua xử lý ảnh.`
+        `⚠️ Thiếu thư mục thumbnail gốc: ${inputThumbDir}, bỏ qua xử lý ảnh.`,
       );
       return;
     }
     if (!fs.existsSync(overlayImagesDir)) {
       console.warn(
-        `⚠️ Thiếu thư mục ảnh overlay tại: ${overlayImagesDir}, bỏ qua xử lý ảnh.`
+        `⚠️ Thiếu thư mục ảnh overlay tại: ${overlayImagesDir}, bỏ qua xử lý ảnh.`,
       );
       return;
     }
@@ -261,12 +291,12 @@ async function processAllThumbnailsWithMultipleOverlays(
       .readdirSync(overlayImagesDir)
       .filter((file) => /\.(jpg|jpeg|png|webp)$/i.test(file))
       .sort(
-        (a, b) => parseInt(path.parse(a).name) - parseInt(path.parse(b).name)
+        (a, b) => parseInt(path.parse(a).name) - parseInt(path.parse(b).name),
       ); // Sắp xếp theo tên (số)
 
     if (overlayFiles.length === 0) {
       console.warn(
-        `⚠️ Không tìm thấy ảnh overlay nào trong thư mục: ${overlayImagesDir}. Bỏ qua xử lý ảnh.`
+        `⚠️ Không tìm thấy ảnh overlay nào trong thư mục: ${overlayImagesDir}. Bỏ qua xử lý ảnh.`,
       );
       return;
     }
@@ -277,13 +307,13 @@ async function processAllThumbnailsWithMultipleOverlays(
 
     if (inputThumbnailFiles.length === 0) {
       console.log(
-        `ℹ️ Không có ảnh thumbnail gốc nào để xử lý trong ${inputThumbDir}.`
+        `ℹ️ Không có ảnh thumbnail gốc nào để xử lý trong ${inputThumbDir}.`,
       );
       return;
     }
 
     console.log(
-      `🖼️  Bắt đầu xử lý ${inputThumbnailFiles.length} ảnh thumbnail gốc với ${overlayFiles.length} ảnh overlay.`
+      `🖼️  Bắt đầu xử lý ${inputThumbnailFiles.length} ảnh thumbnail gốc với ${overlayFiles.length} ảnh overlay.`,
     );
 
     for (let i = 0; i < overlayFiles.length; i++) {
@@ -303,7 +333,7 @@ async function processAllThumbnailsWithMultipleOverlays(
             input: Buffer.from(
               `<svg><circle cx="${overlaySize / 2}" cy="${
                 overlaySize / 2
-              }" r="${overlaySize / 2}" fill="white"/></svg>`
+              }" r="${overlaySize / 2}" fill="white"/></svg>`,
             ),
             blend: "dest-in",
           },
@@ -328,7 +358,7 @@ async function processAllThumbnailsWithMultipleOverlays(
         } catch (err) {
           console.error(
             `❌ Lỗi khi xử lý file ảnh ${file} với overlay ${overlayFileName}:`,
-            err.message
+            err.message,
           );
         }
       }
@@ -358,7 +388,7 @@ async function main() {
       fs.readFileSync(FAILED_URLS_LOG, "utf-8").trim() === ""
     ) {
       console.log(
-        "✅ Không có file log lỗi hoặc file rỗng. Không cần thử lại."
+        "✅ Không có file log lỗi hoặc file rỗng. Không cần thử lại.",
       );
       return;
     }
@@ -373,7 +403,7 @@ async function main() {
           fs.mkdirSync(dir, { recursive: true });
           console.log(`➕ Đã tạo thư mục: ${dir}`);
         }
-      }
+      },
     );
 
     // Xóa file log lỗi cũ khi chạy chế độ bình thường để bắt đầu lại từ đầu
@@ -415,7 +445,7 @@ async function main() {
   console.log(`\n================== BẮT ĐẦU TẢI VIDEO ==================`);
   const failedDownloads = await downloadVideosFromList(
     urlsToProcess,
-    DOWNLOAD_DIR
+    DOWNLOAD_DIR,
   );
 
   // --- Sửa tên file ---
@@ -432,27 +462,27 @@ async function main() {
     DOWNLOAD_DIR, // Thư mục chứa các thumbnail gốc đã tải
     OVERLAY_IMAGES_DIR, // Thư mục chứa nhiều ảnh overlay (images/)
     OUTPUT_THUMBS_BASE_DIR, // Thư mục gốc để lưu kết quả (thumbs/)
-    overlaySize
+    overlaySize,
   );
 
   // --- Tổng kết ---
   if (failedDownloads.length > 0) {
     console.log("\n================== TỔNG KẾT LỖI ==================");
     console.error(
-      `🔥 Tổng cộng có ${failedDownloads.length} video tải thất bại.`
+      `🔥 Tổng cộng có ${failedDownloads.length} video tải thất bại.`,
     );
     const failedUrlsContent = failedDownloads.join("\n");
     fs.writeFileSync(FAILED_URLS_LOG, failedUrlsContent);
     console.log(
-      `📂 Danh sách các URL lỗi đã được ghi vào file: ${FAILED_URLS_LOG}`
+      `📂 Danh sách các URL lỗi đã được ghi vào file: ${FAILED_URLS_LOG}`,
     );
     if (!isRetryMode) {
       console.log(
-        "💡 Mẹo: Chạy lại với lệnh 'node your_script_name.js retry' để tự động thử lại các video lỗi."
+        "💡 Mẹo: Chạy lại với lệnh 'node your_script_name.js retry' để tự động thử lại các video lỗi.",
       );
     } else {
       console.log(
-        "⚠️ Vẫn còn URL lỗi sau khi thử lại. Vui lòng kiểm tra file log."
+        "⚠️ Vẫn còn URL lỗi sau khi thử lại. Vui lòng kiểm tra file log.",
       );
     }
   } else {

@@ -171,7 +171,7 @@ function showUpdateDialog(type, data) {
   const message = document.getElementById("update-message");
   const releaseNotes = document.getElementById("update-release-notes");
   const progressContainer = document.getElementById(
-    "update-progress-container"
+    "update-progress-container",
   );
   const progressFill = document.getElementById("update-progress-fill");
   const progressText = document.getElementById("update-progress-text");
@@ -420,6 +420,8 @@ async function saveSettings() {
         document.getElementById("download-proxy")?.value?.trim() ||
         selectedDownloadProxy ||
         null,
+      downloadDrive: selectedDownloadDrive || false,
+      driveLanguage: selectedDriveLanguage || "jp",
     },
     // Video Snow settings
     videoSnow: {
@@ -506,7 +508,7 @@ async function saveSettings() {
       const currentOpacity = parseFloat(
         document.getElementById("render-opacity")?.value ||
           settings.render.opacity ||
-          "0.7"
+          "0.7",
       );
       const currentChromaKeyMode =
         document.querySelector('input[name="chromakey-mode"]:checked')?.value ||
@@ -528,12 +530,12 @@ async function saveSettings() {
       const currentKeepColorHeight = parseInt(
         document.getElementById("render-keepcolor-height")?.value ||
           settings.render.keepColorHeight ||
-          "220"
+          "220",
       );
       const currentKeepColorYOffset = parseInt(
         document.getElementById("render-keepcolor-y-offset")?.value ||
           settings.render.keepColorYOffset ||
-          "490"
+          "490",
       );
       const currentUseGPU =
         document.getElementById("render-use-gpu")?.checked ??
@@ -541,7 +543,7 @@ async function saveSettings() {
       const currentMaxConcurrent = parseInt(
         document.getElementById("render-max-concurrent")?.value ||
           settings.render.maxConcurrentProcesses ||
-          "2"
+          "2",
       );
       const currentGpuCodec =
         document.getElementById("render-gpu-codec")?.value ||
@@ -550,12 +552,12 @@ async function saveSettings() {
       const currentHeight = parseInt(
         document.getElementById("render-height")?.value ||
           settings.render.height ||
-          "220"
+          "220",
       );
       const currentYOffset = parseInt(
         document.getElementById("render-y-offset")?.value ||
           settings.render.y_offset ||
-          "490"
+          "490",
       );
 
       // Parse keepColorColors từ string "FBFF02,FF0000" thành array ["FBFF02", "FF0000"]
@@ -607,9 +609,8 @@ async function loadSettings() {
     let settings = {};
     if (currentProjectName && checkElectronAPI() && window.electronAPI) {
       try {
-        const result = await window.electronAPI.loadProjectConfig(
-          currentProjectName
-        );
+        const result =
+          await window.electronAPI.loadProjectConfig(currentProjectName);
         if (
           result.success &&
           result.config &&
@@ -618,7 +619,7 @@ async function loadSettings() {
           settings = result.config;
           console.log(
             `Loaded settings from project: ${currentProjectName}`,
-            settings
+            settings,
           );
         }
       } catch (error) {
@@ -730,7 +731,7 @@ async function loadSettings() {
         } else {
           // Fallback: try to find by value attribute
           const radioByValue = document.querySelector(
-            `input[name="render-mode"][value="${settings.render.renderMode}"]`
+            `input[name="render-mode"][value="${settings.render.renderMode}"]`,
           );
           if (radioByValue) {
             radioByValue.checked = true;
@@ -745,7 +746,7 @@ async function loadSettings() {
         document.getElementById(
           settings.render.chromaKeyMode === "color"
             ? "chromakey-color"
-            : "chromakey-file"
+            : "chromakey-file",
         ).checked = true;
         toggleChromaKeyMode();
       }
@@ -786,18 +787,16 @@ async function loadSettings() {
         selectedRenderOverlayFolder = settings.render.overlayFolder;
         document.getElementById("render-overlay-folder").value =
           settings.render.overlayFolder;
-        document.getElementById(
-          "render-overlay-path"
-        ).textContent = `Đã chọn: ${settings.render.overlayFolder}`;
+        document.getElementById("render-overlay-path").textContent =
+          `Đã chọn: ${settings.render.overlayFolder}`;
         document.getElementById("render-overlay-path").style.display = "block";
       }
       if (settings.render.backgroundFolder) {
         selectedRenderBackgroundFolder = settings.render.backgroundFolder;
         document.getElementById("render-background-folder").value =
           settings.render.backgroundFolder;
-        document.getElementById(
-          "render-background-path"
-        ).textContent = `Đã chọn: ${settings.render.backgroundFolder}`;
+        document.getElementById("render-background-path").textContent =
+          `Đã chọn: ${settings.render.backgroundFolder}`;
         document.getElementById("render-background-path").style.display =
           "block";
       }
@@ -805,18 +804,16 @@ async function loadSettings() {
         selectedRenderOutputFolder = settings.render.outputFolder;
         document.getElementById("render-output-folder").value =
           settings.render.outputFolder;
-        document.getElementById(
-          "render-output-path"
-        ).textContent = `Đã chọn: ${settings.render.outputFolder}`;
+        document.getElementById("render-output-path").textContent =
+          `Đã chọn: ${settings.render.outputFolder}`;
         document.getElementById("render-output-path").style.display = "block";
       }
       if (settings.render.chromaKeyFile) {
         selectedRenderChromaKeyFile = settings.render.chromaKeyFile;
         document.getElementById("render-chromakey-file").value =
           settings.render.chromaKeyFile;
-        document.getElementById(
-          "render-chromakey-file-path"
-        ).textContent = `Đã chọn: ${settings.render.chromaKeyFile}`;
+        document.getElementById("render-chromakey-file-path").textContent =
+          `Đã chọn: ${settings.render.chromaKeyFile}`;
         document.getElementById("render-chromakey-file-path").style.display =
           "block";
       }
@@ -828,18 +825,16 @@ async function loadSettings() {
         selectedUrlsFile = settings.download.urlsFile;
         document.getElementById("download-urls-file").value =
           settings.download.urlsFile;
-        document.getElementById(
-          "download-urls-path"
-        ).textContent = `Đã chọn: ${settings.download.urlsFile}`;
+        document.getElementById("download-urls-path").textContent =
+          `Đã chọn: ${settings.download.urlsFile}`;
         document.getElementById("download-urls-path").style.display = "block";
       }
       if (settings.download.outputFolder) {
         selectedDownloadOutputFolder = settings.download.outputFolder;
         document.getElementById("download-output-folder").value =
           settings.download.outputFolder;
-        document.getElementById(
-          "download-output-path"
-        ).textContent = `Đã chọn: ${settings.download.outputFolder}`;
+        document.getElementById("download-output-path").textContent =
+          `Đã chọn: ${settings.download.outputFolder}`;
         document.getElementById("download-output-path").style.display = "block";
       }
       if (settings.download.overlayImagesFolder) {
@@ -847,9 +842,8 @@ async function loadSettings() {
           settings.download.overlayImagesFolder;
         document.getElementById("download-overlay-images-folder").value =
           settings.download.overlayImagesFolder;
-        document.getElementById(
-          "download-overlay-images-path"
-        ).textContent = `Đã chọn: ${settings.download.overlayImagesFolder}`;
+        document.getElementById("download-overlay-images-path").textContent =
+          `Đã chọn: ${settings.download.overlayImagesFolder}`;
         document.getElementById("download-overlay-images-path").style.display =
           "block";
       }
@@ -857,18 +851,16 @@ async function loadSettings() {
         selectedDownloadThumbsFolder = settings.download.thumbsFolder;
         document.getElementById("download-thumbs-folder").value =
           settings.download.thumbsFolder;
-        document.getElementById(
-          "download-thumbs-path"
-        ).textContent = `Đã chọn: ${settings.download.thumbsFolder}`;
+        document.getElementById("download-thumbs-path").textContent =
+          `Đã chọn: ${settings.download.thumbsFolder}`;
         document.getElementById("download-thumbs-path").style.display = "block";
       }
       if (settings.download.cookiesFile) {
         selectedDownloadCookiesFile = settings.download.cookiesFile;
         document.getElementById("download-cookies-file").value =
           settings.download.cookiesFile;
-        document.getElementById(
-          "download-cookies-path"
-        ).textContent = `Đã chọn: ${settings.download.cookiesFile}`;
+        document.getElementById("download-cookies-path").textContent =
+          `Đã chọn: ${settings.download.cookiesFile}`;
         document.getElementById("download-cookies-path").style.display =
           "block";
       }
@@ -879,6 +871,27 @@ async function loadSettings() {
           proxyInput.value = settings.download.proxy || "";
         }
       }
+      if (settings.download.downloadDrive !== undefined) {
+        selectedDownloadDrive = settings.download.downloadDrive;
+        const driveCheckbox = document.getElementById("download-drive");
+        if (driveCheckbox) {
+          driveCheckbox.checked = settings.download.downloadDrive;
+          // Hiển thị/ẩn dropdown ngôn ngữ
+          const languageGroup = document.getElementById("drive-language-group");
+          if (languageGroup) {
+            languageGroup.style.display = settings.download.downloadDrive
+              ? "block"
+              : "none";
+          }
+        }
+      }
+      if (settings.download.driveLanguage !== undefined) {
+        selectedDriveLanguage = settings.download.driveLanguage;
+        const languageSelect = document.getElementById("drive-language");
+        if (languageSelect) {
+          languageSelect.value = settings.download.driveLanguage;
+        }
+      }
     }
 
     // Load Video Snow settings
@@ -887,9 +900,8 @@ async function loadSettings() {
         selectedVideoSnowInputFolder = settings.videoSnow.inputFolder;
         document.getElementById("video-snow-input-folder").value =
           settings.videoSnow.inputFolder;
-        document.getElementById(
-          "video-snow-input-path"
-        ).textContent = `Đã chọn: ${settings.videoSnow.inputFolder}`;
+        document.getElementById("video-snow-input-path").textContent =
+          `Đã chọn: ${settings.videoSnow.inputFolder}`;
         document.getElementById("video-snow-input-path").style.display =
           "block";
       }
@@ -897,9 +909,8 @@ async function loadSettings() {
         selectedVideoSnowOutputFolder = settings.videoSnow.outputFolder;
         document.getElementById("video-snow-output-folder").value =
           settings.videoSnow.outputFolder;
-        document.getElementById(
-          "video-snow-output-path"
-        ).textContent = `Đã chọn: ${settings.videoSnow.outputFolder}`;
+        document.getElementById("video-snow-output-path").textContent =
+          `Đã chọn: ${settings.videoSnow.outputFolder}`;
         document.getElementById("video-snow-output-path").style.display =
           "block";
       }
@@ -907,9 +918,8 @@ async function loadSettings() {
         selectedVideoSnowSnowFile = settings.videoSnow.snowFile;
         document.getElementById("video-snow-snow-file").value =
           settings.videoSnow.snowFile;
-        document.getElementById(
-          "video-snow-snow-path"
-        ).textContent = `Đã chọn: ${settings.videoSnow.snowFile}`;
+        document.getElementById("video-snow-snow-path").textContent =
+          `Đã chọn: ${settings.videoSnow.snowFile}`;
         document.getElementById("video-snow-snow-path").style.display = "block";
       }
       if (settings.videoSnow.maxConcurrent) {
@@ -934,18 +944,16 @@ async function loadSettings() {
         selectedBgInputFolder = settings.bgVideo.inputFolder;
         document.getElementById("bg-input-folder").value =
           settings.bgVideo.inputFolder;
-        document.getElementById(
-          "bg-input-path"
-        ).textContent = `Đã chọn: ${settings.bgVideo.inputFolder}`;
+        document.getElementById("bg-input-path").textContent =
+          `Đã chọn: ${settings.bgVideo.inputFolder}`;
         document.getElementById("bg-input-path").style.display = "block";
       }
       if (settings.bgVideo.outputFolder) {
         selectedBgOutputFolder = settings.bgVideo.outputFolder;
         document.getElementById("bg-output-folder").value =
           settings.bgVideo.outputFolder;
-        document.getElementById(
-          "bg-output-path"
-        ).textContent = `Đã chọn: ${settings.bgVideo.outputFolder}`;
+        document.getElementById("bg-output-path").textContent =
+          `Đã chọn: ${settings.bgVideo.outputFolder}`;
         document.getElementById("bg-output-path").style.display = "block";
       }
       if (settings.bgVideo.targetDuration) {
@@ -968,18 +976,16 @@ async function loadSettings() {
         selectedTrimInputFolder = settings.trim.inputFolder;
         document.getElementById("trim-input-folder").value =
           settings.trim.inputFolder;
-        document.getElementById(
-          "trim-input-path"
-        ).textContent = `Đã chọn: ${settings.trim.inputFolder}`;
+        document.getElementById("trim-input-path").textContent =
+          `Đã chọn: ${settings.trim.inputFolder}`;
         document.getElementById("trim-input-path").style.display = "block";
       }
       if (settings.trim.outputFolder) {
         selectedTrimOutputFolder = settings.trim.outputFolder;
         document.getElementById("trim-output-folder").value =
           settings.trim.outputFolder;
-        document.getElementById(
-          "trim-output-path"
-        ).textContent = `Đã chọn: ${settings.trim.outputFolder}`;
+        document.getElementById("trim-output-path").textContent =
+          `Đã chọn: ${settings.trim.outputFolder}`;
         document.getElementById("trim-output-path").style.display = "block";
       }
       if (settings.trim.startTime)
@@ -995,18 +1001,16 @@ async function loadSettings() {
         selectedCutBgInputFolder = settings.cutBg.inputFolder;
         document.getElementById("cut-bg-input-folder").value =
           settings.cutBg.inputFolder;
-        document.getElementById(
-          "cut-bg-input-path"
-        ).textContent = `Đã chọn: ${settings.cutBg.inputFolder}`;
+        document.getElementById("cut-bg-input-path").textContent =
+          `Đã chọn: ${settings.cutBg.inputFolder}`;
         document.getElementById("cut-bg-input-path").style.display = "block";
       }
       if (settings.cutBg.outputFolder) {
         selectedCutBgOutputFolder = settings.cutBg.outputFolder;
         document.getElementById("cut-bg-output-folder").value =
           settings.cutBg.outputFolder;
-        document.getElementById(
-          "cut-bg-output-path"
-        ).textContent = `Đã chọn: ${settings.cutBg.outputFolder}`;
+        document.getElementById("cut-bg-output-path").textContent =
+          `Đã chọn: ${settings.cutBg.outputFolder}`;
         document.getElementById("cut-bg-output-path").style.display = "block";
       }
     }
@@ -1017,27 +1021,24 @@ async function loadSettings() {
         selectedThumbInputFolder = settings.thumb.inputFolder;
         document.getElementById("thumb-input-folder").value =
           settings.thumb.inputFolder;
-        document.getElementById(
-          "thumb-input-path"
-        ).textContent = `Đã chọn: ${settings.thumb.inputFolder}`;
+        document.getElementById("thumb-input-path").textContent =
+          `Đã chọn: ${settings.thumb.inputFolder}`;
         document.getElementById("thumb-input-path").style.display = "block";
       }
       if (settings.thumb.overlayFolder) {
         selectedThumbOverlayFolder = settings.thumb.overlayFolder;
         document.getElementById("thumb-overlay-folder").value =
           settings.thumb.overlayFolder;
-        document.getElementById(
-          "thumb-overlay-path"
-        ).textContent = `Đã chọn: ${settings.thumb.overlayFolder}`;
+        document.getElementById("thumb-overlay-path").textContent =
+          `Đã chọn: ${settings.thumb.overlayFolder}`;
         document.getElementById("thumb-overlay-path").style.display = "block";
       }
       if (settings.thumb.outputFolder) {
         selectedThumbOutputFolder = settings.thumb.outputFolder;
         document.getElementById("thumb-output-folder").value =
           settings.thumb.outputFolder;
-        document.getElementById(
-          "thumb-output-path"
-        ).textContent = `Đã chọn: ${settings.thumb.outputFolder}`;
+        document.getElementById("thumb-output-path").textContent =
+          `Đã chọn: ${settings.thumb.outputFolder}`;
         document.getElementById("thumb-output-path").style.display = "block";
       }
     }
@@ -1051,9 +1052,8 @@ async function loadSettings() {
         selectedGetUrlOutputFolder = settings.getUrl.outputFolder;
         document.getElementById("get-url-output-folder").value =
           settings.getUrl.outputFolder;
-        document.getElementById(
-          "get-url-output-path"
-        ).textContent = `Đã chọn: ${settings.getUrl.outputFolder}`;
+        document.getElementById("get-url-output-path").textContent =
+          `Đã chọn: ${settings.getUrl.outputFolder}`;
         document.getElementById("get-url-output-path").style.display = "block";
       }
     }
@@ -1064,9 +1064,8 @@ async function loadSettings() {
         selectedNormalizeInputFolder = settings.normalize.inputFolder;
         document.getElementById("normalize-input-folder").value =
           settings.normalize.inputFolder;
-        document.getElementById(
-          "normalize-input-path"
-        ).textContent = `Đã chọn: ${settings.normalize.inputFolder}`;
+        document.getElementById("normalize-input-path").textContent =
+          `Đã chọn: ${settings.normalize.inputFolder}`;
         document.getElementById("normalize-input-path").style.display = "block";
       }
     }
@@ -1088,27 +1087,24 @@ async function loadSettings() {
         selectedConcatInputFolder = settings.concat.inputFolder;
         document.getElementById("concat-input-folder").value =
           settings.concat.inputFolder;
-        document.getElementById(
-          "concat-input-path"
-        ).textContent = `Đã chọn: ${settings.concat.inputFolder}`;
+        document.getElementById("concat-input-path").textContent =
+          `Đã chọn: ${settings.concat.inputFolder}`;
         document.getElementById("concat-input-path").style.display = "block";
       }
       if (settings.concat.thumbsFolder) {
         selectedConcatThumbsFolder = settings.concat.thumbsFolder;
         document.getElementById("concat-thumbs-folder").value =
           settings.concat.thumbsFolder;
-        document.getElementById(
-          "concat-thumbs-path"
-        ).textContent = `Đã chọn: ${settings.concat.thumbsFolder}`;
+        document.getElementById("concat-thumbs-path").textContent =
+          `Đã chọn: ${settings.concat.thumbsFolder}`;
         document.getElementById("concat-thumbs-path").style.display = "block";
       }
       if (settings.concat.outputFolder) {
         selectedConcatOutputFolder = settings.concat.outputFolder;
         document.getElementById("concat-output-folder").value =
           settings.concat.outputFolder;
-        document.getElementById(
-          "concat-output-path"
-        ).textContent = `Đã chọn: ${settings.concat.outputFolder}`;
+        document.getElementById("concat-output-path").textContent =
+          `Đã chọn: ${settings.concat.outputFolder}`;
         document.getElementById("concat-output-path").style.display = "block";
       }
     }
@@ -1173,7 +1169,7 @@ async function loadProjects() {
 
       // Cập nhật trạng thái nút xóa trong menu
       const deleteMenuItem = document.getElementById(
-        "delete-project-menu-item"
+        "delete-project-menu-item",
       );
       if (deleteMenuItem) {
         if (!currentProjectName || currentProjectName === "") {
@@ -1296,7 +1292,7 @@ async function switchProject() {
   if (currentProjectName) {
     showProjectNotification(
       `Đã chuyển sang dự án: ${currentProjectName}`,
-      "success"
+      "success",
     );
   } else {
     showProjectNotification("Đã chuyển sang chế độ mặc định", "info");
@@ -1437,7 +1433,7 @@ async function createNewProject() {
         closeAddProjectDialog();
         showProjectNotification(
           `Dự án "${result.projectName}" đã được tạo và kích hoạt!`,
-          "success"
+          "success",
         );
       }, 2000);
     } else {
@@ -1525,13 +1521,13 @@ async function confirmDeleteProject() {
 
       showProjectNotification(
         `Đã xóa dự án "${projectToDelete}" thành công!`,
-        "success"
+        "success",
       );
     } else {
       closeDeleteProjectDialog();
       showProjectNotification(
         `Lỗi: ${result.error || "Không thể xóa dự án"}`,
-        "error"
+        "error",
       );
     }
   } catch (error) {
@@ -1598,6 +1594,8 @@ async function saveCurrentProjectSettings() {
           document.getElementById("download-proxy")?.value?.trim() ||
           selectedDownloadProxy ||
           null,
+        downloadDrive: selectedDownloadDrive || false,
+        driveLanguage: selectedDriveLanguage || "auto",
       },
       // Video Snow settings
       videoSnow: {
@@ -1846,9 +1844,8 @@ async function selectRenderChromaKeyFile() {
     if (filePath) {
       selectedRenderChromaKeyFile = filePath;
       document.getElementById("render-chromakey-file").value = filePath;
-      document.getElementById(
-        "render-chromakey-file-path"
-      ).textContent = `Đã chọn: ${filePath}`;
+      document.getElementById("render-chromakey-file-path").textContent =
+        `Đã chọn: ${filePath}`;
       document.getElementById("render-chromakey-file-path").style.display =
         "block";
       saveSettings();
@@ -1865,9 +1862,8 @@ async function selectRenderOverlayFolder() {
   if (folder) {
     selectedRenderOverlayFolder = folder;
     document.getElementById("render-overlay-folder").value = folder;
-    document.getElementById(
-      "render-overlay-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("render-overlay-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("render-overlay-path").style.display = "block";
     saveSettings();
   }
@@ -1879,9 +1875,8 @@ async function selectRenderBackgroundFolder() {
   if (folder) {
     selectedRenderBackgroundFolder = folder;
     document.getElementById("render-background-folder").value = folder;
-    document.getElementById(
-      "render-background-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("render-background-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("render-background-path").style.display = "block";
     saveSettings();
   }
@@ -1893,9 +1888,8 @@ async function selectRenderOutputFolder() {
   if (folder) {
     selectedRenderOutputFolder = folder;
     document.getElementById("render-output-folder").value = folder;
-    document.getElementById(
-      "render-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("render-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("render-output-path").style.display = "block";
     saveSettings();
   }
@@ -1976,7 +1970,7 @@ async function runRender() {
   clearOutput("render");
   showOutput(
     "render",
-    `🚀 Đang chạy Render Video với ngày=${day}, videos=${videos}...\n\n`
+    `🚀 Đang chạy Render Video với ngày=${day}, videos=${videos}...\n\n`,
   );
 
   try {
@@ -2023,6 +2017,8 @@ let selectedDownloadOverlayImagesFolder = null;
 let selectedDownloadThumbsFolder = null;
 let selectedDownloadCookiesFile = null;
 let selectedDownloadProxy = null;
+let selectedDownloadDrive = false;
+let selectedDriveLanguage = "jp"; // Mặc định là tiếng Nhật
 
 async function selectDownloadFile() {
   if (!checkElectronAPI()) return;
@@ -2036,9 +2032,8 @@ async function selectDownloadFile() {
     if (filePath) {
       selectedUrlsFile = filePath;
       document.getElementById("download-urls-file").value = filePath;
-      document.getElementById(
-        "download-urls-path"
-      ).textContent = `Đã chọn: ${filePath}`;
+      document.getElementById("download-urls-path").textContent =
+        `Đã chọn: ${filePath}`;
       document.getElementById("download-urls-path").style.display = "block";
       saveSettings();
     }
@@ -2054,9 +2049,8 @@ async function selectDownloadOutputFolder() {
   if (folder) {
     selectedDownloadOutputFolder = folder;
     document.getElementById("download-output-folder").value = folder;
-    document.getElementById(
-      "download-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("download-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("download-output-path").style.display = "block";
     saveSettings();
   }
@@ -2068,9 +2062,8 @@ async function selectDownloadOverlayImagesFolder() {
   if (folder) {
     selectedDownloadOverlayImagesFolder = folder;
     document.getElementById("download-overlay-images-folder").value = folder;
-    document.getElementById(
-      "download-overlay-images-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("download-overlay-images-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("download-overlay-images-path").style.display =
       "block";
     saveSettings();
@@ -2083,9 +2076,8 @@ async function selectDownloadThumbsFolder() {
   if (folder) {
     selectedDownloadThumbsFolder = folder;
     document.getElementById("download-thumbs-folder").value = folder;
-    document.getElementById(
-      "download-thumbs-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("download-thumbs-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("download-thumbs-path").style.display = "block";
     saveSettings();
   }
@@ -2103,15 +2095,38 @@ async function selectDownloadCookiesFile() {
     if (filePath) {
       selectedDownloadCookiesFile = filePath;
       document.getElementById("download-cookies-file").value = filePath;
-      document.getElementById(
-        "download-cookies-path"
-      ).textContent = `Đã chọn: ${filePath}`;
+      document.getElementById("download-cookies-path").textContent =
+        `Đã chọn: ${filePath}`;
       document.getElementById("download-cookies-path").style.display = "block";
       saveSettings();
     }
   } catch (error) {
     console.error("Error selecting cookies file:", error);
     alert("Lỗi khi chọn file: " + error.message);
+  }
+}
+
+function toggleDownloadDrive() {
+  const driveCheckbox = document.getElementById("download-drive");
+  const languageGroup = document.getElementById("drive-language-group");
+
+  if (driveCheckbox) {
+    selectedDownloadDrive = driveCheckbox.checked;
+
+    // Hiển thị/ẩn dropdown ngôn ngữ
+    if (languageGroup) {
+      languageGroup.style.display = selectedDownloadDrive ? "block" : "none";
+    }
+
+    saveSettings();
+  }
+}
+
+function updateDriveLanguage() {
+  const languageSelect = document.getElementById("drive-language");
+  if (languageSelect) {
+    selectedDriveLanguage = languageSelect.value;
+    saveSettings();
   }
 }
 
@@ -2167,9 +2182,8 @@ async function runDownload() {
   // để đảm bảo dùng settings mới nhất từ project file
   if (currentProjectName && checkElectronAPI() && window.electronAPI) {
     try {
-      const result = await window.electronAPI.loadProjectConfig(
-        currentProjectName
-      );
+      const result =
+        await window.electronAPI.loadProjectConfig(currentProjectName);
       if (result.success && result.config && result.config.download) {
         // Cập nhật các biến từ project config
         if (result.config.download.urlsFile) {
@@ -2195,6 +2209,29 @@ async function runDownload() {
             proxyInput.value = result.config.download.proxy || "";
           }
         }
+        if (result.config.download.downloadDrive !== undefined) {
+          selectedDownloadDrive = result.config.download.downloadDrive;
+          const driveCheckbox = document.getElementById("download-drive");
+          if (driveCheckbox) {
+            driveCheckbox.checked = result.config.download.downloadDrive;
+            // Hiển thị/ẩn dropdown ngôn ngữ
+            const languageGroup = document.getElementById(
+              "drive-language-group",
+            );
+            if (languageGroup) {
+              languageGroup.style.display = result.config.download.downloadDrive
+                ? "block"
+                : "none";
+            }
+          }
+        }
+        if (result.config.download.driveLanguage !== undefined) {
+          selectedDriveLanguage = result.config.download.driveLanguage;
+          const languageSelect = document.getElementById("drive-language");
+          if (languageSelect) {
+            languageSelect.value = result.config.download.driveLanguage;
+          }
+        }
       }
     } catch (error) {
       console.error("Error loading project config before download:", error);
@@ -2205,6 +2242,23 @@ async function runDownload() {
   const proxyInput = document.getElementById("download-proxy");
   if (proxyInput) {
     selectedDownloadProxy = proxyInput.value.trim() || null;
+  }
+
+  // Lấy downloadDrive từ checkbox (nếu có thay đổi)
+  const driveCheckbox = document.getElementById("download-drive");
+  if (driveCheckbox) {
+    selectedDownloadDrive = driveCheckbox.checked;
+    // Hiển thị/ẩn dropdown ngôn ngữ
+    const languageGroup = document.getElementById("drive-language-group");
+    if (languageGroup) {
+      languageGroup.style.display = driveCheckbox.checked ? "block" : "none";
+    }
+  }
+
+  // Lấy driveLanguage từ dropdown (nếu có thay đổi)
+  const languageSelect = document.getElementById("drive-language");
+  if (languageSelect) {
+    selectedDriveLanguage = languageSelect.value;
   }
 
   let hasError = false;
@@ -2244,6 +2298,8 @@ async function runDownload() {
         outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
         cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
         proxy: selectedDownloadProxy || null,
+        downloadDrive: selectedDownloadDrive || false,
+        driveLanguage: selectedDriveLanguage || "auto",
       },
     };
 
@@ -2252,11 +2308,11 @@ async function runDownload() {
     if (hasError) {
       showOutput(
         "download",
-        "\n\n⚠️ Có một số lỗi xảy ra trong quá trình tải.\n"
+        "\n\n⚠️ Có một số lỗi xảy ra trong quá trình tải.\n",
       );
       showOutput(
         "download",
-        "💡 Gợi ý: Nếu gặp lỗi liên quan đến yt-dlp, vui lòng tải lại yt-dlp mới nhất ở phần trên.\n"
+        "💡 Gợi ý: Nếu gặp lỗi liên quan đến yt-dlp, vui lòng tải lại yt-dlp mới nhất ở phần trên.\n",
       );
     } else {
       showOutput("download", "\n\n✅ Hoàn thành!");
@@ -2266,7 +2322,7 @@ async function runDownload() {
     showOutput("download", `\n\n❌ Lỗi: ${errorMsg}\n`);
     showOutput(
       "download",
-      "\n💡 Gợi ý: Nếu lỗi liên quan đến yt-dlp, vui lòng tải lại yt-dlp mới nhất ở phần trên.\n"
+      "\n💡 Gợi ý: Nếu lỗi liên quan đến yt-dlp, vui lòng tải lại yt-dlp mới nhất ở phần trên.\n",
     );
   }
 }
@@ -2282,9 +2338,8 @@ async function runRetry() {
   // để đảm bảo dùng settings mới nhất từ project file
   if (currentProjectName && checkElectronAPI() && window.electronAPI) {
     try {
-      const result = await window.electronAPI.loadProjectConfig(
-        currentProjectName
-      );
+      const result =
+        await window.electronAPI.loadProjectConfig(currentProjectName);
       if (result.success && result.config && result.config.download) {
         // Cập nhật các biến từ project config
         if (result.config.download.urlsFile) {
@@ -2344,9 +2399,8 @@ async function selectVideoSnowInputFolder() {
   if (folder) {
     selectedVideoSnowInputFolder = folder;
     document.getElementById("video-snow-input-folder").value = folder;
-    document.getElementById(
-      "video-snow-input-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("video-snow-input-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("video-snow-input-path").style.display = "block";
     saveSettings();
   }
@@ -2358,9 +2412,8 @@ async function selectVideoSnowOutputFolder() {
   if (folder) {
     selectedVideoSnowOutputFolder = folder;
     document.getElementById("video-snow-output-folder").value = folder;
-    document.getElementById(
-      "video-snow-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("video-snow-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("video-snow-output-path").style.display = "block";
     saveSettings();
   }
@@ -2378,9 +2431,8 @@ async function selectVideoSnowSnowFile() {
     if (filePath) {
       selectedVideoSnowSnowFile = filePath;
       document.getElementById("video-snow-snow-file").value = filePath;
-      document.getElementById(
-        "video-snow-snow-path"
-      ).textContent = `Đã chọn: ${filePath}`;
+      document.getElementById("video-snow-snow-path").textContent =
+        `Đã chọn: ${filePath}`;
       document.getElementById("video-snow-snow-path").style.display = "block";
       saveSettings();
     }
@@ -2450,9 +2502,8 @@ async function selectBgOutputFolder() {
   if (folder) {
     selectedBgOutputFolder = folder;
     document.getElementById("bg-output-folder").value = folder;
-    document.getElementById(
-      "bg-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("bg-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("bg-output-path").style.display = "block";
     saveSettings();
   }
@@ -2471,7 +2522,7 @@ async function runBgVideo() {
   clearOutput("bg-video");
   showOutput(
     "bg-video",
-    `🚀 Đang tạo video backgrounds với count=${count}...\n\n`
+    `🚀 Đang tạo video backgrounds với count=${count}...\n\n`,
   );
 
   try {
@@ -2500,7 +2551,7 @@ async function runBgVideo() {
     await window.electronAPI.runScript(
       "createVideoBackgrounds.js",
       [count],
-      options
+      options,
     );
     showOutput("bg-video", "\n\n✅ Hoàn thành!");
   } catch (error) {
@@ -2518,9 +2569,8 @@ async function selectTrimInputFolder() {
   if (folder) {
     selectedTrimInputFolder = folder;
     document.getElementById("trim-input-folder").value = folder;
-    document.getElementById(
-      "trim-input-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("trim-input-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("trim-input-path").style.display = "block";
     saveSettings();
   }
@@ -2532,9 +2582,8 @@ async function selectTrimOutputFolder() {
   if (folder) {
     selectedTrimOutputFolder = folder;
     document.getElementById("trim-output-folder").value = folder;
-    document.getElementById(
-      "trim-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("trim-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("trim-output-path").style.display = "block";
     saveSettings();
   }
@@ -2561,7 +2610,7 @@ async function runTrim() {
   clearOutput("trim");
   showOutput(
     "trim",
-    `🚀 Đang cắt video từ giây ${startTime}, độ dài ${duration}s...\n\n`
+    `🚀 Đang cắt video từ giây ${startTime}, độ dài ${duration}s...\n\n`,
   );
 
   try {
@@ -2596,9 +2645,8 @@ async function selectCutBgInputFolder() {
   if (folder) {
     selectedCutBgInputFolder = folder;
     document.getElementById("cut-bg-input-folder").value = folder;
-    document.getElementById(
-      "cut-bg-input-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("cut-bg-input-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("cut-bg-input-path").style.display = "block";
     saveSettings();
   }
@@ -2610,9 +2658,8 @@ async function selectCutBgOutputFolder() {
   if (folder) {
     selectedCutBgOutputFolder = folder;
     document.getElementById("cut-bg-output-folder").value = folder;
-    document.getElementById(
-      "cut-bg-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("cut-bg-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("cut-bg-output-path").style.display = "block";
     saveSettings();
   }
@@ -2655,9 +2702,8 @@ async function selectThumbInputFolder() {
   if (folder) {
     selectedThumbInputFolder = folder;
     document.getElementById("thumb-input-folder").value = folder;
-    document.getElementById(
-      "thumb-input-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("thumb-input-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("thumb-input-path").style.display = "block";
     saveSettings();
   }
@@ -2669,9 +2715,8 @@ async function selectThumbOverlayFolder() {
   if (folder) {
     selectedThumbOverlayFolder = folder;
     document.getElementById("thumb-overlay-folder").value = folder;
-    document.getElementById(
-      "thumb-overlay-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("thumb-overlay-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("thumb-overlay-path").style.display = "block";
     saveSettings();
   }
@@ -2683,9 +2728,8 @@ async function selectThumbOutputFolder() {
   if (folder) {
     selectedThumbOutputFolder = folder;
     document.getElementById("thumb-output-folder").value = folder;
-    document.getElementById(
-      "thumb-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("thumb-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("thumb-output-path").style.display = "block";
     saveSettings();
   }
@@ -2727,9 +2771,8 @@ async function selectGetUrlOutputFolder() {
   if (folder) {
     selectedGetUrlOutputFolder = folder;
     document.getElementById("get-url-output-folder").value = folder;
-    document.getElementById(
-      "get-url-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("get-url-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("get-url-output-path").style.display = "block";
     saveSettings();
   }
@@ -2777,9 +2820,8 @@ async function selectNormalizeInputFolder() {
   if (folder) {
     selectedNormalizeInputFolder = folder;
     document.getElementById("normalize-input-folder").value = folder;
-    document.getElementById(
-      "normalize-input-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("normalize-input-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("normalize-input-path").style.display = "block";
     saveSettings();
   }
@@ -3369,9 +3411,8 @@ async function selectConcatInputFolder() {
   if (folder) {
     selectedConcatInputFolder = folder;
     document.getElementById("concat-input-folder").value = folder;
-    document.getElementById(
-      "concat-input-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("concat-input-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("concat-input-path").style.display = "block";
     saveSettings();
   }
@@ -3383,9 +3424,8 @@ async function selectConcatThumbsFolder() {
   if (folder) {
     selectedConcatThumbsFolder = folder;
     document.getElementById("concat-thumbs-folder").value = folder;
-    document.getElementById(
-      "concat-thumbs-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("concat-thumbs-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("concat-thumbs-path").style.display = "block";
     saveSettings();
   }
@@ -3397,9 +3437,8 @@ async function selectConcatOutputFolder() {
   if (folder) {
     selectedConcatOutputFolder = folder;
     document.getElementById("concat-output-folder").value = folder;
-    document.getElementById(
-      "concat-output-path"
-    ).textContent = `Đã chọn: ${folder}`;
+    document.getElementById("concat-output-path").textContent =
+      `Đã chọn: ${folder}`;
     document.getElementById("concat-output-path").style.display = "block";
     saveSettings();
   }
@@ -3451,7 +3490,7 @@ async function runConcat() {
   clearOutput("concat");
   showOutput(
     "concat",
-    `🚀 Đang ghép video với input="${selectedConcatInputFolder}", chunkSize=${chunkSize}, useThumbs=${useThumbs}...\n\n`
+    `🚀 Đang ghép video với input="${selectedConcatInputFolder}", chunkSize=${chunkSize}, useThumbs=${useThumbs}...\n\n`,
   );
 
   try {

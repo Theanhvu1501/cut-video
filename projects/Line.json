@@ -24,12 +24,14 @@
       "chromaKeyFile": null
     },
     "download": {
-      "urlsFile": "D:\\test\\2ch\\urls.txt",
-      "outputFolder": "D:\\test\\2ch\\overlays",
+      "urlsFile": "G:\\My Drive\\Youtube\\Line\\urls.txt",
+      "outputFolder": "G:\\My Drive\\Youtube\\Line\\overlays",
       "overlayImagesFolder": "D:\\test\\2ch\\images",
       "thumbsFolder": "D:\\test\\line\\thumbs\\1",
       "cookiesFile": null,
-      "proxy": null
+      "proxy": null,
+      "downloadDrive": true,
+      "driveLanguage": "jp"
     },
     "videoSnow": {
       "inputFolder": null,
@@ -78,5 +80,5 @@
       "outputFolder": null
     }
   },
-  "updatedAt": "2026-01-19T16:40:53.335Z"
+  "updatedAt": "2026-01-19T17:38:27.606Z"
 }

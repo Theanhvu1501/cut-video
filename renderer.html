@@ -1724,6 +1724,30 @@
                     >
                       Chọn File
                     </button>
+                    <button
+                      class="btn btn-secondary"
+                      style="min-width: 170px"
+                      onclick="autoDetectChromaKeyFromVideos()"
+                    >
+                      Tự động lấy màu
+                    </button>
+                  </div>
+                  <div class="form-group" style="margin-top: 10px">
+                    <label>
+                      Các màu (hex, cách nhau bởi dấu phẩy, ví dụ:
+                      22BDD6,2B4052,7FBFDE,7097B8):
+                    </label>
+                    <input
+                      type="text"
+                      id="render-chromakey-palette"
+                      value="22BDD6,2B4052,7FBFDE,7097B8"
+                      placeholder="22BDD6,2B4052,7FBFDE,7097B8"
+                      style="text-transform: uppercase"
+                    />
+                    <small>
+                      Dùng để map màu khi tự động lấy chroma key. Có thể nhập 1
+                      hoặc nhiều màu, nếu để trống sẽ dùng bộ màu mặc định.
+                    </small>
                   </div>
                   <div
                     id="render-chromakey-file-path"

@@ -5,9 +5,9 @@
     "render": {
       "day": "1",
       "videos": "1",
-      "renderMode": "keepColor",
+      "renderMode": "chromaKey",
       "opacity": "0.7",
-      "chromaKeyMode": "color",
+      "chromaKeyMode": "file",
       "chromaKeyColor": "D4F9D7",
       "keepColorColors": "FBFF02",
       "keepColorCrop": true,
@@ -22,7 +22,7 @@
       "overlayFolder": "D:\\test\\2ch\\overlays",
       "backgroundFolder": "D:\\test\\2ch\\backgrounds",
       "outputFolder": "D:\\test\\2ch\\done",
-      "chromaKeyFile": null
+      "chromaKeyFile": "D:\\test\\2ch\\chromaKey.txt"
     },
     "download": {
       "urlsFile": "D:\\test\\2ch\\urls.txt",
@@ -81,5 +81,5 @@
       "outputFolder": null
     }
   },
-  "updatedAt": "2026-01-20T10:10:49.737Z"
+  "updatedAt": "2026-01-20T11:23:24.644Z"
 }

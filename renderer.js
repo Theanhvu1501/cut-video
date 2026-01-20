@@ -1904,6 +1904,140 @@ async function selectRenderChromaKeyFile() {
   }
 }
 
+// Tự động lấy màu chroma key từ video (dùng get-video-chroma.js)
+async function autoDetectChromaKeyFromVideos() {
+  console.log("🔵 [autoDetectChromaKeyFromVideos] Bắt đầu...");
+  
+  if (!checkElectronAPI()) {
+    console.error("❌ [autoDetectChromaKeyFromVideos] Electron API không khả dụng");
+    alert("❌ Electron API không khả dụng. Vui lòng khởi động lại ứng dụng.");
+    return;
+  }
+  
+  console.log("✅ [autoDetectChromaKeyFromVideos] Electron API OK");
+
+  // Lấy video từ Folder Overlay (video đầu vào)
+  const inputFolder =
+    selectedRenderOverlayFolder ||
+    document.getElementById("render-overlay-folder")?.value ||
+    "./overlays";
+  
+  console.log("📁 [autoDetectChromaKeyFromVideos] Input folder:", inputFolder);
+
+  // File chromaKey target: ưu tiên file đã chọn, nếu không có thì dùng ./chromaKey.txt
+  const chromaKeyFile =
+    selectedRenderChromaKeyFile ||
+    document.getElementById("render-chromakey-file")?.value ||
+    "./chromaKey.txt";
+  
+  console.log("📄 [autoDetectChromaKeyFromVideos] ChromaKey file:", chromaKeyFile);
+
+  // Lấy các màu (nếu có) từ input, dạng "RRGGBB,RRGGBB,..."
+  const paletteInput = document
+    .getElementById("render-chromakey-palette")
+    ?.value.trim();
+
+  let paletteArg = null;
+  if (paletteInput) {
+    const parts = paletteInput
+      .split(",")
+      .map((p) => p.trim().replace("#", "").toUpperCase())
+      .filter((p) => /^[0-9A-F]{6}$/.test(p));
+
+    if (parts.length > 0) {
+      paletteArg = parts.join(",");
+    } else {
+      alert(
+        "Danh sách màu không hợp lệ. Vui lòng nhập mã hex hợp lệ, cách nhau bởi dấu phẩy (ví dụ: 22BDD6,2B4052,7FBFDE,7097B8).",
+      );
+      return;
+    }
+  }
+
+  if (!inputFolder) {
+    console.error("❌ [autoDetectChromaKeyFromVideos] Thiếu input folder");
+    return;
+  }
+
+  if (!chromaKeyFile) {
+    console.error("❌ [autoDetectChromaKeyFromVideos] Thiếu chromaKey file");
+    return;
+  }
+  
+  console.log("✅ [autoDetectChromaKeyFromVideos] Validation OK, bắt đầu chạy script...");
+
+  // Hiển thị output tab và thông báo bắt đầu
+  const outputDiv = document.getElementById("render-output");
+  if (outputDiv) {
+    outputDiv.style.display = "block";
+  }
+
+  clearOutput("render");
+  showOutput(
+    "render",
+    `🎨 Bắt đầu tự động lấy màu chroma key...\n`,
+  );
+  showOutput(
+    "render",
+    `📁 Folder video: ${inputFolder}\n`,
+  );
+  showOutput(
+    "render",
+    `📄 File output: ${chromaKeyFile}\n`,
+  );
+  if (paletteArg) {
+    showOutput(
+      "render",
+      `🎨 Palette: ${paletteArg}\n`,
+    );
+  }
+  showOutput(
+    "render",
+    `\n⏳ Đang xử lý...\n\n`,
+  );
+
+  try {
+    window.electronAPI.removeScriptOutputListener();
+    window.electronAPI.onScriptOutput((data) => {
+      showOutput("render", data);
+    });
+
+    const args = [inputFolder, chromaKeyFile];
+    if (paletteArg) {
+      args.push(paletteArg);
+    }
+    
+    console.log("🚀 [autoDetectChromaKeyFromVideos] Gọi script với args:", args);
+
+    await window.electronAPI.runScript(
+      "get-video-chroma.js",
+      args,
+      {},
+    );
+    
+    console.log("✅ [autoDetectChromaKeyFromVideos] Script chạy xong");
+
+    // Thông báo thành công rõ ràng
+    showOutput(
+      "render",
+      `\n\n✅ ✅ ✅ HOÀN THÀNH! ✅ ✅ ✅\n`,
+    );
+    showOutput(
+      "render",
+      `✅ Đã lấy màu thành công và ghi vào file: ${chromaKeyFile}\n`,
+    );
+    showOutput(
+      "render",
+      `✅ Bạn có thể kiểm tra file để xem kết quả.\n`,
+    );
+  } catch (error) {
+    const errorMsg = getErrorMessage(error);
+    showOutput("render", `\n\n❌ ❌ ❌ LỖI! ❌ ❌ ❌\n`);
+    showOutput("render", `❌ ${errorMsg}\n`);
+    alert(`❌ Lỗi khi lấy màu:\n\n${errorMsg}`);
+  }
+}
+
 async function selectRenderOverlayFolder() {
   if (!checkElectronAPI()) return;
   const folder = await window.electronAPI.selectFolder();

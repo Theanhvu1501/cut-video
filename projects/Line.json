@@ -3,34 +3,35 @@
   "createdAt": "2026-01-15T04:12:36.977Z",
   "settings": {
     "render": {
-      "day": "1",
-      "videos": "1",
-      "renderMode": "keepColor",
+      "day": "2",
+      "videos": "2",
+      "renderMode": "chromaKey",
       "opacity": "0.7",
-      "chromaKeyMode": "color",
+      "chromaKeyMode": "file",
       "chromaKeyColor": "D4F9D7",
       "keepColorColors": "F6FF00",
       "keepColorCrop": true,
       "keepColorHeight": "150",
       "keepColorYOffset": "550",
+      "keepColorAddDarkLayer": false,
       "useGPU": false,
       "maxConcurrentProcesses": "2",
       "gpuVideoCodec": "h264_nvenc",
       "height": "220",
       "y_offset": "490",
-      "overlayFolder": "D:\\test\\2ch\\overlays_trimmed",
-      "backgroundFolder": "D:\\test\\2ch\\backgrounds",
-      "outputFolder": "D:\\test\\2ch\\done",
-      "chromaKeyFile": null
+      "overlayFolder": "D:\\test\\line\\overlays_trimmed",
+      "backgroundFolder": "D:\\test\\line\\backgrounds",
+      "outputFolder": "D:\\test\\line\\done",
+      "chromaKeyFile": "D:\\test\\line\\chromaKey.txt"
     },
     "download": {
-      "urlsFile": "G:\\My Drive\\Youtube\\Line\\urls.txt",
-      "outputFolder": "G:\\My Drive\\Youtube\\Line\\overlays",
-      "overlayImagesFolder": "D:\\test\\2ch\\images",
-      "thumbsFolder": "D:\\test\\line\\thumbs\\1",
+      "urlsFile": "D:\\test\\line\\urls.txt",
+      "outputFolder": "D:\\test\\line\\overlays",
+      "overlayImagesFolder": "D:\\test\\line\\thumbs",
+      "thumbsFolder": "D:\\test\\line\\thumbs",
       "cookiesFile": null,
       "proxy": null,
-      "downloadDrive": true,
+      "downloadDrive": false,
       "driveLanguage": "jp"
     },
     "videoSnow": {
@@ -50,8 +51,8 @@
       "avgClipDuration": "12"
     },
     "trim": {
-      "inputFolder": "G:\\My Drive\\Youtube\\Line\\overlays",
-      "outputFolder": "G:\\My Drive\\Youtube\\Line\\overlays_trimmed",
+      "inputFolder": "D:\\test\\line\\overlays",
+      "outputFolder": "D:\\test\\line\\overlays_trimmed",
       "startTime": "0",
       "duration": "30"
     },
@@ -80,5 +81,5 @@
       "outputFolder": null
     }
   },
-  "updatedAt": "2026-01-19T18:21:14.074Z"
+  "updatedAt": "2026-01-20T11:40:48.531Z"
 }

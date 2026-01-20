@@ -1,12 +1,12 @@
 {
-  "renderMode": "chromaKey",
+  "renderMode": "keepColor",
   "chromaKeyMode": "color",
   "chromaKeyColor": "D4F9D7",
   "chromaKeyFile": null,
   "keepColorColors": [
     "FBFF02"
   ],
-  "keepColorCrop": false,
+  "keepColorCrop": true,
   "keepColorHeight": 220,
   "keepColorYOffset": 490,
   "useGPU": false,
@@ -17,5 +17,6 @@
   "y_offset": 490,
   "overlayFolder": "D:\\test\\2ch\\overlays",
   "backgroundFolder": "D:\\test\\2ch\\backgrounds",
-  "outputFolder": "D:\\test\\2ch\\done"
+  "outputFolder": "D:\\test\\2ch\\done",
+  "keepColorAddDarkLayer": false
 }

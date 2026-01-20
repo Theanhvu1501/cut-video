@@ -483,6 +483,8 @@ async function saveSettings() {
         document.getElementById("render-keepcolor-height")?.value || "220",
       keepColorYOffset:
         document.getElementById("render-keepcolor-y-offset")?.value || "490",
+      keepColorAddDarkLayer:
+        document.getElementById("render-keepcolor-add-dark-layer")?.checked || false,
       useGPU: document.getElementById("render-use-gpu")?.checked || false,
       maxConcurrentProcesses:
         document.getElementById("render-max-concurrent")?.value || "2",
@@ -623,6 +625,9 @@ async function saveSettings() {
           settings.render.keepColorYOffset ||
           "490",
       );
+      const currentKeepColorAddDarkLayer =
+        document.getElementById("render-keepcolor-add-dark-layer")?.checked ??
+        (settings.render.keepColorAddDarkLayer || false);
       const currentUseGPU =
         document.getElementById("render-use-gpu")?.checked ??
         (settings.render.useGPU || false);
@@ -668,6 +673,7 @@ async function saveSettings() {
         keepColorCrop: currentKeepColorCrop,
         keepColorHeight: currentKeepColorHeight,
         keepColorYOffset: currentKeepColorYOffset,
+        keepColorAddDarkLayer: currentKeepColorAddDarkLayer,
         useGPU: currentUseGPU,
         maxConcurrentProcesses: currentMaxConcurrent,
         gpuVideoCodec: currentGpuCodec,
@@ -774,6 +780,8 @@ async function loadSettings() {
       if (fileConfig.keepColorYOffset !== undefined)
         settings.render.keepColorYOffset =
           fileConfig.keepColorYOffset.toString();
+      if (fileConfig.keepColorAddDarkLayer !== undefined)
+        settings.render.keepColorAddDarkLayer = fileConfig.keepColorAddDarkLayer;
       if (fileConfig.useGPU !== undefined)
         settings.render.useGPU = fileConfig.useGPU;
       if (fileConfig.maxConcurrentProcesses !== undefined)
@@ -853,6 +861,10 @@ async function loadSettings() {
       if (settings.render.keepColorYOffset)
         document.getElementById("render-keepcolor-y-offset").value =
           settings.render.keepColorYOffset;
+      if (settings.render.keepColorAddDarkLayer !== undefined) {
+        document.getElementById("render-keepcolor-add-dark-layer").checked =
+          settings.render.keepColorAddDarkLayer;
+      }
       if (settings.render.useGPU !== undefined) {
         document.getElementById("render-use-gpu").checked =
           settings.render.useGPU;
@@ -1604,6 +1616,8 @@ async function saveCurrentProjectSettings() {
           document.getElementById("render-keepcolor-height")?.value || "220",
         keepColorYOffset:
           document.getElementById("render-keepcolor-y-offset")?.value || "490",
+        keepColorAddDarkLayer:
+          document.getElementById("render-keepcolor-add-dark-layer")?.checked || false,
         useGPU: document.getElementById("render-use-gpu")?.checked || false,
         maxConcurrentProcesses:
           document.getElementById("render-max-concurrent")?.value || "2",
@@ -1767,6 +1781,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const checkboxesToWatch = [
     "render-use-gpu",
     "render-keepcolor-crop",
+    "render-keepcolor-add-dark-layer",
     "concat-use-thumbs",
   ];
 
@@ -1987,6 +2002,7 @@ async function runRender() {
   let keepColorCrop = false;
   let keepColorHeight = 220;
   let keepColorYOffset = 490;
+  let keepColorAddDarkLayer = false;
   if (renderMode === "keepColor") {
     const colorsInput = document
       .getElementById("render-keepcolor-colors")
@@ -2006,6 +2022,7 @@ async function runRender() {
       keepColorYOffset =
         parseInt(document.getElementById("render-keepcolor-y-offset").value) ||
         490;
+      keepColorAddDarkLayer = document.getElementById("render-keepcolor-add-dark-layer").checked || false;
     }
   }
 
@@ -2039,6 +2056,7 @@ async function runRender() {
         keepColorCrop,
         keepColorHeight,
         keepColorYOffset,
+        keepColorAddDarkLayer,
         useGPU,
         maxConcurrentProcesses,
         gpuVideoCodec,

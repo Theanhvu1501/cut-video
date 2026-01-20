@@ -215,6 +215,7 @@ const keepSimilarity = 0.2; // Độ sai số màu (0.1 - 0.3 là đẹp)
 let keepColorCrop = false;
 let keepColorHeight = 220;
 let keepColorYOffset = 490;
+let keepColorAddDarkLayer = false; // Thêm lớp đen mờ khi có crop
 
 // Chế độ crop
 let height = 220;
@@ -253,6 +254,8 @@ if (fs.existsSync(configFilePath)) {
       keepColorHeight = parseInt(config.keepColorHeight) || 220;
     if (config.keepColorYOffset !== undefined)
       keepColorYOffset = parseInt(config.keepColorYOffset) || 490;
+    if (config.keepColorAddDarkLayer !== undefined)
+      keepColorAddDarkLayer = config.keepColorAddDarkLayer;
     if (config.height !== undefined) height = config.height;
     if (config.y_offset !== undefined) y_offset = config.y_offset;
     // Đọc đường dẫn từ config
@@ -518,8 +521,8 @@ const complexFilterKeepColor = () => {
   // 4. ÁP MASK TỔNG VÀO VIDEO GỐC
   filters.push(`[src_main]${currentMask}alphamerge[final_isolated]`);
 
-  // 5. THÊM LỚP ĐEN MỜ (opacity 0.3) NẾU CÓ CROP
-  if (keepColorCrop) {
+  // 5. THÊM LỚP ĐEN MỜ (opacity 0.3) NẾU CÓ CROP VÀ ĐƯỢC BẬT
+  if (keepColorCrop && keepColorAddDarkLayer) {
     const h = keepColorHeight || 720;
     // Tạo lớp đen mờ từ video gốc để có cùng duration
     // Lớp đen có kích thước bằng phần crop và opacity 0.3 (alpha = 76.5 ≈ 77)

@@ -39,7 +39,8 @@ let DRIVE_LANGUAGE = "jp"; // Ngôn ngữ cho Drive: "auto", "jp", "cn", "kr", "
 // Đọc config từ project JSON (mặc định là "default")
 // Kiểm tra PROJECT_NAME và PROJECTS_DIR environment variable (được set bởi Electron main process)
 const projectName = process.env.PROJECT_NAME || "default";
-const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectsDir =
+  process.env.PROJECTS_DIR || path.join(__dirname, "projects");
 const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
 
 if (fs.existsSync(projectConfigPath)) {
@@ -51,14 +52,16 @@ if (fs.existsSync(projectConfigPath)) {
     if (config) {
       if (config.urlsFile) ALL_URLS_FILE = config.urlsFile;
       if (config.outputFolder) DOWNLOAD_DIR = config.outputFolder;
-      if (config.overlayImagesFolder) OVERLAY_IMAGES_DIR = config.overlayImagesFolder;
+      if (config.overlayImagesFolder)
+        OVERLAY_IMAGES_DIR = config.overlayImagesFolder;
       if (config.thumbsFolder) OUTPUT_THUMBS_BASE_DIR = config.thumbsFolder;
       if (config.cookiesFile !== undefined) COOKIES_FILE = config.cookiesFile;
       if (config.proxy !== undefined && config.proxy) {
         // Trim và validate proxy
-        const proxyValue = typeof config.proxy === 'string' ? config.proxy.trim() : config.proxy;
+        const proxyValue =
+          typeof config.proxy === "string" ? config.proxy.trim() : config.proxy;
         // Chỉ set PROXY nếu có giá trị hợp lệ (không phải empty string hoặc null)
-        if (proxyValue && proxyValue !== 'null' && proxyValue !== 'undefined') {
+        if (proxyValue && proxyValue !== "null" && proxyValue !== "undefined") {
           PROXY = proxyValue;
         } else {
           // Reset PROXY về null nếu config có giá trị không hợp lệ
@@ -99,6 +102,48 @@ const getDriveFilenameLimit = (language) => {
   return limits[language] || limits.default;
 };
 
+function normalizeProxy(raw) {
+  if (!raw) return null;
+
+  raw = raw.trim();
+
+  let scheme = "http";
+
+  // 1️⃣ Tách scheme nếu có
+  const schemeMatch = raw.match(/^(\w+):\/\//);
+  if (schemeMatch) {
+    scheme = schemeMatch[1];
+    raw = raw.replace(/^\w+:\/\//, "");
+  }
+
+  // 2️⃣ Nếu đã có dạng user:pass@host:port → DONE
+  if (raw.includes("@")) {
+    const [auth, hostPort] = raw.split("@");
+    const [host, port] = hostPort.split(":");
+    if (!port || isNaN(port)) throw new Error("Invalid port");
+    return `${scheme}://${auth}@${host}:${port}`;
+  }
+
+  // 3️⃣ Split theo :
+  const parts = raw.split(":");
+
+  // host:port
+  if (parts.length === 2) {
+    const [host, port] = parts;
+    if (isNaN(port)) throw new Error("Invalid port");
+    return `${scheme}://${host}:${port}`;
+  }
+
+  // host:port:user:pass
+  if (parts.length === 4) {
+    const [host, port, user, pass] = parts;
+    if (isNaN(port)) throw new Error("Invalid port");
+    return `${scheme}://${user}:${pass}@${host}:${port}`;
+  }
+  console.error(`🔴 Lỗi định dạng proxy`);
+  return null;
+}
+
 /**
  * Tải một video YouTube duy nhất.
  */
@@ -134,14 +179,17 @@ const downloadVideo = async (url, outputPath) => {
   };
 
   // Thêm proxy nếu có (validate và trim)
-  if (PROXY && typeof PROXY === 'string' && PROXY.trim()) {
+  if (PROXY && typeof PROXY === "string" && PROXY.trim()) {
     const trimmedProxy = PROXY.trim();
     // Validate proxy format (phải có protocol: http://, https://, hoặc socks5://)
     if (/^(http|https|socks5):\/\//i.test(trimmedProxy)) {
-      options.proxy = trimmedProxy;
-      console.log(`🔒 Sử dụng proxy: ${trimmedProxy}`);
+      const proxy = normalizeProxy(trimmedProxy);
+      options.proxy = proxy;
+      console.log(`🔒 Sử dụng proxy: ${proxy}`);
     } else {
-      console.warn(`⚠️ Proxy format không hợp lệ: ${trimmedProxy}. Proxy phải bắt đầu với http://, https://, hoặc socks5://`);
+      console.warn(
+        `⚠️ Proxy format không hợp lệ: ${trimmedProxy}. Proxy phải bắt đầu với http://, https://, hoặc socks5://`,
+      );
     }
   }
 
@@ -202,15 +250,20 @@ const downloadVideosFromList = async (urls, savePath) => {
         return { status: "fulfilled", url: url };
       } catch (error) {
         // Lấy thông tin lỗi chi tiết hơn
-        let reason = error.message || 'Unknown error';
+        let reason = error.message || "Unknown error";
         if (error.stderr) {
           reason = error.stderr.toString();
         } else if (error.stdout) {
           reason = error.stdout.toString();
         }
-        
+
         // Log chi tiết lỗi proxy nếu có
-        if (PROXY && (reason.includes('proxy') || reason.includes('Proxy') || reason.includes('PROXY'))) {
+        if (
+          PROXY &&
+          (reason.includes("proxy") ||
+            reason.includes("Proxy") ||
+            reason.includes("PROXY"))
+        ) {
           console.error(`🔴 Lỗi proxy cho URL: ${url}`);
           console.error(`   Proxy đang sử dụng: ${PROXY}`);
           console.error(`   Chi tiết lỗi: ${reason}`);

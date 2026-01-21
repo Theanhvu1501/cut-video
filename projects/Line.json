@@ -19,18 +19,18 @@
       "gpuVideoCodec": "h264_nvenc",
       "height": "220",
       "y_offset": "490",
-      "overlayFolder": "D:\\test\\line\\overlays_trimmed",
+      "overlayFolder": "D:\\Youtube\\test\\overlays",
       "backgroundFolder": "D:\\test\\line\\backgrounds",
       "outputFolder": "D:\\test\\line\\done",
       "chromaKeyFile": "D:\\test\\line\\chromaKey.txt"
     },
     "download": {
-      "urlsFile": "D:\\test\\line\\urls.txt",
-      "outputFolder": "D:\\test\\line\\overlays",
-      "overlayImagesFolder": "D:\\test\\line\\images",
-      "thumbsFolder": "D:\\test\\line\\thumbs",
-      "cookiesFile": "D:\\test\\line\\cookies.txt",
-      "proxy": null,
+      "urlsFile": "D:\\Youtube\\test\\urls.txt",
+      "outputFolder": "D:\\Youtube\\test\\overlays",
+      "overlayImagesFolder": "D:\\Youtube\\test\\images",
+      "thumbsFolder": "D:\\Youtube\\test\\images",
+      "cookiesFile": null,
+      "proxy": "socks5://14.225.52.172:33650:nkkk4n7d:tQdW5t1w",
       "downloadDrive": false,
       "driveLanguage": "jp"
     },
@@ -81,5 +81,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-01-21T04:44:55.742Z"
+  "updatedAt": "2026-01-21T07:38:06.668Z"
 }

@@ -2392,10 +2392,13 @@ async function runDownload() {
         if (result.config.download.cookiesFile) {
           selectedDownloadCookiesFile = result.config.download.cookiesFile;
         }
+        // Không ghi đè input field proxy ở đây - để user có thể update proxy
+        // và giá trị đó sẽ được ưu tiên khi lấy từ input field bên dưới
         if (result.config.download.proxy !== undefined) {
           selectedDownloadProxy = result.config.download.proxy;
+          // Chỉ set input field nếu nó đang trống (chưa có giá trị từ user)
           const proxyInput = document.getElementById("download-proxy");
-          if (proxyInput) {
+          if (proxyInput && !proxyInput.value.trim()) {
             proxyInput.value = result.config.download.proxy || "";
           }
         }

@@ -52,7 +52,13 @@ if (fs.existsSync(configFilePath)) {
     if (config.outputThumbsBaseDir)
       OUTPUT_THUMBS_BASE_DIR = config.outputThumbsBaseDir;
     if (config.cookiesFile) COOKIES_FILE = config.cookiesFile;
-    if (config.proxy !== undefined && config.proxy) PROXY = config.proxy;
+    if (config.proxy !== undefined && config.proxy) {
+      // Trim và validate proxy
+      const proxyValue = typeof config.proxy === 'string' ? config.proxy.trim() : config.proxy;
+      if (proxyValue) {
+        PROXY = proxyValue;
+      }
+    }
     if (config.downloadDrive !== undefined)
       DOWNLOAD_DRIVE = config.downloadDrive;
     if (config.driveLanguage !== undefined)
@@ -117,10 +123,16 @@ const downloadVideo = async (url, outputPath) => {
     extractorArgs: ["youtube:player-client=default,-tv_simply"],
   };
 
-  // Thêm proxy nếu có
-  if (PROXY) {
-    options.proxy = PROXY;
-    console.log(`🔒 Sử dụng proxy: ${PROXY}`);
+  // Thêm proxy nếu có (validate và trim)
+  if (PROXY && typeof PROXY === 'string' && PROXY.trim()) {
+    const trimmedProxy = PROXY.trim();
+    // Validate proxy format (phải có protocol: http://, https://, hoặc socks5://)
+    if (/^(http|https|socks5):\/\//i.test(trimmedProxy)) {
+      options.proxy = trimmedProxy;
+      console.log(`🔒 Sử dụng proxy: ${trimmedProxy}`);
+    } else {
+      console.warn(`⚠️ Proxy format không hợp lệ: ${trimmedProxy}. Proxy phải bắt đầu với http://, https://, hoặc socks5://`);
+    }
   }
 
   // Sử dụng getYoutubeDl() để đảm bảo luôn dùng yt-dlp mới nhất (sau khi update)
@@ -179,8 +191,22 @@ const downloadVideosFromList = async (urls, savePath) => {
         await downloadVideo(url, savePath);
         return { status: "fulfilled", url: url };
       } catch (error) {
-        const reason = error.stderr || error.message;
-        console.error(`🔴 Đã bắt được lỗi cho URL: ${url}`, reason);
+        // Lấy thông tin lỗi chi tiết hơn
+        let reason = error.message || 'Unknown error';
+        if (error.stderr) {
+          reason = error.stderr.toString();
+        } else if (error.stdout) {
+          reason = error.stdout.toString();
+        }
+        
+        // Log chi tiết lỗi proxy nếu có
+        if (PROXY && (reason.includes('proxy') || reason.includes('Proxy') || reason.includes('PROXY'))) {
+          console.error(`🔴 Lỗi proxy cho URL: ${url}`);
+          console.error(`   Proxy đang sử dụng: ${PROXY}`);
+          console.error(`   Chi tiết lỗi: ${reason}`);
+        } else {
+          console.error(`🔴 Đã bắt được lỗi cho URL: ${url}`, reason);
+        }
         return { status: "rejected", url: url, reason: reason };
       }
     }),

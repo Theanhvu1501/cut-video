@@ -101,22 +101,25 @@ async function processAllVideosInFolders(inputRoot, outputRoot) {
 let inputRoot = "./bgs";
 let outputRoot = "./backgrounds";
 
-// Đọc config từ file nếu có
-// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
-// Nếu không có, dùng __dirname (cho development)
-const configDir = process.env.CONFIG_DIR || __dirname;
-const configFilePath = path.join(configDir, ".cut-bg-config.json");
-if (fs.existsSync(configFilePath)) {
+// Đọc config từ project JSON (mặc định là "default")
+const projectName = process.env.PROJECT_NAME || "default";
+const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
+
+if (fs.existsSync(projectConfigPath)) {
   try {
-    const configContent = fs.readFileSync(configFilePath, "utf-8");
-    const config = JSON.parse(configContent);
+    const projectContent = fs.readFileSync(projectConfigPath, "utf-8");
+    const projectData = JSON.parse(projectContent);
+    const config = projectData.settings?.cutBg;
 
-    if (config.inputRoot) inputRoot = config.inputRoot;
-    if (config.outputRoot) outputRoot = config.outputRoot;
+    if (config) {
+      if (config.inputFolder) inputRoot = config.inputFolder;
+      if (config.outputFolder) outputRoot = config.outputFolder;
 
-    console.log(`Đã đọc config từ file: ${configFilePath}`);
+      console.log(`Đã đọc config từ project: ${projectName}`);
+    }
   } catch (error) {
-    console.error(`Lỗi khi đọc config file: ${error.message}`);
+    console.error(`Lỗi khi đọc project config: ${error.message}`);
   }
 }
 

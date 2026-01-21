@@ -1,10 +1,10 @@
 {
   "projectName": "Line",
-  "createdAt": "2026-01-15T04:12:36.977Z",
+  "createdAt": "2026-01-21T04:36:35.963Z",
   "settings": {
     "render": {
-      "day": "2",
-      "videos": "2",
+      "day": "1",
+      "videos": "1",
       "renderMode": "chromaKey",
       "opacity": "0.7",
       "chromaKeyMode": "file",
@@ -27,25 +27,25 @@
     "download": {
       "urlsFile": "D:\\test\\line\\urls.txt",
       "outputFolder": "D:\\test\\line\\overlays",
-      "overlayImagesFolder": "D:\\test\\line\\thumbs\\1",
+      "overlayImagesFolder": "D:\\test\\line\\images",
       "thumbsFolder": "D:\\test\\line\\thumbs",
-      "cookiesFile": null,
-      "proxy": "socks5://14.225.52.172:33650:nkkk4n7d:tQdW5t1w",
+      "cookiesFile": "D:\\test\\line\\cookies.txt",
+      "proxy": null,
       "downloadDrive": false,
       "driveLanguage": "jp"
     },
     "videoSnow": {
-      "inputFolder": null,
-      "outputFolder": null,
-      "snowFile": null,
+      "inputFolder": "D:\\test\\line\\images_background",
+      "outputFolder": "D:\\test\\line\\output_segments",
+      "snowFile": "D:\\test\\line\\snow1.mp4",
       "maxConcurrent": "3",
       "segmentMin": "10",
       "segmentMax": "15"
     },
     "bgVideo": {
       "count": "3",
-      "inputFolder": null,
-      "outputFolder": null,
+      "inputFolder": "D:\\test\\line\\output_segments",
+      "outputFolder": "D:\\test\\line\\backgrounds",
       "targetDuration": "3600",
       "sourceCount": "10",
       "avgClipDuration": "12"
@@ -54,32 +54,32 @@
       "inputFolder": "D:\\test\\line\\overlays",
       "outputFolder": "D:\\test\\line\\overlays_trimmed",
       "startTime": "0",
-      "duration": "30"
+      "duration": "60"
     },
     "cutBg": {
-      "inputFolder": "G:\\My Drive\\Youtube\\Line\\channels",
-      "outputFolder": null
+      "inputFolder": "D:\\test\\line\\bgs",
+      "outputFolder": "D:\\test\\line\\backgrounds"
     },
     "thumb": {
-      "inputFolder": null,
-      "overlayFolder": null,
-      "outputFolder": null
+      "inputFolder": "D:\\test\\line\\overlays",
+      "overlayFolder": "D:\\test\\line\\images",
+      "outputFolder": "D:\\test\\line\\thumbs"
     },
     "getUrl": {
       "handle": "@line4091",
-      "outputFolder": "D:\\Youtube\\test\\channels"
+      "outputFolder": "D:\\test\\line\\channels"
     },
     "normalize": {
-      "inputFolder": null
+      "inputFolder": "D:\\test\\line\\thumbs"
     },
     "concat": {
       "chunkSize": "2",
       "useThumbs": true,
-      "thumbDuration": "3",
-      "inputFolder": "G:\\My Drive\\Youtube\\Line",
-      "thumbsFolder": null,
-      "outputFolder": null
+      "thumbDuration": "4",
+      "inputFolder": "D:\\test\\line\\done",
+      "thumbsFolder": "D:\\test\\line\\thumbs",
+      "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-01-21T03:38:09.165Z"
+  "updatedAt": "2026-01-21T04:44:55.742Z"
 }

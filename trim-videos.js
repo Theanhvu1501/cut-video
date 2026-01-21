@@ -24,28 +24,32 @@ let duration = 30;
 // Số lượng video xử lý đồng thời
 let concurrency = 3;
 
-// Đọc config từ file nếu có
-// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
-// Nếu không có, dùng __dirname (cho development)
-const configDir = process.env.CONFIG_DIR || __dirname;
-const configFilePath = path.join(configDir, ".trim-config.json");
-if (fs.existsSync(configFilePath)) {
+// Đọc config từ project JSON (mặc định là "default")
+// Kiểm tra PROJECT_NAME và PROJECTS_DIR environment variable (được set bởi Electron main process)
+const projectName = process.env.PROJECT_NAME || "default";
+const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
+
+if (fs.existsSync(projectConfigPath)) {
   try {
-    const configContent = fs.readFileSync(configFilePath, "utf-8");
-    const config = JSON.parse(configContent);
+    const projectContent = fs.readFileSync(projectConfigPath, "utf-8");
+    const projectData = JSON.parse(projectContent);
+    const config = projectData.settings?.trim;
 
-    if (config.inputFolder) inputFolder = config.inputFolder;
-    if (config.outputFolder) outputFolder = config.outputFolder;
-    if (config.startTime !== undefined)
-      startTime = parseFloat(config.startTime) || 0;
-    if (config.duration !== undefined)
-      duration = parseFloat(config.duration) || 30;
-    if (config.concurrency !== undefined)
-      concurrency = parseInt(config.concurrency) || 3;
+    if (config) {
+      if (config.inputFolder) inputFolder = config.inputFolder;
+      if (config.outputFolder) outputFolder = config.outputFolder;
+      if (config.startTime !== undefined)
+        startTime = parseFloat(config.startTime) || 0;
+      if (config.duration !== undefined)
+        duration = parseFloat(config.duration) || 30;
+      if (config.concurrency !== undefined)
+        concurrency = parseInt(config.concurrency) || 3;
 
-    console.log(`Đã đọc config từ file: ${configFilePath}`);
+      console.log(`Đã đọc config từ project: ${projectName}`);
+    }
   } catch (error) {
-    console.error(`Lỗi khi đọc config file: ${error.message}`);
+    console.error(`Lỗi khi đọc project config: ${error.message}`);
   }
 }
 

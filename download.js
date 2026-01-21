@@ -36,44 +36,47 @@ let PROXY = null; // Proxy để sử dụng khi download (vd: http://proxy.exam
 let DOWNLOAD_DRIVE = false; // Bật tải Drive với giới hạn độ dài tên file
 let DRIVE_LANGUAGE = "jp"; // Ngôn ngữ cho Drive: "auto", "jp", "cn", "kr", "vi", "en", etc.
 
-// Đọc config từ file nếu có
-// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
-// Nếu không có, dùng __dirname (cho development)
-const configDir = process.env.CONFIG_DIR || __dirname;
-const configFilePath = path.join(configDir, ".download-config.json");
-if (fs.existsSync(configFilePath)) {
-  try {
-    const configContent = fs.readFileSync(configFilePath, "utf-8");
-    const config = JSON.parse(configContent);
+// Đọc config từ project JSON (mặc định là "default")
+// Kiểm tra PROJECT_NAME và PROJECTS_DIR environment variable (được set bởi Electron main process)
+const projectName = process.env.PROJECT_NAME || "default";
+const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
 
-    if (config.urlsFile) ALL_URLS_FILE = config.urlsFile;
-    if (config.downloadDir) DOWNLOAD_DIR = config.downloadDir;
-    if (config.overlayImagesDir) OVERLAY_IMAGES_DIR = config.overlayImagesDir;
-    if (config.outputThumbsBaseDir)
-      OUTPUT_THUMBS_BASE_DIR = config.outputThumbsBaseDir;
-    if (config.cookiesFile) COOKIES_FILE = config.cookiesFile;
-    if (config.proxy !== undefined && config.proxy) {
-      // Trim và validate proxy
-      const proxyValue = typeof config.proxy === 'string' ? config.proxy.trim() : config.proxy;
-      // Chỉ set PROXY nếu có giá trị hợp lệ (không phải empty string hoặc null)
-      if (proxyValue && proxyValue !== 'null' && proxyValue !== 'undefined') {
-        PROXY = proxyValue;
+if (fs.existsSync(projectConfigPath)) {
+  try {
+    const projectContent = fs.readFileSync(projectConfigPath, "utf-8");
+    const projectData = JSON.parse(projectContent);
+    const config = projectData.settings?.download;
+
+    if (config) {
+      if (config.urlsFile) ALL_URLS_FILE = config.urlsFile;
+      if (config.outputFolder) DOWNLOAD_DIR = config.outputFolder;
+      if (config.overlayImagesFolder) OVERLAY_IMAGES_DIR = config.overlayImagesFolder;
+      if (config.thumbsFolder) OUTPUT_THUMBS_BASE_DIR = config.thumbsFolder;
+      if (config.cookiesFile !== undefined) COOKIES_FILE = config.cookiesFile;
+      if (config.proxy !== undefined && config.proxy) {
+        // Trim và validate proxy
+        const proxyValue = typeof config.proxy === 'string' ? config.proxy.trim() : config.proxy;
+        // Chỉ set PROXY nếu có giá trị hợp lệ (không phải empty string hoặc null)
+        if (proxyValue && proxyValue !== 'null' && proxyValue !== 'undefined') {
+          PROXY = proxyValue;
+        } else {
+          // Reset PROXY về null nếu config có giá trị không hợp lệ
+          PROXY = null;
+        }
       } else {
-        // Reset PROXY về null nếu config có giá trị không hợp lệ
+        // Nếu proxy không có trong config hoặc là null/undefined, đảm bảo PROXY là null
         PROXY = null;
       }
-    } else {
-      // Nếu proxy không có trong config hoặc là null/undefined, đảm bảo PROXY là null
-      PROXY = null;
-    }
-    if (config.downloadDrive !== undefined)
-      DOWNLOAD_DRIVE = config.downloadDrive;
-    if (config.driveLanguage !== undefined)
-      DRIVE_LANGUAGE = config.driveLanguage;
+      if (config.downloadDrive !== undefined)
+        DOWNLOAD_DRIVE = config.downloadDrive;
+      if (config.driveLanguage !== undefined)
+        DRIVE_LANGUAGE = config.driveLanguage;
 
-    console.log(`Đã đọc config từ file: ${configFilePath}`);
+      console.log(`Đã đọc config từ project: ${projectName}`);
+    }
   } catch (error) {
-    console.error(`Lỗi khi đọc config file: ${error.message}`);
+    console.error(`Lỗi khi đọc project config: ${error.message}`);
   }
 }
 

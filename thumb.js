@@ -10,23 +10,26 @@ let DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbna
 let OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
 let OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
 
-// Đọc config từ file nếu có
-// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
-// Nếu không có, dùng __dirname (cho development)
-const configDir = process.env.CONFIG_DIR || __dirname;
-const configFilePath = path.join(configDir, ".thumb-config.json");
-if (fs.existsSync(configFilePath)) {
+// Đọc config từ project JSON (mặc định là "default")
+const projectName = process.env.PROJECT_NAME || "default";
+const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
+
+if (fs.existsSync(projectConfigPath)) {
   try {
-    const configContent = fs.readFileSync(configFilePath, "utf-8");
-    const config = JSON.parse(configContent);
+    const projectContent = fs.readFileSync(projectConfigPath, "utf-8");
+    const projectData = JSON.parse(projectContent);
+    const config = projectData.settings?.thumb;
 
-    if (config.downloadDir) DOWNLOAD_DIR = config.downloadDir;
-    if (config.overlayImagesDir) OVERLAY_IMAGES_DIR = config.overlayImagesDir;
-    if (config.outputThumbsBaseDir) OUTPUT_THUMBS_BASE_DIR = config.outputThumbsBaseDir;
+    if (config) {
+      if (config.inputFolder) DOWNLOAD_DIR = config.inputFolder;
+      if (config.overlayFolder) OVERLAY_IMAGES_DIR = config.overlayFolder;
+      if (config.outputFolder) OUTPUT_THUMBS_BASE_DIR = config.outputFolder;
 
-    console.log(`Đã đọc config từ file: ${configFilePath}`);
+      console.log(`Đã đọc config từ project: ${projectName}`);
+    }
   } catch (error) {
-    console.error(`Lỗi khi đọc config file: ${error.message}`);
+    console.error(`Lỗi khi đọc project config: ${error.message}`);
   }
 }
 

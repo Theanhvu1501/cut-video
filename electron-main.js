@@ -844,14 +844,30 @@ ipcMain.handle("save-project-config", async (event, projectName, config) => {
 });
 
 // IPC handler để load config của project
+// Mặc định load "default" nếu không có project được chỉ định
 ipcMain.handle("load-project-config", async (event, projectName) => {
   try {
-    if (!projectName || projectName.trim() === "") {
-      return { success: true, config: {} };
-    }
+    // Nếu không có projectName hoặc là null, dùng "default"
+    const projectToLoad = projectName && projectName.trim() !== "" 
+      ? projectName.trim() 
+      : "default";
 
-    const projectPath = getProjectConfigPath(projectName);
+    const projectPath = getProjectConfigPath(projectToLoad);
     if (!fs.existsSync(projectPath)) {
+      // Nếu project không tồn tại, tạo project "default" với cấu trúc mẫu
+      if (projectToLoad === "default") {
+        const defaultProject = {
+          projectName: "default",
+          createdAt: new Date().toISOString(),
+          settings: {},
+          updatedAt: new Date().toISOString(),
+        };
+        fs.writeFileSync(
+          projectPath,
+          JSON.stringify(defaultProject, null, 2)
+        );
+        return { success: true, config: {} };
+      }
       return { success: true, config: {} };
     }
 
@@ -865,19 +881,39 @@ ipcMain.handle("load-project-config", async (event, projectName) => {
 });
 
 // IPC handler để lấy project hiện tại
+// Mặc định trả về "default" nếu không có project được chọn
 ipcMain.handle("get-current-project", async () => {
   try {
     const currentProjectPath = getCurrentProjectPath();
     if (!fs.existsSync(currentProjectPath)) {
-      return { success: true, projectName: null };
+      // Nếu không có project được chọn, mặc định là "default"
+      return { success: true, projectName: "default" };
     }
 
     const content = fs.readFileSync(currentProjectPath, "utf-8");
     const data = JSON.parse(content);
-    return { success: true, projectName: data.projectName || null };
+    const projectName = data.projectName || "default";
+    // Đảm bảo project "default" tồn tại
+    if (projectName === "default") {
+      const defaultProjectPath = getProjectConfigPath("default");
+      if (!fs.existsSync(defaultProjectPath)) {
+        // Tạo project "default" với cấu trúc mẫu
+        const defaultProject = {
+          projectName: "default",
+          createdAt: new Date().toISOString(),
+          settings: {},
+          updatedAt: new Date().toISOString(),
+        };
+        fs.writeFileSync(
+          defaultProjectPath,
+          JSON.stringify(defaultProject, null, 2)
+        );
+      }
+    }
+    return { success: true, projectName };
   } catch (error) {
     console.error("Error getting current project:", error);
-    return { success: false, error: error.message, projectName: null };
+    return { success: false, error: error.message, projectName: "default" };
   }
 });
 
@@ -1151,119 +1187,28 @@ ipcMain.handle("select-file", async (event, options = {}) => {
 });
 
 // IPC handler để lưu render config vào file
+// DEPRECATED: Không còn tạo file .render-config.json riêng lẻ nữa
+// Config được lưu trong project JSON
 ipcMain.handle("save-render-config", async (event, config) => {
-  try {
-    const configDir = getConfigDir();
-    const configPath = path.join(configDir, ".render-config.json");
-    // Đọc config hiện tại nếu có
-    let currentConfig = {};
-    if (fs.existsSync(configPath)) {
-      try {
-        const existingContent = fs.readFileSync(configPath, "utf-8");
-        currentConfig = JSON.parse(existingContent);
-      } catch (err) {
-        console.error(`Error reading existing config: ${err.message}`);
-      }
-    }
-    // Merge config mới với config hiện tại
-    const mergedConfig = { ...currentConfig, ...config };
-    fs.writeFileSync(configPath, JSON.stringify(mergedConfig, null, 2));
-    return { success: true };
-  } catch (err) {
-    console.error(`Error saving render config: ${err.message}`);
-    return { success: false, error: err.message };
-  }
+  // Không còn tạo file config riêng lẻ - config được lưu trong project JSON
+  return { success: true };
 });
 
 // IPC handler để đọc render config từ file
+// DEPRECATED: Không còn đọc từ file .render-config.json nữa
+// Config được đọc từ project JSON
 ipcMain.handle("load-render-config", async () => {
-  try {
-    const configDir = getConfigDir();
-    const configPath = path.join(configDir, ".render-config.json");
-    if (!fs.existsSync(configPath)) {
-      return { success: true, config: null };
-    }
-    const configContent = fs.readFileSync(configPath, "utf-8");
-    const config = JSON.parse(configContent);
-    return { success: true, config };
-  } catch (err) {
-    console.error(`Error loading render config: ${err.message}`);
-    return { success: false, error: err.message, config: null };
-  }
+  // Không còn đọc từ file config riêng lẻ - config được đọc từ project JSON
+  return { success: true, config: null };
 });
 
 // IPC handler để sync config files từ project settings
+// DEPRECATED: Không còn tạo file config riêng lẻ nữa, scripts đọc trực tiếp từ project JSON
+// Giữ lại để tương thích ngược nhưng không làm gì
 ipcMain.handle("sync-config-files", async (event, configs) => {
-  try {
-    const configDir = getConfigDir();
-    const errors = [];
-
-    // Sync download config
-    if (configs.downloadConfig) {
-      try {
-        const configPath = path.join(configDir, ".download-config.json");
-        // Tạo copy của config để không ảnh hưởng đến object gốc
-        const downloadConfig = { ...configs.downloadConfig };
-        // Nếu proxy là null hoặc empty string, xóa khỏi config
-        if (!downloadConfig.proxy || downloadConfig.proxy.trim() === "") {
-          delete downloadConfig.proxy;
-        }
-        fs.writeFileSync(
-          configPath,
-          JSON.stringify(downloadConfig, null, 2)
-        );
-      } catch (err) {
-        errors.push(`Download config: ${err.message}`);
-      }
-    }
-
-    // Sync thumb config
-    if (configs.thumbConfig) {
-      try {
-        const configPath = path.join(configDir, ".thumb-config.json");
-        fs.writeFileSync(
-          configPath,
-          JSON.stringify(configs.thumbConfig, null, 2)
-        );
-      } catch (err) {
-        errors.push(`Thumb config: ${err.message}`);
-      }
-    }
-
-    // Sync video snow config
-    if (configs.videoSnowConfig) {
-      try {
-        const configPath = path.join(configDir, ".video-snow-config.json");
-        fs.writeFileSync(
-          configPath,
-          JSON.stringify(configs.videoSnowConfig, null, 2)
-        );
-      } catch (err) {
-        errors.push(`Video snow config: ${err.message}`);
-      }
-    }
-
-    // Sync trim config
-    if (configs.trimConfig) {
-      try {
-        const configPath = path.join(configDir, ".trim-config.json");
-        fs.writeFileSync(
-          configPath,
-          JSON.stringify(configs.trimConfig, null, 2)
-        );
-      } catch (err) {
-        errors.push(`Trim config: ${err.message}`);
-      }
-    }
-
-    if (errors.length > 0) {
-      return { success: false, errors };
-    }
-    return { success: true };
-  } catch (err) {
-    console.error(`Error syncing config files: ${err.message}`);
-    return { success: false, error: err.message };
-  }
+  // Không còn tạo file config riêng lẻ - scripts đọc trực tiếp từ project JSON
+  // Thông qua environment variable PROJECT_NAME
+  return { success: true };
 });
 
 ipcMain.handle(
@@ -1290,200 +1235,49 @@ ipcMain.handle(
           options.jobId ||
           `job-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-        // Set environment variables để scripts biết đọc config và tìm node_modules
+        // Lấy project name hiện tại (mặc định là "default")
+        let projectName = "default";
+        try {
+          const currentProjectPath = getCurrentProjectPath();
+          if (fs.existsSync(currentProjectPath)) {
+            const content = fs.readFileSync(currentProjectPath, "utf-8");
+            const data = JSON.parse(content);
+            projectName = data.projectName || "default";
+          }
+        } catch (err) {
+          console.warn("Error getting current project, using default:", err);
+        }
+
+        // Set environment variables để scripts biết đọc config từ project JSON
         // Phải khai báo env trước khi sử dụng
         const env = {
           ...process.env,
           CONFIG_DIR: configDir,
+          PROJECT_NAME: projectName, // Truyền project name để scripts đọc từ project JSON
+          PROJECTS_DIR: path.join(configDir, "projects"), // Đường dẫn đến thư mục projects
           ...options.env,
         };
 
-        // Tạo config file cho các script nếu cần
+        // Truyền renderConfig qua environment variable (JSON string) thay vì tạo file
+        // Để tránh conflict khi chạy đồng thời nhiều job, mỗi job có jobId riêng
         if (options.renderConfig) {
           try {
-            // Sử dụng unique config file để tránh conflict khi chạy đồng thời
-            const configPath = path.join(
-              configDir,
-              `.render-config-${jobId}.json`
-            );
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.renderConfig, null, 2)
-            );
-            // Set environment variable để script biết dùng config file nào
-            env.RENDER_CONFIG_FILE = `.render-config-${jobId}.json`;
+            // Truyền config qua environment variable dưới dạng JSON string
+            env.RENDER_CONFIG_JSON = JSON.stringify(options.renderConfig);
+            env.RENDER_JOB_ID = jobId; // Truyền jobId để tránh conflict
           } catch (err) {
             console.error(
-              `Error creating render config file: ${getErrorMessage(err)}`
+              `Error serializing render config: ${getErrorMessage(err)}`
             );
             event.sender.send(
               "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
+              `⚠️ Cảnh báo: Lỗi khi serialize config: ${getErrorMessage(err)}\n`
             );
           }
         }
 
-        if (options.downloadConfig) {
-          try {
-            const configPath = path.join(configDir, ".download-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.downloadConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating download config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
-
-        if (options.trimConfig) {
-          try {
-            const configPath = path.join(configDir, ".trim-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.trimConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating trim config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
-
-        if (options.videoSnowConfig) {
-          try {
-            const configPath = path.join(configDir, ".video-snow-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.videoSnowConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating video snow config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
-
-        if (options.bgVideoConfig) {
-          try {
-            const configPath = path.join(configDir, ".bg-video-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.bgVideoConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating bg video config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
-
-        if (options.cutBgConfig) {
-          try {
-            const configPath = path.join(configDir, ".cut-bg-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.cutBgConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating cut bg config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
-
-        if (options.thumbConfig) {
-          try {
-            const configPath = path.join(configDir, ".thumb-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.thumbConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating thumb config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
-
-        if (options.normalizeConfig) {
-          try {
-            const configPath = path.join(configDir, ".normalize-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.normalizeConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating normalize config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
-
-        if (options.getUrlConfig) {
-          try {
-            const configPath = path.join(configDir, ".get-url-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.getUrlConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating get url config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
-
-        if (options.concatConfig) {
-          try {
-            const configPath = path.join(configDir, ".concat-config.json");
-            fs.writeFileSync(
-              configPath,
-              JSON.stringify(options.concatConfig, null, 2)
-            );
-          } catch (err) {
-            console.error(
-              `Error creating concat config file: ${getErrorMessage(err)}`
-            );
-            event.sender.send(
-              "script-output",
-              `⚠️ Cảnh báo: Lỗi khi tạo config file: ${getErrorMessage(err)}\n`
-            );
-          }
-        }
+        // KHÔNG TẠO các file .config.json riêng lẻ nữa
+        // Scripts sẽ đọc trực tiếp từ projects/{PROJECT_NAME}.json
 
         // Xác định đường dẫn script và node executable
         let scriptFullPath = path.join(appPath, scriptPath);
@@ -1628,55 +1422,8 @@ ipcMain.handle(
         });
 
         child.on("close", (code) => {
-          // Cleanup: Xóa các config file tạm sau khi job hoàn thành
-          try {
-            // Xóa render config file nếu có
-            if (options.renderConfig && env.RENDER_CONFIG_FILE) {
-              const configPath = path.join(configDir, env.RENDER_CONFIG_FILE);
-              if (fs.existsSync(configPath)) {
-                fs.unlinkSync(configPath);
-                console.log(`Đã xóa config file: ${env.RENDER_CONFIG_FILE}`);
-              }
-            }
-            // Xóa các config file khác nếu có
-            if (options.downloadConfig) {
-              const downloadConfigPath = path.join(
-                configDir,
-                ".download-config.json"
-              );
-              if (fs.existsSync(downloadConfigPath)) {
-                fs.unlinkSync(downloadConfigPath);
-              }
-            }
-            if (options.trimConfig) {
-              const trimConfigPath = path.join(configDir, ".trim-config.json");
-              if (fs.existsSync(trimConfigPath)) {
-                fs.unlinkSync(trimConfigPath);
-              }
-            }
-            if (options.videoSnowConfig) {
-              const videoSnowConfigPath = path.join(
-                configDir,
-                ".video-snow-config.json"
-              );
-              if (fs.existsSync(videoSnowConfigPath)) {
-                fs.unlinkSync(videoSnowConfigPath);
-              }
-            }
-            if (options.bgVideoConfig) {
-              const bgVideoConfigPath = path.join(
-                configDir,
-                ".bg-video-config.json"
-              );
-              if (fs.existsSync(bgVideoConfigPath)) {
-                fs.unlinkSync(bgVideoConfigPath);
-              }
-            }
-          } catch (cleanupError) {
-            console.warn(
-              `Lỗi khi cleanup config files: ${cleanupError.message}`
-            );
-          }
+          // Không cần cleanup nữa - không tạo file config riêng lẻ
+          // Config được truyền qua environment variable hoặc đọc từ project JSON
 
           if (code === 0) {
             resolve({ success: true, output: stdout });
@@ -1687,19 +1434,7 @@ ipcMain.handle(
         });
 
         child.on("error", (error) => {
-          // Cleanup config files khi có lỗi
-          try {
-            if (options.renderConfig && env.RENDER_CONFIG_FILE) {
-              const configPath = path.join(configDir, env.RENDER_CONFIG_FILE);
-              if (fs.existsSync(configPath)) {
-                fs.unlinkSync(configPath);
-              }
-            }
-          } catch (cleanupError) {
-            console.warn(
-              `Lỗi khi cleanup config files: ${cleanupError.message}`
-            );
-          }
+          // Không cần cleanup nữa - không tạo file config riêng lẻ
 
           const errorMsg = getErrorMessage(error);
           console.error(`Error spawning script: ${errorMsg}`);

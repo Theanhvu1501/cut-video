@@ -34,39 +34,41 @@ let INPUT_FOLDER = null; // Folder input trực tiếp chứa video
 let OUTPUT_FOLDER = null; // Folder output trực tiếp
 let THUMBS_FOLDER = null; // Folder thumbs trực tiếp (nếu useThumbs)
 
-// Đọc config từ file nếu có
-// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
-// Nếu không có, dùng __dirname (cho development)
-const configDir = process.env.CONFIG_DIR || __dirname;
-const configFilePath = path.join(configDir, ".concat-config.json");
-if (fsSync.existsSync(configFilePath)) {
+// Đọc config từ project JSON (mặc định là "default")
+const projectName = process.env.PROJECT_NAME || "default";
+const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
+
+if (fsSync.existsSync(projectConfigPath)) {
   try {
-    const configContent = fsSync.readFileSync(configFilePath, "utf-8");
-    const config = JSON.parse(configContent);
+    const projectContent = fsSync.readFileSync(projectConfigPath, "utf-8");
+    const projectData = JSON.parse(projectContent);
+    const config = projectData.settings?.concat;
 
-    // Ưu tiên sử dụng inputFolder/outputFolder trực tiếp (mode mới)
-    if (config.inputFolder) {
-      INPUT_FOLDER = config.inputFolder;
-    } else if (config.doneFolder) {
-      // Fallback cho mode cũ
-      DONE_DIR = config.doneFolder;
+    if (config) {
+      // Ưu tiên sử dụng inputFolder/outputFolder trực tiếp (mode mới)
+      if (config.inputFolder) {
+        INPUT_FOLDER = config.inputFolder;
+      }
+
+      if (config.outputFolder) {
+        OUTPUT_FOLDER = config.outputFolder;
+      }
+
+      if (config.thumbsFolder) {
+        THUMBS_FOLDER = config.thumbsFolder;
+      }
+
+      if (config.useThumbs !== undefined) USE_THUMBS = config.useThumbs;
+      if (config.thumbDuration)
+        THUMB_DURATION = parseFloat(config.thumbDuration) || 3;
+      if (config.chunkSize)
+        DEFAULT_CHUNK_SIZE = parseInt(config.chunkSize) || 2;
+
+      console.log(`Đã đọc config từ project: ${projectName}`);
     }
-
-    if (config.outputFolder) {
-      OUTPUT_FOLDER = config.outputFolder;
-    }
-
-    if (config.thumbsFolder) {
-      THUMBS_FOLDER = config.thumbsFolder;
-    }
-
-    if (config.useThumbs !== undefined) USE_THUMBS = config.useThumbs;
-    if (config.thumbDuration)
-      THUMB_DURATION = parseFloat(config.thumbDuration) || 3;
-
-    console.log(`Đã đọc config từ file: ${configFilePath}`);
   } catch (error) {
-    console.error(`Lỗi khi đọc config file: ${error.message}`);
+    console.error(`Lỗi khi đọc project config: ${error.message}`);
   }
 }
 

@@ -1,6 +1,6 @@
 {
-  "projectName": "2ch",
-  "createdAt": "2026-01-21T04:37:07.909Z",
+  "projectName": "default",
+  "createdAt": "2026-01-21T04:13:25.265Z",
   "settings": {
     "render": {
       "day": "2",
@@ -14,7 +14,7 @@
       "keepColorHeight": "150",
       "keepColorYOffset": "550",
       "keepColorAddDarkLayer": false,
-      "useGPU": false,
+      "useGPU": true,
       "maxConcurrentProcesses": "2",
       "gpuVideoCodec": "h264_nvenc",
       "height": "220",
@@ -26,9 +26,9 @@
     },
     "download": {
       "urlsFile": "D:\\test\\2ch\\urls.txt",
-      "outputFolder": "D:\\test\\2ch\\overlays",
-      "overlayImagesFolder": "D:\\test\\2ch\\images",
-      "thumbsFolder": "D:\\test\\2ch\\thumbs",
+      "outputFolder": "D:\\test\\line\\overlays",
+      "overlayImagesFolder": "D:\\test\\line\\thumbs\\1",
+      "thumbsFolder": "D:\\test\\line\\thumbs",
       "cookiesFile": "D:\\test\\2ch\\chromaKey.txt",
       "proxy": "1234214",
       "downloadDrive": false,
@@ -81,5 +81,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-01-21T04:45:45.703Z"
+  "updatedAt": "2026-01-21T04:43:29.454Z"
 }

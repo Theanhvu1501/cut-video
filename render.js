@@ -221,73 +221,92 @@ let keepColorAddDarkLayer = false; // Thêm lớp đen mờ khi có crop
 let height = 220;
 let y_offset = 490;
 
-// Đọc config từ file nếu có
-// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
-// Nếu không có, dùng __dirname (cho development)
-const configDir = process.env.CONFIG_DIR || __dirname;
-// Sử dụng unique config file nếu có (để chạy đồng thời nhiều job)
-const configFileName = process.env.RENDER_CONFIG_FILE || ".render-config.json";
-const configFilePath = path.join(configDir, configFileName);
-if (fs.existsSync(configFilePath)) {
+// Đọc config từ project JSON hoặc từ environment variable RENDER_CONFIG_JSON
+// Ưu tiên RENDER_CONFIG_JSON (từ options) nếu có, sau đó mới đọc từ project JSON
+let config = null;
+
+// Đọc từ environment variable RENDER_CONFIG_JSON trước (cho chạy đồng thời nhiều job)
+if (process.env.RENDER_CONFIG_JSON) {
   try {
-    const configContent = fs.readFileSync(configFilePath, "utf-8");
-    const config = JSON.parse(configContent);
-
-    if (config.renderMode) renderMode = config.renderMode;
-    if (config.opacity !== undefined) opacity = config.opacity;
-    if (config.chromaKeyMode) chromaKeyMode = config.chromaKeyMode;
-    if (config.chromaKeyColor) color = config.chromaKeyColor;
-    if (config.chromaKeyFile) chromaKeyFile = config.chromaKeyFile;
-    if (config.useGPU !== undefined) useGPU = config.useGPU;
-    if (config.maxConcurrentProcesses !== undefined)
-      maxConcurrentProcesses = parseInt(config.maxConcurrentProcesses) || 2;
-    if (config.gpuVideoCodec) {
-      gpuVideoCodec = config.gpuVideoCodec;
-    }
-    // Nếu useGPU được bật nhưng chưa có codec, sẽ tự động phát hiện khi bắt đầu render
-    if (config.keepColorColors && Array.isArray(config.keepColorColors)) {
-      keepColorsList = config.keepColorColors;
-    }
-    if (config.keepColorCrop !== undefined)
-      keepColorCrop = config.keepColorCrop;
-    if (config.keepColorHeight !== undefined)
-      keepColorHeight = parseInt(config.keepColorHeight) || 220;
-    if (config.keepColorYOffset !== undefined)
-      keepColorYOffset = parseInt(config.keepColorYOffset) || 490;
-    if (config.keepColorAddDarkLayer !== undefined)
-      keepColorAddDarkLayer = config.keepColorAddDarkLayer;
-    if (config.height !== undefined) height = config.height;
-    if (config.y_offset !== undefined) y_offset = config.y_offset;
-    // Đọc đường dẫn từ config
-    if (config.overlayFolder) {
-      // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
-      overlayFolder = path.isAbsolute(config.overlayFolder)
-        ? config.overlayFolder
-        : path.resolve(__dirname, config.overlayFolder);
-    }
-    if (config.backgroundFolder) {
-      backgroundFolder = path.isAbsolute(config.backgroundFolder)
-        ? config.backgroundFolder
-        : path.resolve(__dirname, config.backgroundFolder);
-    }
-    if (config.combinedVideosFolder) {
-      combinedVideosFolder = path.isAbsolute(config.combinedVideosFolder)
-        ? config.combinedVideosFolder
-        : path.resolve(__dirname, config.combinedVideosFolder);
-    }
-    if (config.outputFolder) {
-      // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
-      outputFolder = path.isAbsolute(config.outputFolder)
-        ? config.outputFolder
-        : path.resolve(__dirname, config.outputFolder);
-      log(`Output folder từ config: ${outputFolder}`, LOG_LEVEL.INFO);
-    }
-    if (config.ipList) ipList = config.ipList;
-
-    log(`Đã đọc config từ file: ${configFilePath}`, LOG_LEVEL.INFO);
+    config = JSON.parse(process.env.RENDER_CONFIG_JSON);
+    log(`Đã đọc config từ RENDER_CONFIG_JSON (jobId: ${process.env.RENDER_JOB_ID || 'N/A'})`, LOG_LEVEL.INFO);
   } catch (error) {
-    log(`Lỗi khi đọc config file: ${error.message}`, LOG_LEVEL.ERROR);
+    log(`Lỗi khi parse RENDER_CONFIG_JSON: ${error.message}`, LOG_LEVEL.ERROR);
   }
+}
+
+// Nếu không có RENDER_CONFIG_JSON, đọc từ project JSON
+if (!config) {
+  const projectName = process.env.PROJECT_NAME || "default";
+  const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+  const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
+
+  if (fs.existsSync(projectConfigPath)) {
+    try {
+      const projectContent = fs.readFileSync(projectConfigPath, "utf-8");
+      const projectData = JSON.parse(projectContent);
+      config = projectData.settings?.render;
+      if (config) {
+        log(`Đã đọc config từ project: ${projectName}`, LOG_LEVEL.INFO);
+      }
+    } catch (error) {
+      log(`Lỗi khi đọc project config: ${error.message}`, LOG_LEVEL.ERROR);
+    }
+  }
+}
+
+// Áp dụng config nếu có
+if (config) {
+  if (config.renderMode) renderMode = config.renderMode;
+  if (config.opacity !== undefined) opacity = config.opacity;
+  if (config.chromaKeyMode) chromaKeyMode = config.chromaKeyMode;
+  if (config.chromaKeyColor) color = config.chromaKeyColor;
+  if (config.chromaKeyFile) chromaKeyFile = config.chromaKeyFile;
+  if (config.useGPU !== undefined) useGPU = config.useGPU;
+  if (config.maxConcurrentProcesses !== undefined)
+    maxConcurrentProcesses = parseInt(config.maxConcurrentProcesses) || 2;
+  if (config.gpuVideoCodec) {
+    gpuVideoCodec = config.gpuVideoCodec;
+  }
+  // Nếu useGPU được bật nhưng chưa có codec, sẽ tự động phát hiện khi bắt đầu render
+  if (config.keepColorColors && Array.isArray(config.keepColorColors)) {
+    keepColorsList = config.keepColorColors;
+  }
+  if (config.keepColorCrop !== undefined)
+    keepColorCrop = config.keepColorCrop;
+  if (config.keepColorHeight !== undefined)
+    keepColorHeight = parseInt(config.keepColorHeight) || 220;
+  if (config.keepColorYOffset !== undefined)
+    keepColorYOffset = parseInt(config.keepColorYOffset) || 490;
+  if (config.keepColorAddDarkLayer !== undefined)
+    keepColorAddDarkLayer = config.keepColorAddDarkLayer;
+  if (config.height !== undefined) height = config.height;
+  if (config.y_offset !== undefined) y_offset = config.y_offset;
+  // Đọc đường dẫn từ config
+  if (config.overlayFolder) {
+    // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
+    overlayFolder = path.isAbsolute(config.overlayFolder)
+      ? config.overlayFolder
+      : path.resolve(__dirname, config.overlayFolder);
+  }
+  if (config.backgroundFolder) {
+    backgroundFolder = path.isAbsolute(config.backgroundFolder)
+      ? config.backgroundFolder
+      : path.resolve(__dirname, config.backgroundFolder);
+  }
+  if (config.combinedVideosFolder) {
+    combinedVideosFolder = path.isAbsolute(config.combinedVideosFolder)
+      ? config.combinedVideosFolder
+      : path.resolve(__dirname, config.combinedVideosFolder);
+  }
+  if (config.outputFolder) {
+    // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
+    outputFolder = path.isAbsolute(config.outputFolder)
+      ? config.outputFolder
+      : path.resolve(__dirname, config.outputFolder);
+    log(`Output folder từ config: ${outputFolder}`, LOG_LEVEL.INFO);
+  }
+  if (config.ipList) ipList = config.ipList;
 }
 
 // Tạo thư mục nếu chưa tồn tạ

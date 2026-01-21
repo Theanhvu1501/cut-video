@@ -504,10 +504,16 @@ async function saveSettings() {
       overlayImagesFolder: selectedDownloadOverlayImagesFolder,
       thumbsFolder: selectedDownloadThumbsFolder,
       cookiesFile: selectedDownloadCookiesFile,
-      proxy:
-        document.getElementById("download-proxy")?.value?.trim() ||
-        selectedDownloadProxy ||
-        null,
+      proxy: (() => {
+        const proxyInput = document.getElementById("download-proxy");
+        const proxyValue = proxyInput?.value?.trim();
+        // Nếu input field có giá trị, dùng giá trị đó (ưu tiên nhất)
+        if (proxyValue) {
+          return proxyValue;
+        }
+        // Nếu input field trống, trả về null (để xóa proxy khỏi config)
+        return null;
+      })(),
       downloadDrive: selectedDownloadDrive || false,
       driveLanguage: selectedDriveLanguage || "jp",
     },
@@ -576,141 +582,36 @@ async function saveSettings() {
   // Lưu vào localStorage (backup)
   localStorage.setItem("cutVideoAppSettings", JSON.stringify(settings));
 
-  // Nếu có project hiện tại, lưu vào project config
-  if (currentProjectName && checkElectronAPI() && window.electronAPI) {
+  // Luôn lưu vào project config (mặc định là "default")
+  const projectToSave = currentProjectName || "default";
+  if (checkElectronAPI() && window.electronAPI) {
     try {
-      await window.electronAPI.saveProjectConfig(currentProjectName, settings);
+      await window.electronAPI.saveProjectConfig(projectToSave, settings);
+      console.log(`Đã lưu settings vào project: ${projectToSave}`);
     } catch (error) {
       console.error("Error saving project config:", error);
     }
   }
 
-  // Lưu render config vào file để giữ lại khi tắt/bật lại ứng dụng
-  if (checkElectronAPI() && window.electronAPI && settings.render) {
-    try {
-      // Lấy tất cả các giá trị từ form để đảm bảo có giá trị mới nhất
-      const currentRenderMode =
-        document.querySelector('input[name="render-mode"]:checked')?.value ||
-        settings.render.renderMode ||
-        "topTransparent";
-      const currentOpacity = parseFloat(
-        document.getElementById("render-opacity")?.value ||
-          settings.render.opacity ||
-          "0.7",
-      );
-      const currentChromaKeyMode =
-        document.querySelector('input[name="chromakey-mode"]:checked')?.value ||
-        settings.render.chromaKeyMode ||
-        "color";
-      const currentChromaKeyColor =
-        document.getElementById("render-chromakey-color")?.value ||
-        settings.render.chromaKeyColor ||
-        "D4F9D7";
-      const currentChromaKeyFile =
-        selectedRenderChromaKeyFile || settings.render.chromaKeyFile || null;
-      const currentKeepColorColors =
-        document.getElementById("render-keepcolor-colors")?.value ||
-        settings.render.keepColorColors ||
-        "FBFF02";
-      const currentKeepColorCrop =
-        document.getElementById("render-keepcolor-crop")?.checked ??
-        (settings.render.keepColorCrop || false);
-      const currentKeepColorHeight = parseInt(
-        document.getElementById("render-keepcolor-height")?.value ||
-          settings.render.keepColorHeight ||
-          "220",
-      );
-      const currentKeepColorYOffset = parseInt(
-        document.getElementById("render-keepcolor-y-offset")?.value ||
-          settings.render.keepColorYOffset ||
-          "490",
-      );
-      const currentKeepColorAddDarkLayer =
-        document.getElementById("render-keepcolor-add-dark-layer")?.checked ??
-        (settings.render.keepColorAddDarkLayer || false);
-      const currentUseGPU =
-        document.getElementById("render-use-gpu")?.checked ??
-        (settings.render.useGPU || false);
-      const currentMaxConcurrent = parseInt(
-        document.getElementById("render-max-concurrent")?.value ||
-          settings.render.maxConcurrentProcesses ||
-          "2",
-      );
-      const currentGpuCodec =
-        document.getElementById("render-gpu-codec")?.value ||
-        settings.render.gpuVideoCodec ||
-        "h264_nvenc";
-      const currentHeight = parseInt(
-        document.getElementById("render-height")?.value ||
-          settings.render.height ||
-          "220",
-      );
-      const currentYOffset = parseInt(
-        document.getElementById("render-y-offset")?.value ||
-          settings.render.y_offset ||
-          "490",
-      );
-
-      // Parse keepColorColors từ string "FBFF02,FF0000" thành array ["FBFF02", "FF0000"]
-      let keepColorColorsArray = null;
-      if (currentKeepColorColors) {
-        keepColorColorsArray = currentKeepColorColors
-          .split(",")
-          .map((c) => c.trim().toUpperCase())
-          .filter((c) => /^[0-9A-F]{6}$/.test(c));
-        if (keepColorColorsArray.length === 0) {
-          keepColorColorsArray = null;
-        }
-      }
-
-      const renderConfig = {
-        renderMode: currentRenderMode,
-        opacity: currentOpacity,
-        chromaKeyMode: currentChromaKeyMode,
-        chromaKeyColor: currentChromaKeyColor,
-        chromaKeyFile: currentChromaKeyFile,
-        keepColorColors: keepColorColorsArray,
-        keepColorCrop: currentKeepColorCrop,
-        keepColorHeight: currentKeepColorHeight,
-        keepColorYOffset: currentKeepColorYOffset,
-        keepColorAddDarkLayer: currentKeepColorAddDarkLayer,
-        useGPU: currentUseGPU,
-        maxConcurrentProcesses: currentMaxConcurrent,
-        gpuVideoCodec: currentGpuCodec,
-        height: currentHeight,
-        y_offset: currentYOffset,
-        overlayFolder:
-          selectedRenderOverlayFolder || settings.render.overlayFolder || null,
-        backgroundFolder:
-          selectedRenderBackgroundFolder ||
-          settings.render.backgroundFolder ||
-          null,
-        outputFolder:
-          selectedRenderOutputFolder || settings.render.outputFolder || null,
-      };
-      await window.electronAPI.saveRenderConfig(renderConfig);
-    } catch (error) {
-      console.error("Error saving render config to file:", error);
-    }
-  }
+  // Không còn lưu render config vào file riêng lẻ nữa
+  // Tất cả config đã được lưu trong project JSON ở trên
 }
 
 async function loadSettings() {
   try {
-    // Nếu có project hiện tại, load từ project config
+    // Luôn load từ project config (mặc định là "default")
     let settings = {};
-    if (currentProjectName && checkElectronAPI() && window.electronAPI) {
+    // Đảm bảo có project được chọn (mặc định là "default")
+    const projectToLoad = currentProjectName || "default";
+    
+    if (checkElectronAPI() && window.electronAPI) {
       try {
         const result =
-          await window.electronAPI.loadProjectConfig(currentProjectName);
-        if (
-          result.success &&
-          result.config &&
-          Object.keys(result.config).length > 0
-        ) {
+          await window.electronAPI.loadProjectConfig(projectToLoad);
+        if (result.success && result.config) {
           settings = result.config;
           console.log(
-            `Loaded settings from project: ${currentProjectName}`,
+            `Loaded settings from project: ${projectToLoad}`,
             settings,
           );
         }
@@ -719,87 +620,25 @@ async function loadSettings() {
       }
     }
 
-    // Nếu không có project hoặc không có config từ project, đọc từ localStorage
+    // Fallback: Nếu không có config từ project, đọc từ localStorage (tạm thời giữ lại để tương thích)
     if (Object.keys(settings).length === 0) {
       const saved = localStorage.getItem("cutVideoAppSettings");
       if (saved) {
-        settings = JSON.parse(saved);
-        console.log("Loaded settings from localStorage");
-      }
-    }
-
-    // Chỉ merge với file config nếu không có project hoặc không có settings từ project
-    // File config chỉ dùng cho render mode và một số settings chung
-    let fileConfig = null;
-    if (
-      (!currentProjectName || Object.keys(settings).length === 0) &&
-      checkElectronAPI() &&
-      window.electronAPI
-    ) {
-      try {
-        const result = await window.electronAPI.loadRenderConfig();
-        if (result.success && result.config) {
-          fileConfig = result.config;
+        try {
+          settings = JSON.parse(saved);
+          console.log("Loaded settings from localStorage (fallback)");
+          // Lưu settings từ localStorage vào project "default"
+          if (checkElectronAPI() && window.electronAPI && projectToLoad === "default") {
+            await window.electronAPI.saveProjectConfig("default", settings);
+            localStorage.removeItem("cutVideoAppSettings"); // Xóa sau khi migrate
+          }
+        } catch (e) {
+          console.error("Error parsing localStorage settings:", e);
         }
-      } catch (error) {
-        console.error("Error loading render config from file:", error);
       }
     }
 
-    // Chỉ merge với file config nếu KHÔNG có project config
-    // File config chỉ dùng khi không có project hoặc project config rỗng
-    const hasProjectConfig =
-      currentProjectName && Object.keys(settings).length > 0;
-
-    if (fileConfig && fileConfig.renderMode && !hasProjectConfig) {
-      if (!settings.render) settings.render = {};
-
-      // Cập nhật settings từ file config
-      if (fileConfig.renderMode)
-        settings.render.renderMode = fileConfig.renderMode;
-      if (fileConfig.opacity !== undefined)
-        settings.render.opacity = fileConfig.opacity.toString();
-      if (fileConfig.chromaKeyMode)
-        settings.render.chromaKeyMode = fileConfig.chromaKeyMode;
-      if (fileConfig.chromaKeyColor)
-        settings.render.chromaKeyColor = fileConfig.chromaKeyColor;
-      if (fileConfig.chromaKeyFile)
-        settings.render.chromaKeyFile = fileConfig.chromaKeyFile;
-      // Convert keepColorColors từ array ["FBFF02", "FF0000"] thành string "FBFF02,FF0000"
-      if (
-        fileConfig.keepColorColors &&
-        Array.isArray(fileConfig.keepColorColors) &&
-        fileConfig.keepColorColors.length > 0
-      ) {
-        settings.render.keepColorColors = fileConfig.keepColorColors.join(",");
-      }
-      if (fileConfig.keepColorCrop !== undefined)
-        settings.render.keepColorCrop = fileConfig.keepColorCrop;
-      if (fileConfig.keepColorHeight !== undefined)
-        settings.render.keepColorHeight = fileConfig.keepColorHeight.toString();
-      if (fileConfig.keepColorYOffset !== undefined)
-        settings.render.keepColorYOffset =
-          fileConfig.keepColorYOffset.toString();
-      if (fileConfig.keepColorAddDarkLayer !== undefined)
-        settings.render.keepColorAddDarkLayer = fileConfig.keepColorAddDarkLayer;
-      if (fileConfig.useGPU !== undefined)
-        settings.render.useGPU = fileConfig.useGPU;
-      if (fileConfig.maxConcurrentProcesses !== undefined)
-        settings.render.maxConcurrentProcesses =
-          fileConfig.maxConcurrentProcesses.toString();
-      if (fileConfig.gpuVideoCodec)
-        settings.render.gpuVideoCodec = fileConfig.gpuVideoCodec;
-      if (fileConfig.height !== undefined)
-        settings.render.height = fileConfig.height.toString();
-      if (fileConfig.y_offset !== undefined)
-        settings.render.y_offset = fileConfig.y_offset.toString();
-      if (fileConfig.overlayFolder)
-        settings.render.overlayFolder = fileConfig.overlayFolder;
-      if (fileConfig.backgroundFolder)
-        settings.render.backgroundFolder = fileConfig.backgroundFolder;
-      if (fileConfig.outputFolder)
-        settings.render.outputFolder = fileConfig.outputFolder;
-    }
+    // Không còn dùng file config riêng lẻ nữa - tất cả đều trong project JSON
 
     // Load Render settings
     if (settings.render) {
@@ -945,11 +784,29 @@ async function loadSettings() {
           settings.download.cookiesFile;
         // Removed folder path display
       }
-      if (settings.download.proxy !== undefined) {
-        selectedDownloadProxy = settings.download.proxy;
+      // Chỉ restore proxy nếu có giá trị hợp lệ (không phải null, undefined, hoặc empty string)
+      if (settings.download.proxy !== undefined && settings.download.proxy !== null) {
+        const proxyValue = settings.download.proxy.toString().trim();
+        if (proxyValue) {
+          selectedDownloadProxy = proxyValue;
+          const proxyInput = document.getElementById("download-proxy");
+          if (proxyInput) {
+            proxyInput.value = proxyValue;
+          }
+        } else {
+          // Nếu proxy là empty string, clear nó
+          selectedDownloadProxy = null;
+          const proxyInput = document.getElementById("download-proxy");
+          if (proxyInput) {
+            proxyInput.value = "";
+          }
+        }
+      } else {
+        // Nếu proxy là null hoặc undefined, clear nó
+        selectedDownloadProxy = null;
         const proxyInput = document.getElementById("download-proxy");
         if (proxyInput) {
-          proxyInput.value = settings.download.proxy || "";
+          proxyInput.value = "";
         }
       }
       if (settings.download.downloadDrive !== undefined) {
@@ -1181,33 +1038,36 @@ async function loadProjects() {
     if (projectsResult.success) {
       projectSelect.innerHTML = "";
 
-      // Cập nhật badge số lượng
+      // Đảm bảo project "default" luôn có trong danh sách
+      let projects = [...projectsResult.projects];
+      if (!projects.includes("default")) {
+        projects.unshift("default"); // Thêm "default" vào đầu danh sách
+      }
+
+      // Cập nhật badge số lượng (không tính "default")
       const projectCountBadge = document.getElementById("project-count");
       if (projectCountBadge) {
-        if (projectsResult.projects.length > 0) {
-          projectCountBadge.textContent = projectsResult.projects.length;
+        const actualProjects = projects.filter(p => p !== "default");
+        if (actualProjects.length > 0) {
+          projectCountBadge.textContent = actualProjects.length;
           projectCountBadge.style.display = "inline-block";
         } else {
           projectCountBadge.style.display = "none";
         }
       }
 
-      // Thêm option "Mặc định"
-      const defaultOption = document.createElement("option");
-      defaultOption.value = "";
-      defaultOption.textContent =
-        projectsResult.projects.length === 0
-          ? "Mặc định (chưa có dự án)"
-          : "Mặc định";
-      projectSelect.appendChild(defaultOption);
-
-      // Thêm các projects
-      projectsResult.projects.forEach((project) => {
+      // Thêm các projects (đã bao gồm "default")
+      projects.forEach((project) => {
         const option = document.createElement("option");
         option.value = project;
-        option.textContent = project;
-        if (project === currentProjectName) {
+        // Hiển thị "Mặc định" thay vì "default" cho project default
+        option.textContent = project === "default" ? "Mặc định" : project;
+        if (project === currentProjectName || (!currentProjectName && project === "default")) {
           option.selected = true;
+          // Cập nhật currentProjectName nếu chưa có
+          if (!currentProjectName) {
+            currentProjectName = "default";
+          }
         }
         projectSelect.appendChild(option);
       });
@@ -1253,8 +1113,10 @@ async function switchProject() {
     await saveCurrentProjectSettings();
   }
 
-  // Set project mới
-  currentProjectName = selectedProject || null;
+  // Set project mới (nếu rỗng hoặc null, dùng "default")
+  currentProjectName = selectedProject && selectedProject.trim() !== "" 
+    ? selectedProject.trim() 
+    : "default";
   await window.electronAPI.setCurrentProject(currentProjectName);
 
   // Cập nhật trạng thái nút xóa trong menu
@@ -1272,71 +1134,11 @@ async function switchProject() {
   // Load settings của project mới
   await loadSettings();
 
-  // Sync config files từ project settings để đảm bảo các script đọc đúng config
-  if (checkElectronAPI() && window.electronAPI) {
-    try {
-      const configsToSync = {};
-
-      // Sync download config
-      if (selectedDownloadOutputFolder || selectedUrlsFile) {
-        configsToSync.downloadConfig = {
-          urlsFile: selectedUrlsFile || "./urls.txt",
-          downloadDir: selectedDownloadOutputFolder || "./overlays",
-          overlayImagesDir: selectedDownloadOverlayImagesFolder || "./images",
-          outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
-          cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
-          // Đảm bảo proxy được sync nếu có
-          proxy: selectedDownloadProxy || null,
-        };
-      }
-
-      // Sync thumb config
-      if (selectedThumbInputFolder || selectedThumbOverlayFolder) {
-        configsToSync.thumbConfig = {
-          downloadDir: selectedThumbInputFolder || "./overlays",
-          overlayImagesDir: selectedThumbOverlayFolder || "./images",
-          outputThumbsBaseDir: selectedThumbOutputFolder || "./thumbs",
-        };
-      }
-
-      // Sync video snow config
-      if (selectedVideoSnowInputFolder || selectedVideoSnowOutputFolder) {
-        configsToSync.videoSnowConfig = {
-          imageBackgroundFolder:
-            selectedVideoSnowInputFolder || "./image_backgrounds",
-          outputRootFolder:
-            selectedVideoSnowOutputFolder || "./output_segments",
-          snowOverlay: selectedVideoSnowSnowFile || "./snow1.mp4",
-          maxConcurrent:
-            document.getElementById("video-snow-max-concurrent")?.value || "3",
-          segmentMin:
-            document.getElementById("video-snow-segment-min")?.value || "10",
-          segmentMax:
-            document.getElementById("video-snow-segment-max")?.value || "15",
-        };
-      }
-
-      // Sync trim config
-      if (selectedTrimInputFolder || selectedTrimOutputFolder) {
-        configsToSync.trimConfig = {
-          inputFolder: selectedTrimInputFolder || "./overlays",
-          outputFolder: selectedTrimOutputFolder || "./overlays_trimmed",
-          startTime: document.getElementById("trim-start-time")?.value || "0",
-          duration: document.getElementById("trim-duration")?.value || "30",
-        };
-      }
-
-      if (Object.keys(configsToSync).length > 0) {
-        await window.electronAPI.syncConfigFiles(configsToSync);
-        console.log("Đã sync config files từ project settings");
-      }
-    } catch (error) {
-      console.error("Error syncing config files:", error);
-    }
-  }
+  // Không còn cần sync config files nữa - scripts đọc trực tiếp từ project JSON
+  // thông qua environment variable PROJECT_NAME
 
   // Hiển thị thông báo ngắn
-  if (currentProjectName) {
+  if (currentProjectName && currentProjectName !== "default") {
     showProjectNotification(
       `Đã chuyển sang dự án: ${currentProjectName}`,
       "success",
@@ -1590,7 +1392,8 @@ async function deleteCurrentProject() {
 
 // Lưu settings của project hiện tại
 async function saveCurrentProjectSettings() {
-  if (!currentProjectName) return;
+  // Luôn lưu vào project (mặc định là "default")
+  const projectToSave = currentProjectName || "default";
 
   if (!checkElectronAPI()) return;
 
@@ -1639,10 +1442,16 @@ async function saveCurrentProjectSettings() {
         overlayImagesFolder: selectedDownloadOverlayImagesFolder,
         thumbsFolder: selectedDownloadThumbsFolder,
         cookiesFile: selectedDownloadCookiesFile,
-        proxy:
-          document.getElementById("download-proxy")?.value?.trim() ||
-          selectedDownloadProxy ||
-          null,
+        proxy: (() => {
+          const proxyInput = document.getElementById("download-proxy");
+          const proxyValue = proxyInput?.value?.trim();
+          // Nếu input field có giá trị, dùng giá trị đó (ưu tiên nhất)
+          if (proxyValue) {
+            return proxyValue;
+          }
+          // Nếu input field trống, trả về null (để xóa proxy khỏi config)
+          return null;
+        })(),
         downloadDrive: selectedDownloadDrive || false,
         driveLanguage: selectedDriveLanguage || "auto",
       },
@@ -1709,7 +1518,7 @@ async function saveCurrentProjectSettings() {
       },
     };
 
-    await window.electronAPI.saveProjectConfig(currentProjectName, settings);
+    await window.electronAPI.saveProjectConfig(projectToSave, settings);
   } catch (error) {
     console.error("Error saving project settings:", error);
   }
@@ -2397,13 +2206,31 @@ async function runDownload() {
         }
         // Không ghi đè input field proxy ở đây - để user có thể update proxy
         // và giá trị đó sẽ được ưu tiên khi lấy từ input field bên dưới
-        if (result.config.download.proxy !== undefined) {
-          selectedDownloadProxy = result.config.download.proxy;
-          // Chỉ set input field nếu nó đang trống (chưa có giá trị từ user)
-          const proxyInput = document.getElementById("download-proxy");
-          if (proxyInput && !proxyInput.value.trim()) {
-            proxyInput.value = result.config.download.proxy || "";
+        // Chỉ load proxy từ config nếu input field đang trống (user chưa chỉnh sửa)
+        const proxyInput = document.getElementById("download-proxy");
+        const currentProxyValue = proxyInput?.value?.trim();
+        
+        if (!currentProxyValue && result.config.download.proxy !== undefined) {
+          const configProxy = result.config.download.proxy;
+          // Chỉ set nếu config có giá trị hợp lệ (không phải null hoặc empty)
+          if (configProxy && typeof configProxy === 'string' && configProxy.trim()) {
+            selectedDownloadProxy = configProxy.trim();
+            if (proxyInput) {
+              proxyInput.value = configProxy.trim();
+            }
+          } else {
+            // Nếu config có proxy null/empty, clear nó
+            selectedDownloadProxy = null;
+            if (proxyInput) {
+              proxyInput.value = "";
+            }
           }
+        } else if (currentProxyValue) {
+          // Nếu input field đã có giá trị (user đã chỉnh sửa), dùng giá trị đó
+          selectedDownloadProxy = currentProxyValue;
+        } else {
+          // Nếu cả input field và config đều không có proxy, clear nó
+          selectedDownloadProxy = null;
         }
         if (result.config.download.downloadDrive !== undefined) {
           selectedDownloadDrive = result.config.download.downloadDrive;
@@ -2488,18 +2315,8 @@ async function runDownload() {
       }
     });
 
-    const options = {
-      downloadConfig: {
-        urlsFile: selectedUrlsFile || "./urls.txt",
-        downloadDir: selectedDownloadOutputFolder || "./overlays",
-        overlayImagesDir: selectedDownloadOverlayImagesFolder || "./images",
-        outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
-        cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
-        proxy: selectedDownloadProxy || null,
-        downloadDrive: selectedDownloadDrive || false,
-        driveLanguage: selectedDriveLanguage || "auto",
-      },
-    };
+    // Không cần truyền downloadConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript("download.js", [], options);
 
@@ -2562,16 +2379,8 @@ async function runRetry() {
     }
   }
 
-  // Tạo downloadConfig để đảm bảo script dùng đúng settings
-  const options = {
-    downloadConfig: {
-      urlsFile: selectedUrlsFile || "./urls.txt",
-      downloadDir: selectedDownloadOutputFolder || "./overlays",
-      overlayImagesDir: selectedDownloadOverlayImagesFolder || "./images",
-      outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
-      cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
-    },
-  };
+  // Không cần truyền downloadConfig nữa - script sẽ đọc trực tiếp từ project JSON
+  const options = {};
 
   try {
     window.electronAPI.removeScriptOutputListener();
@@ -2653,17 +2462,8 @@ async function runVideoSnow() {
     const segmentMax =
       parseInt(document.getElementById("video-snow-segment-max").value) || 15;
 
-    const options = {
-      videoSnowConfig: {
-        imageBackgroundFolder:
-          selectedVideoSnowInputFolder || "./image_backgrounds",
-        outputRootFolder: selectedVideoSnowOutputFolder || "./output_segments",
-        snowOverlay: selectedVideoSnowSnowFile || "./snow1.mp4",
-        maxConcurrent,
-        segmentMin,
-        segmentMax,
-      },
-    };
+    // Không cần truyền videoSnowConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript("createVideoSnow.js", [], options);
     showOutput("video-snow", "\n\n✅ Hoàn thành!");
@@ -2727,15 +2527,8 @@ async function runBgVideo() {
     const avgClipDuration =
       parseInt(document.getElementById("bg-avg-clip-duration").value) || 12;
 
-    const options = {
-      bgVideoConfig: {
-        inputRoot: selectedBgInputFolder || "./output_segments",
-        outputRoot: selectedBgOutputFolder || "./backgrounds",
-        targetDuration,
-        sourceCount,
-        avgClipDuration,
-      },
-    };
+    // Không cần truyền bgVideoConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript(
       "createVideoBackgrounds.js",
@@ -2804,14 +2597,8 @@ async function runTrim() {
       showOutput("trim", data);
     });
 
-    const options = {
-      trimConfig: {
-        inputFolder: selectedTrimInputFolder || "./overlays",
-        outputFolder: selectedTrimOutputFolder || "./overlays_trimmed",
-        startTime: startTime,
-        duration: duration,
-      },
-    };
+    // Không cần truyền trimConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript("trim-videos.js", [], options);
     showOutput("trim", "\n\n✅ Hoàn thành!");
@@ -2858,12 +2645,8 @@ async function runCutBg() {
       showOutput("cut-bg", data);
     });
 
-    const options = {
-      cutBgConfig: {
-        inputRoot: selectedCutBgInputFolder || "./bgs",
-        outputRoot: selectedCutBgOutputFolder || "./backgrounds",
-      },
-    };
+    // Không cần truyền cutBgConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript("cut-bg.js", [], options);
     showOutput("cut-bg", "\n\n✅ Hoàn thành!");
@@ -2922,13 +2705,8 @@ async function runThumb() {
       showOutput("thumb", data);
     });
 
-    const options = {
-      thumbConfig: {
-        downloadDir: selectedThumbInputFolder || "./overlays",
-        overlayImagesDir: selectedThumbOverlayFolder || "./images",
-        outputThumbsBaseDir: selectedThumbOutputFolder || "./thumbs",
-      },
-    };
+    // Không cần truyền thumbConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript("thumb.js", [], options);
     showOutput("thumb", "\n\n✅ Hoàn thành!");
@@ -2970,12 +2748,8 @@ async function runGetUrl() {
       showOutput("get-url", data);
     });
 
-    const options = {
-      fileMapping: {},
-      getUrlConfig: {
-        outputBaseFolder: selectedGetUrlOutputFolder || "./channels",
-      },
-    };
+    // Không cần truyền getUrlConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript("get-url.js", [handle], options);
     showOutput("get-url", "\n\n✅ Hoàn thành!");
@@ -3010,11 +2784,8 @@ async function runNormalize() {
       showOutput("normalize", data);
     });
 
-    const options = {
-      normalizeConfig: {
-        rootFolder: selectedNormalizeInputFolder || "./thumbs",
-      },
-    };
+    // Không cần truyền normalizeConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript("convertNormalize.js", [], options);
     showOutput("normalize", "\n\n✅ Hoàn thành!");
@@ -3664,16 +3435,8 @@ async function runConcat() {
       showOutput("concat", data);
     });
 
-    const options = {
-      concatConfig: {
-        chunkSize,
-        useThumbs,
-        thumbDuration: useThumbs ? thumbDuration : null,
-        inputFolder: selectedConcatInputFolder,
-        thumbsFolder: useThumbs ? selectedConcatThumbsFolder : null,
-        outputFolder: selectedConcatOutputFolder,
-      },
-    };
+    // Không cần truyền concatConfig nữa - script sẽ đọc trực tiếp từ project JSON
+    const options = {};
 
     await window.electronAPI.runScript("concat-video.js", [], options);
     showOutput("concat", "\n\n✅ Hoàn thành!");

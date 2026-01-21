@@ -7,21 +7,24 @@ const __dirname = path.dirname(__filename);
 
 let rootFolder = "./thumbs"; // 📝 Thay bằng thư mục gốc của bạn
 
-// Đọc config từ file nếu có
-// Kiểm tra CONFIG_DIR environment variable (được set bởi Electron main process)
-// Nếu không có, dùng __dirname (cho development)
-const configDir = process.env.CONFIG_DIR || __dirname;
-const configFilePath = path.join(configDir, ".normalize-config.json");
-if (fs.existsSync(configFilePath)) {
+// Đọc config từ project JSON (mặc định là "default")
+const projectName = process.env.PROJECT_NAME || "default";
+const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
+
+if (fs.existsSync(projectConfigPath)) {
   try {
-    const configContent = fs.readFileSync(configFilePath, "utf-8");
-    const config = JSON.parse(configContent);
+    const projectContent = fs.readFileSync(projectConfigPath, "utf-8");
+    const projectData = JSON.parse(projectContent);
+    const config = projectData.settings?.normalize;
 
-    if (config.rootFolder) rootFolder = config.rootFolder;
+    if (config) {
+      if (config.inputFolder) rootFolder = config.inputFolder;
 
-    console.log(`Đã đọc config từ file: ${configFilePath}`);
+      console.log(`Đã đọc config từ project: ${projectName}`);
+    }
   } catch (error) {
-    console.error(`Lỗi khi đọc config file: ${error.message}`);
+    console.error(`Lỗi khi đọc project config: ${error.message}`);
   }
 }
 

@@ -27,10 +27,10 @@
     "download": {
       "urlsFile": "D:\\test\\line\\urls.txt",
       "outputFolder": "D:\\test\\line\\overlays",
-      "overlayImagesFolder": "D:\\test\\line\\thumbs",
+      "overlayImagesFolder": "D:\\test\\line\\thumbs\\1",
       "thumbsFolder": "D:\\test\\line\\thumbs",
       "cookiesFile": null,
-      "proxy": null,
+      "proxy": "socks5://14.225.52.172:33650:nkkk4n7d:tQdW5t1w",
       "downloadDrive": false,
       "driveLanguage": "jp"
     },
@@ -81,5 +81,5 @@
       "outputFolder": null
     }
   },
-  "updatedAt": "2026-01-20T11:40:48.531Z"
+  "updatedAt": "2026-01-21T03:38:09.165Z"
 }

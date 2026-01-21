@@ -55,9 +55,16 @@ if (fs.existsSync(configFilePath)) {
     if (config.proxy !== undefined && config.proxy) {
       // Trim và validate proxy
       const proxyValue = typeof config.proxy === 'string' ? config.proxy.trim() : config.proxy;
-      if (proxyValue) {
+      // Chỉ set PROXY nếu có giá trị hợp lệ (không phải empty string hoặc null)
+      if (proxyValue && proxyValue !== 'null' && proxyValue !== 'undefined') {
         PROXY = proxyValue;
+      } else {
+        // Reset PROXY về null nếu config có giá trị không hợp lệ
+        PROXY = null;
       }
+    } else {
+      // Nếu proxy không có trong config hoặc là null/undefined, đảm bảo PROXY là null
+      PROXY = null;
     }
     if (config.downloadDrive !== undefined)
       DOWNLOAD_DRIVE = config.downloadDrive;

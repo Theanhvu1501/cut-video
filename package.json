@@ -88,7 +88,9 @@
       "!node_modules/.bin",
       "!.git",
       "!*.log",
-      "!BUILD_INSTRUCTIONS.md"
+      "!BUILD_INSTRUCTIONS.md",
+      "!projects/**",
+      "!*.config.json"
     ]
   }
 }

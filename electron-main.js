@@ -1202,9 +1202,15 @@ ipcMain.handle("sync-config-files", async (event, configs) => {
     if (configs.downloadConfig) {
       try {
         const configPath = path.join(configDir, ".download-config.json");
+        // Tạo copy của config để không ảnh hưởng đến object gốc
+        const downloadConfig = { ...configs.downloadConfig };
+        // Nếu proxy là null hoặc empty string, xóa khỏi config
+        if (!downloadConfig.proxy || downloadConfig.proxy.trim() === "") {
+          delete downloadConfig.proxy;
+        }
         fs.writeFileSync(
           configPath,
-          JSON.stringify(configs.downloadConfig, null, 2)
+          JSON.stringify(downloadConfig, null, 2)
         );
       } catch (err) {
         errors.push(`Download config: ${err.message}`);

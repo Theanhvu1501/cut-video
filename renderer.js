@@ -1285,6 +1285,8 @@ async function switchProject() {
           overlayImagesDir: selectedDownloadOverlayImagesFolder || "./images",
           outputThumbsBaseDir: selectedDownloadThumbsFolder || "./thumbs",
           cookiesFile: selectedDownloadCookiesFile || "./cookies.txt",
+          // Đảm bảo proxy được sync nếu có
+          proxy: selectedDownloadProxy || null,
         };
       }
 
@@ -1767,6 +1769,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     "concat-thumb-duration",
     "trim-start-time",
     "trim-duration",
+    "download-proxy", // Thêm proxy input để tự động lưu khi thay đổi
   ];
 
   inputsToWatch.forEach((id) => {
@@ -2434,7 +2437,9 @@ async function runDownload() {
   // Lấy proxy từ input field (nếu có thay đổi)
   const proxyInput = document.getElementById("download-proxy");
   if (proxyInput) {
-    selectedDownloadProxy = proxyInput.value.trim() || null;
+    const proxyValue = proxyInput.value.trim();
+    // Nếu proxy bị bỏ trống, set thành null (không phải empty string)
+    selectedDownloadProxy = proxyValue || null;
   }
 
   // Lấy downloadDrive từ checkbox (nếu có thay đổi)

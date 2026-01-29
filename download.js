@@ -175,7 +175,7 @@ const downloadVideo = async (url, outputPath) => {
     cookies: COOKIES_FILE,
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
-    extractorArgs: ["youtube:player-client=default,-tv_simply"],
+    extractorArgs: ["youtube:player_client=default,-android_sdkless"],
   };
 
   // Thêm proxy nếu có (validate và trim)

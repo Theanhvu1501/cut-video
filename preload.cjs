@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.invoke("set-current-project", projectName),
   setProjectLastRender: (projectName) =>
     ipcRenderer.invoke("set-project-last-render", projectName),
+  setProjectStarred: (projectName, starred) =>
+    ipcRenderer.invoke("set-project-starred", projectName, starred),
   syncConfigFiles: (configs) =>
     ipcRenderer.invoke("sync-config-files", configs),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),

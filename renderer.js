@@ -1561,11 +1561,12 @@ async function refreshDashboard() {
     }
     const card = document.createElement("div");
     card.className = "dashboard-card";
-    if (p.isCurrent) card.classList.add("is-current");
+    const starClass = p.starred ? "dashboard-card-star starred" : "dashboard-card-star";
+    const starChar = p.starred ? "★" : "☆";
     card.innerHTML = `
+      <span class="${starClass}" data-project="${escapeHtml(p.name)}" data-starred="${p.starred ? "1" : "0"}" title="${p.starred ? "BKT (bỏ đánh dấu)" : "Đánh dấu BKT"}">${starChar}</span>
       <div class="dashboard-card-header">
         <span class="dashboard-card-title">${escapeHtml(p.displayName || p.name)}</span>
-        ${p.isCurrent ? '<span class="dashboard-badge-current">Đang dùng</span>' : ""}
       </div>
       <div class="dashboard-card-meta">
         <span><span class="label">Chu kỳ</span><span class="value">${escapeHtml(cycleVal)} ngày</span></span>
@@ -1577,6 +1578,16 @@ async function refreshDashboard() {
         <span class="dashboard-tag ${escapeHtml(tagClass)}">${escapeHtml(daysLeftText)}</span>
       </div>
     `;
+    const starEl = card.querySelector(".dashboard-card-star");
+    if (starEl && window.electronAPI && window.electronAPI.setProjectStarred) {
+      starEl.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const proj = starEl.getAttribute("data-project");
+        const cur = starEl.getAttribute("data-starred") === "1";
+        await window.electronAPI.setProjectStarred(proj, !cur);
+        refreshDashboard();
+      });
+    }
     cardsEl.appendChild(card);
   });
 }
@@ -1789,10 +1800,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const dashboardSearch = document.getElementById("dashboard-search");
   if (dashboardSearch) {
-    dashboardSearch.addEventListener("input", () => refreshDashboard());
+    let dashboardSearchDebounce = null;
+    const DASHBOARD_SEARCH_DEBOUNCE_MS = 300;
+    dashboardSearch.addEventListener("input", () => {
+      if (dashboardSearchDebounce) clearTimeout(dashboardSearchDebounce);
+      dashboardSearchDebounce = setTimeout(() => {
+        dashboardSearchDebounce = null;
+        refreshDashboard();
+      }, DASHBOARD_SEARCH_DEBOUNCE_MS);
+    });
     dashboardSearch.addEventListener("keydown", (e) => {
       if (e.key === "Escape") {
         dashboardSearch.value = "";
+        if (dashboardSearchDebounce) clearTimeout(dashboardSearchDebounce);
+        dashboardSearchDebounce = null;
         refreshDashboard();
       }
     });

@@ -762,12 +762,14 @@ ipcMain.handle("get-projects-with-meta", async () => {
       let outputFolder = null;
       let cycleDays = 1;
       let lastRenderAt = null;
+      let starred = false;
       try {
         const content = fs.readFileSync(filePath, "utf-8");
         const data = JSON.parse(content);
         createdAt = data.createdAt || null;
         updatedAt = data.updatedAt || null;
         if (data.projectName) projectName = data.projectName;
+        starred = !!data.starred;
         if (data.settings && data.settings.render) {
           const r = data.settings.render;
           renderDay = r.day != null ? String(r.day) : null;
@@ -801,12 +803,13 @@ ipcMain.handle("get-projects-with-meta", async () => {
         cycleDays,
         lastRenderAt,
         daysLeft,
+        starred,
       });
     }
-    // Sắp xếp: ưu tiên gần deadline nhất (daysLeft nhỏ nhất, âm = trễ trước)
+    // Sắp xếp: có sao (BKT) luôn ở đầu, trong mỗi nhóm sort theo ngày còn lại (gần deadline trước)
     list.sort((a, b) => {
-      if (a.name === "default") return -1;
-      if (b.name === "default") return 1;
+      if (a.starred && !b.starred) return -1;
+      if (!a.starred && b.starred) return 1;
       const da = a.daysLeft ?? 9999;
       const db = b.daysLeft ?? 9999;
       return da - db;
@@ -815,6 +818,28 @@ ipcMain.handle("get-projects-with-meta", async () => {
   } catch (error) {
     console.error("Error getting projects with meta:", error);
     return { success: false, error: error.message, projects: [] };
+  }
+});
+
+// IPC handler: đánh dấu BKT (ngôi sao) cho dự án
+ipcMain.handle("set-project-starred", async (event, projectName, starred) => {
+  try {
+    if (!projectName || projectName.trim() === "") {
+      return { success: false, error: "Tên dự án không hợp lệ" };
+    }
+    const projectPath = getProjectConfigPath(projectName);
+    if (!fs.existsSync(projectPath)) {
+      return { success: false, error: "Dự án không tồn tại" };
+    }
+    const content = fs.readFileSync(projectPath, "utf-8");
+    const data = JSON.parse(content);
+    data.starred = !!starred;
+    data.updatedAt = new Date().toISOString();
+    fs.writeFileSync(projectPath, JSON.stringify(data, null, 2));
+    return { success: true };
+  } catch (error) {
+    console.error("Error set-project-starred:", error);
+    return { success: false, error: error.message };
   }
 });
 

@@ -496,6 +496,7 @@ async function saveSettings() {
       backgroundFolder: selectedRenderBackgroundFolder,
       outputFolder: selectedRenderOutputFolder,
       chromaKeyFile: selectedRenderChromaKeyFile,
+      cycleDays: document.getElementById("render-cycle-days")?.value || "1",
     },
     // Download settings
     download: {
@@ -661,6 +662,8 @@ async function loadSettings() {
         document.getElementById("render-day").value = settings.render.day;
       if (settings.render.videos)
         document.getElementById("render-videos").value = settings.render.videos;
+      if (settings.render.cycleDays != null)
+        document.getElementById("render-cycle-days").value = settings.render.cycleDays;
       if (settings.render.renderMode) {
         // Map renderMode value to actual radio button ID (HTML uses kebab-case)
         const modeIdMap = {
@@ -1095,6 +1098,8 @@ async function loadSettings() {
 
 // Project management
 let currentProjectName = null;
+// Khi xóa từ dashboard, lưu tên dự án cần xóa (confirmDeleteProject sẽ dùng)
+let deleteTargetProjectName = null;
 
 // Load danh sách projects và project hiện tại
 async function loadProjects() {
@@ -1345,17 +1350,13 @@ async function createNewProject() {
       statusDiv.style.border = "1px solid #4caf50";
       statusDiv.innerHTML = `✅ <strong>Đã tạo dự án "${result.projectName}" thành công!</strong><br><small>Đang chuyển sang dự án mới...</small>`;
 
-      // Reload danh sách projects
       await loadProjects();
-
-      // Tự động chọn project mới
+      refreshDashboard();
       const projectSelect = document.getElementById("project-select");
       if (projectSelect) {
         projectSelect.value = result.projectName;
         await switchProject();
       }
-
-      // Đóng dialog sau 2 giây
       setTimeout(() => {
         closeAddProjectDialog();
         showProjectNotification(
@@ -1381,18 +1382,23 @@ async function createNewProject() {
   }
 }
 
-// Hiển thị dialog xác nhận xóa dự án
-function showDeleteProjectDialog() {
+// Hiển thị dialog xác nhận xóa dự án (từ work view hoặc từ dashboard với projectName)
+function showDeleteProjectDialog(projectNameFromDashboard) {
   if (!checkElectronAPI()) return;
 
-  const projectSelect = document.getElementById("project-select");
-  if (!projectSelect) return;
-
-  const projectToDelete = projectSelect.value;
+  const projectToDelete = projectNameFromDashboard != null
+    ? projectNameFromDashboard
+    : (document.getElementById("project-select") && document.getElementById("project-select").value);
 
   if (!projectToDelete) {
     showProjectNotification("Vui lòng chọn dự án cần xóa", "error");
     return;
+  }
+
+  if (projectNameFromDashboard != null) {
+    deleteTargetProjectName = projectNameFromDashboard;
+  } else {
+    deleteTargetProjectName = null;
   }
 
   // Hiển thị tên dự án trong dialog
@@ -1420,10 +1426,9 @@ function closeDeleteProjectDialog() {
 async function confirmDeleteProject() {
   if (!checkElectronAPI()) return;
 
-  const projectSelect = document.getElementById("project-select");
-  if (!projectSelect) return;
-
-  const projectToDelete = projectSelect.value;
+  const projectToDelete = deleteTargetProjectName != null
+    ? deleteTargetProjectName
+    : (document.getElementById("project-select") && document.getElementById("project-select").value);
 
   if (!projectToDelete) {
     closeDeleteProjectDialog();
@@ -1431,27 +1436,34 @@ async function confirmDeleteProject() {
     return;
   }
 
+  const fromDashboard = deleteTargetProjectName != null;
+
   try {
     const result = await window.electronAPI.deleteProject(projectToDelete);
 
     if (result.success) {
-      // Đóng dialog
       closeDeleteProjectDialog();
+      deleteTargetProjectName = null;
 
-      // Reload danh sách projects
-      await loadProjects();
-
-      // Load settings mặc định
-      currentProjectName = null;
-      await window.electronAPI.setCurrentProject(null);
-      await loadSettings();
-
-      showProjectNotification(
-        `Đã xóa dự án "${projectToDelete}" thành công!`,
-        "success",
-      );
+      if (fromDashboard) {
+        await refreshDashboard();
+        showProjectNotification(
+          `Đã xóa dự án "${projectToDelete}" thành công!`,
+          "success",
+        );
+      } else {
+        await loadProjects();
+        currentProjectName = null;
+        await window.electronAPI.setCurrentProject(null);
+        await loadSettings();
+        showProjectNotification(
+          `Đã xóa dự án "${projectToDelete}" thành công!`,
+          "success",
+        );
+      }
     } else {
       closeDeleteProjectDialog();
+      deleteTargetProjectName = null;
       showProjectNotification(
         `Lỗi: ${result.error || "Không thể xóa dự án"}`,
         "error",
@@ -1459,6 +1471,7 @@ async function confirmDeleteProject() {
     }
   } catch (error) {
     closeDeleteProjectDialog();
+    deleteTargetProjectName = null;
     showProjectNotification(`Lỗi: ${getErrorMessage(error)}`, "error");
   }
 }
@@ -1466,6 +1479,155 @@ async function confirmDeleteProject() {
 // Xóa project hiện tại (giữ lại để tương thích)
 async function deleteCurrentProject() {
   showDeleteProjectDialog();
+}
+
+// ========== Dashboard (màn hình mặc định) ==========
+function formatProjectDate(isoStr) {
+  if (!isoStr) return "—";
+  try {
+    const d = new Date(isoStr);
+    return d.toLocaleDateString("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch (e) {
+    return "—";
+  }
+}
+
+async function refreshDashboard() {
+  const empty = document.getElementById("dashboard-empty");
+  const searchInput = document.getElementById("dashboard-search");
+  const cardsEl = document.getElementById("dashboard-cards");
+  if (!empty || !cardsEl) return;
+
+  if (!window.electronAPI || !window.electronAPI.getProjectsWithMeta) {
+    cardsEl.style.display = "none";
+    empty.style.display = "block";
+    empty.innerHTML = "<strong>Lỗi</strong> Không thể tải danh sách dự án.";
+    return;
+  }
+
+  const result = await window.electronAPI.getProjectsWithMeta();
+  let list = result.success ? result.projects || [] : [];
+  const query = (searchInput && searchInput.value || "").trim().toLowerCase();
+  if (query) {
+    list = list.filter(
+      (p) =>
+        (p.displayName && p.displayName.toLowerCase().includes(query)) ||
+        (p.name && p.name.toLowerCase().includes(query)),
+    );
+  }
+
+  if (list.length === 0) {
+    cardsEl.style.display = "none";
+    empty.style.display = "block";
+    empty.innerHTML = query
+      ? "<strong>Không tìm thấy dự án</strong> Thử đổi từ khóa tìm kiếm."
+      : '<strong>Chưa có dự án</strong> Tạo dự án từ menu ⚙️ → Thêm dự án mới.';
+    return;
+  }
+  empty.style.display = "none";
+  cardsEl.style.display = "grid";
+  cardsEl.innerHTML = "";
+
+  const todayStr = formatProjectDate(new Date().toISOString());
+
+  list.forEach((p) => {
+    const cycleVal = p.cycleDays != null ? String(p.cycleDays) : "—";
+    const lastRenderStr = p.lastRenderAt ? formatProjectDate(p.lastRenderAt) : "—";
+    let daysLeftText = "—";
+    let tagClass = "tag-muted";
+    if (p.daysLeft != null) {
+      if (p.daysLeft >= 3) {
+        daysLeftText = `${p.daysLeft} ngày còn lại`;
+        tagClass = "tag-green";
+      } else if (p.daysLeft === 2) {
+        daysLeftText = "2 ngày còn lại";
+        tagClass = "tag-yellow";
+      } else if (p.daysLeft === 1) {
+        daysLeftText = "1 ngày còn lại";
+        tagClass = "tag-red";
+      } else if (p.daysLeft === 0) {
+        daysLeftText = "Cần render ngay";
+        tagClass = "tag-red";
+      } else {
+        daysLeftText = `Quá hạn ${-p.daysLeft} ngày`;
+        tagClass = "tag-red";
+      }
+    }
+    const card = document.createElement("div");
+    card.className = "dashboard-card";
+    if (p.isCurrent) card.classList.add("is-current");
+    card.innerHTML = `
+      <div class="dashboard-card-header">
+        <span class="dashboard-card-title">${escapeHtml(p.displayName || p.name)}</span>
+        ${p.isCurrent ? '<span class="dashboard-badge-current">Đang dùng</span>' : ""}
+      </div>
+      <div class="dashboard-card-meta">
+        <span><span class="label">Chu kỳ</span><span class="value">${escapeHtml(cycleVal)} ngày</span></span>
+        <span><span class="label">Ngày render gần nhất</span><span class="value">${escapeHtml(lastRenderStr)}</span></span>
+        <span><span class="label">Ngày hiện tại</span><span class="value">${escapeHtml(todayStr)}</span></span>
+      </div>
+      <div class="dashboard-card-status">
+        <span class="status-label">Trạng thái:</span>
+        <span class="dashboard-tag ${escapeHtml(tagClass)}">${escapeHtml(daysLeftText)}</span>
+      </div>
+    `;
+    cardsEl.appendChild(card);
+  });
+}
+
+function escapeHtml(s) {
+  if (s == null) return "";
+  const div = document.createElement("div");
+  div.textContent = s;
+  return div.innerHTML;
+}
+
+async function openProjectFromDashboard(projectName) {
+  if (!projectName || !window.electronAPI) return;
+  await window.electronAPI.setCurrentProject(projectName);
+  currentProjectName = projectName;
+  await loadProjects();
+  await loadSettings();
+  showProjectNotification(`Đã chuyển sang dự án: ${projectName === "default" ? "Mặc định" : projectName}`, "success");
+}
+
+async function runRenderFromDashboard(projectName, day, videos) {
+  if (!projectName || !window.electronAPI) return;
+  const dayVal = (day != null && day !== "" && day !== "—") ? String(day) : "1";
+  const videosVal = (videos != null && videos !== "" && videos !== "—") ? String(videos) : "1";
+
+  const panel = document.getElementById("dashboard-output-panel");
+  const bodyEl = document.getElementById("dashboard-output-body");
+  if (panel) panel.classList.remove("hidden");
+  if (bodyEl) bodyEl.textContent = `🚀 Đang chạy Render cho dự án "${projectName}" (ngày=${dayVal}, videos=${videosVal})...\n\n`;
+
+  await window.electronAPI.setCurrentProject(projectName);
+  currentProjectName = projectName;
+
+  window.electronAPI.removeScriptOutputListener?.();
+  window.electronAPI.onScriptOutput?.((data) => {
+    const b = document.getElementById("dashboard-output-body");
+    if (b) b.textContent += data;
+  });
+
+  try {
+    await window.electronAPI.runScript("render.js", [dayVal, videosVal], {});
+    if (bodyEl) bodyEl.textContent += "\n\n✅ Hoàn thành!";
+    if (window.electronAPI.setProjectLastRender) {
+      await window.electronAPI.setProjectLastRender(projectName);
+    }
+    showProjectNotification(`Render dự án "${projectName}" đã xong.`, "success");
+    refreshDashboard();
+  } catch (err) {
+    if (bodyEl) bodyEl.textContent += `\n\n❌ Lỗi: ${getErrorMessage(err)}`;
+    showProjectNotification(`Lỗi render: ${getErrorMessage(err)}`, "error");
+  }
 }
 
 // Lưu settings của project hiện tại
@@ -1512,6 +1674,7 @@ async function saveCurrentProjectSettings() {
         backgroundFolder: selectedRenderBackgroundFolder,
         outputFolder: selectedRenderOutputFolder,
         chromaKeyFile: selectedRenderChromaKeyFile,
+        cycleDays: document.getElementById("render-cycle-days")?.value || "1",
       },
       // Download settings
       download: {
@@ -1619,20 +1782,37 @@ async function saveCurrentProjectSettings() {
 
 // Tab switching
 document.addEventListener("DOMContentLoaded", async () => {
-  // Setup update listeners trước
   setupUpdateListeners();
 
-  // Load projects first
   await loadProjects();
-
-  // Load saved settings (sẽ load từ project nếu có)
   await loadSettings();
+
+  const dashboardSearch = document.getElementById("dashboard-search");
+  if (dashboardSearch) {
+    dashboardSearch.addEventListener("input", () => refreshDashboard());
+    dashboardSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        dashboardSearch.value = "";
+        refreshDashboard();
+      }
+    });
+  }
+  const dashboardAddBtn = document.getElementById("dashboard-add-project");
+  if (dashboardAddBtn) {
+    dashboardAddBtn.addEventListener("click", openAddProjectDialog);
+  }
+  const dashboardOutputClose = document.getElementById("dashboard-output-close");
+  if (dashboardOutputClose) {
+    dashboardOutputClose.addEventListener("click", () => {
+      const panel = document.getElementById("dashboard-output-panel");
+      if (panel) panel.classList.add("hidden");
+    });
+  }
 
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", () => {
       const tabId = button.getAttribute("data-tab");
 
-      // Remove active class from all tabs and buttons
       document
         .querySelectorAll(".tab-button")
         .forEach((btn) => btn.classList.remove("active"));
@@ -1640,9 +1820,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         .querySelectorAll(".tab-content")
         .forEach((content) => content.classList.remove("active"));
 
-      // Add active class to clicked tab
       button.classList.add("active");
-      document.getElementById(tabId).classList.add("active");
+      const tabEl = document.getElementById(tabId);
+      if (tabEl) tabEl.classList.add("active");
+      if (tabId === "dashboard") refreshDashboard();
     });
   });
 
@@ -1650,6 +1831,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const inputsToWatch = [
     "render-day",
     "render-videos",
+    "render-cycle-days",
     "render-opacity",
     "render-chromakey-color",
     "render-keepcolor-colors",
@@ -2125,6 +2307,10 @@ async function runRender() {
 
     await window.electronAPI.runScript("render.js", [day, videos], options);
     showOutput("render", "\n\n✅ Hoàn thành!");
+    const proj = currentProjectName || "default";
+    if (window.electronAPI.setProjectLastRender) {
+      await window.electronAPI.setProjectLastRender(proj);
+    }
   } catch (error) {
     showOutput("render", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
   }
@@ -3001,6 +3187,7 @@ const helpContents = {
         <li><strong>Số video mỗi folder:</strong> Số lượng video sẽ được render trong mỗi folder của mỗi ngày. Ví dụ: "5" nghĩa là mỗi ngày sẽ có 5 video được render trong folder(Tương ứng với folder trong backgrounds).</li>
         <li><strong>Folder Overlay:</strong> Folder chứa video overlay (video chính cần render). Cấu trúc: <code>./overlays/video1.mp4</code>. Để trống sẽ dùng <code>./overlays</code></li>
         <li><strong>Folder Background:</strong> Folder chứa video background (nền). Cấu trúc: <code>./backgrounds/1/bg1.mp4</code>. Để trống sẽ dùng <code>./backgrounds</code></li>
+        <li><strong>Chu kỳ (ngày):</strong> Số ngày mà mẻ video đó up lên kênh (dùng cho Dashboard: còn X ngày là phải có video)</li>
       </ul>
       
       <h4>🎨 Các chế độ Render:</h4>

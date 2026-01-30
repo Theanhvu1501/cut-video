@@ -735,6 +735,113 @@ ipcMain.handle("get-projects", async () => {
   }
 });
 
+// IPC handler để lấy danh sách projects kèm metadata (cho dashboard)
+ipcMain.handle("get-projects-with-meta", async () => {
+  try {
+    const projectsDir = ensureProjectsDir();
+    const currentProjectPath = getCurrentProjectPath();
+    let currentProjectName = null;
+    if (fs.existsSync(currentProjectPath)) {
+      try {
+        const content = fs.readFileSync(currentProjectPath, "utf-8");
+        currentProjectName = JSON.parse(content).projectName;
+      } catch (err) {
+        // ignore
+      }
+    }
+    const files = fs.readdirSync(projectsDir).filter((f) => f.endsWith(".json"));
+    const list = [];
+    for (const file of files) {
+      const name = file.replace(".json", "");
+      const filePath = path.join(projectsDir, file);
+      let createdAt = null;
+      let updatedAt = null;
+      let projectName = name;
+      let renderDay = null;
+      let renderVideos = null;
+      let outputFolder = null;
+      let cycleDays = 1;
+      let lastRenderAt = null;
+      try {
+        const content = fs.readFileSync(filePath, "utf-8");
+        const data = JSON.parse(content);
+        createdAt = data.createdAt || null;
+        updatedAt = data.updatedAt || null;
+        if (data.projectName) projectName = data.projectName;
+        if (data.settings && data.settings.render) {
+          const r = data.settings.render;
+          renderDay = r.day != null ? String(r.day) : null;
+          renderVideos = r.videos != null ? String(r.videos) : null;
+          outputFolder = r.outputFolder || null;
+          cycleDays = typeof r.cycleDays !== "undefined" ? Math.max(1, parseInt(r.cycleDays, 10) || 1) : (parseInt(r.day, 10) || 1);
+          lastRenderAt = r.lastRenderAt || null;
+        }
+      } catch (err) {
+        // ignore
+      }
+      const now = Date.now();
+      const dayMs = 24 * 60 * 60 * 1000;
+      let daysLeft = null;
+      if (lastRenderAt) {
+        const last = new Date(lastRenderAt).getTime();
+        const nextDeadline = last + cycleDays * dayMs;
+        daysLeft = Math.ceil((nextDeadline - now) / dayMs);
+      } else {
+        daysLeft = 0;
+      }
+      list.push({
+        name,
+        displayName: name === "default" ? "Mặc định" : projectName,
+        createdAt,
+        updatedAt,
+        isCurrent: name === currentProjectName,
+        renderDay,
+        renderVideos,
+        outputFolder,
+        cycleDays,
+        lastRenderAt,
+        daysLeft,
+      });
+    }
+    // Sắp xếp: ưu tiên gần deadline nhất (daysLeft nhỏ nhất, âm = trễ trước)
+    list.sort((a, b) => {
+      if (a.name === "default") return -1;
+      if (b.name === "default") return 1;
+      const da = a.daysLeft ?? 9999;
+      const db = b.daysLeft ?? 9999;
+      return da - db;
+    });
+    return { success: true, projects: list };
+  } catch (error) {
+    console.error("Error getting projects with meta:", error);
+    return { success: false, error: error.message, projects: [] };
+  }
+});
+
+// IPC handler: cập nhật thời điểm render cuối (sau khi chạy render xong)
+ipcMain.handle("set-project-last-render", async (event, projectName) => {
+  try {
+    if (!projectName || projectName.trim() === "") {
+      return { success: false, error: "Tên dự án không hợp lệ" };
+    }
+    const projectPath = getProjectConfigPath(projectName);
+    if (!fs.existsSync(projectPath)) {
+      return { success: false, error: "Dự án không tồn tại" };
+    }
+    const content = fs.readFileSync(projectPath, "utf-8");
+    const data = JSON.parse(content);
+    if (!data.settings) data.settings = {};
+    if (!data.settings.render) data.settings.render = {};
+    data.settings.render.lastRenderAt = new Date().toISOString();
+    data.updatedAt = new Date().toISOString();
+    fs.writeFileSync(projectPath, JSON.stringify(data, null, 2));
+    return { success: true };
+  } catch (error) {
+    console.error("Error set-project-last-render:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // IPC handler để tạo project mới
 ipcMain.handle("create-project", async (event, projectName) => {
   try {
@@ -831,8 +938,12 @@ ipcMain.handle("save-project-config", async (event, projectName, config) => {
       }
     }
 
-    // Cập nhật settings
+    // Cập nhật settings, giữ lại lastRenderAt nếu config từ renderer không gửi
+    const existingLastRender = projectData.settings?.render?.lastRenderAt;
     projectData.settings = config;
+    if (existingLastRender && projectData.settings?.render && projectData.settings.render.lastRenderAt == null) {
+      projectData.settings.render.lastRenderAt = existingLastRender;
+    }
     projectData.updatedAt = new Date().toISOString();
 
     fs.writeFileSync(projectPath, JSON.stringify(projectData, null, 2));

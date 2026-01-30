@@ -3,7 +3,7 @@
   "createdAt": "2026-01-21T04:36:35.963Z",
   "settings": {
     "render": {
-      "day": "1",
+      "day": "2",
       "videos": "1",
       "renderMode": "chromaKey",
       "opacity": "0.7",
@@ -22,15 +22,17 @@
       "overlayFolder": "D:\\Youtube\\test\\overlays",
       "backgroundFolder": "D:\\test\\line\\backgrounds",
       "outputFolder": "D:\\test\\line\\done",
-      "chromaKeyFile": "D:\\test\\line\\chromaKey.txt"
+      "chromaKeyFile": "D:\\test\\line\\chromaKey.txt",
+      "cycleDays": "2",
+      "lastRenderAt": "2026-01-30T08:30:09.921Z"
     },
     "download": {
       "urlsFile": "D:\\Youtube\\test\\urls.txt",
       "outputFolder": "D:\\Youtube\\test\\overlays",
       "overlayImagesFolder": "D:\\Youtube\\test\\images",
       "thumbsFolder": "D:\\Youtube\\test\\images",
-      "cookiesFile": "D:\\Youtube\\test\\cookies.txt",
-      "proxy": "socks5://14.225.63.57:7777:xdjc4v4m:kCgC0j3m",
+      "cookiesFile": "D:\\test\\2ch\\chromaKey.txt",
+      "proxy": "socks5://14.225.52.172:33650:nkkk4n7d:tQdW5t1w",
       "downloadDrive": false,
       "driveLanguage": "jp"
     },
@@ -95,5 +97,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-01-29T04:27:14.993Z"
+  "updatedAt": "2026-01-30T08:30:09.921Z"
 }

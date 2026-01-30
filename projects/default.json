@@ -3,9 +3,9 @@
   "createdAt": "2026-01-21T04:13:25.265Z",
   "settings": {
     "render": {
-      "day": "2",
-      "videos": "2",
-      "renderMode": "topTransparent",
+      "day": "1",
+      "videos": "1",
+      "renderMode": "chromaKey",
       "opacity": "0.7",
       "chromaKeyMode": "file",
       "chromaKeyColor": "D4F9D7",
@@ -14,25 +14,41 @@
       "keepColorHeight": "150",
       "keepColorYOffset": "550",
       "keepColorAddDarkLayer": false,
-      "useGPU": true,
+      "useGPU": false,
       "maxConcurrentProcesses": "2",
       "gpuVideoCodec": "h264_nvenc",
       "height": "220",
       "y_offset": "490",
-      "overlayFolder": "D:\\test\\2ch\\overlays",
-      "backgroundFolder": "D:\\test\\2ch\\backgrounds",
-      "outputFolder": "D:\\test\\2ch\\done",
-      "chromaKeyFile": "D:\\test\\line\\chromaKey.txt"
+      "overlayFolder": "D:\\Youtube\\test\\overlays",
+      "backgroundFolder": "D:\\test\\line\\backgrounds",
+      "outputFolder": "D:\\test\\line\\done",
+      "chromaKeyFile": "D:\\test\\line\\chromaKey.txt",
+      "cycleDays": "1",
+      "lastRenderAt": "2026-01-30T08:17:05.882Z"
     },
     "download": {
-      "urlsFile": "D:\\test\\2ch\\urls.txt",
-      "outputFolder": "D:\\test\\line\\overlays",
-      "overlayImagesFolder": "D:\\test\\line\\thumbs\\1",
-      "thumbsFolder": "D:\\test\\line\\thumbs",
+      "urlsFile": "D:\\Youtube\\test\\urls.txt",
+      "outputFolder": "D:\\Youtube\\test\\overlays",
+      "overlayImagesFolder": "D:\\Youtube\\test\\images",
+      "thumbsFolder": "D:\\Youtube\\test\\images",
       "cookiesFile": "D:\\test\\2ch\\chromaKey.txt",
-      "proxy": "1234214",
+      "proxy": "socks5://14.225.52.172:33650:nkkk4n7d:tQdW5t1w",
       "downloadDrive": false,
       "driveLanguage": "jp"
+    },
+    "stockDownload": {
+      "usePexels": true,
+      "usePixabay": false,
+      "pexelsApiKey": "zJL0Yf2Bu3HDOja0huO7DVBCHGGP6Tf3Ew3YhqpVKekFNMO5ItUO8bdQ",
+      "pixabayApiKey": "",
+      "searchQuery": "city",
+      "maxVideos": "30",
+      "outputFolder": "D:\\test",
+      "orientation": "landscape",
+      "convert720": true,
+      "removeAudio": true,
+      "cut": true,
+      "trimSeconds": "3"
     },
     "videoSnow": {
       "inputFolder": "D:\\test\\line\\images_background",
@@ -54,32 +70,32 @@
       "inputFolder": "D:\\test\\line\\overlays",
       "outputFolder": "D:\\test\\line\\overlays_trimmed",
       "startTime": "0",
-      "duration": "30"
+      "duration": "60"
     },
     "cutBg": {
-      "inputFolder": "G:\\My Drive\\Youtube\\Line\\channels",
-      "outputFolder": "D:\\test\\line\\thumbs"
+      "inputFolder": "D:\\test\\line\\bgs",
+      "outputFolder": "D:\\test\\line\\backgrounds"
     },
     "thumb": {
-      "inputFolder": "D:\\test\\line\\thumbs\\1",
+      "inputFolder": "D:\\test\\line\\overlays",
       "overlayFolder": "D:\\test\\line\\images",
       "outputFolder": "D:\\test\\line\\thumbs"
     },
     "getUrl": {
       "handle": "@line4091",
-      "outputFolder": "D:\\test\\line"
+      "outputFolder": "D:\\test\\line\\channels"
     },
     "normalize": {
-      "inputFolder": "D:\\test\\line\\images"
+      "inputFolder": "D:\\test\\line\\thumbs"
     },
     "concat": {
       "chunkSize": "2",
       "useThumbs": true,
-      "thumbDuration": "3",
-      "inputFolder": "D:\\test\\line\\images",
+      "thumbDuration": "4",
+      "inputFolder": "D:\\test\\line\\done",
       "thumbsFolder": "D:\\test\\line\\thumbs",
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-01-21T04:43:29.454Z"
+  "updatedAt": "2026-01-30T08:29:12.206Z"
 }

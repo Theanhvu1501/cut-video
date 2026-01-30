@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openNewWindow: () => ipcRenderer.invoke("open-new-window"),
   downloadYtDlp: () => ipcRenderer.invoke("download-ytdlp"),
   getProjects: () => ipcRenderer.invoke("get-projects"),
+  getProjectsWithMeta: () => ipcRenderer.invoke("get-projects-with-meta"),
   createProject: (projectName) =>
     ipcRenderer.invoke("create-project", projectName),
   deleteProject: (projectName) =>
@@ -22,6 +23,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getCurrentProject: () => ipcRenderer.invoke("get-current-project"),
   setCurrentProject: (projectName) =>
     ipcRenderer.invoke("set-current-project", projectName),
+  setProjectLastRender: (projectName) =>
+    ipcRenderer.invoke("set-project-last-render", projectName),
   syncConfigFiles: (configs) =>
     ipcRenderer.invoke("sync-config-files", configs),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),

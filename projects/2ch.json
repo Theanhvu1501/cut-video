@@ -3,7 +3,7 @@
   "createdAt": "2026-01-21T04:37:07.909Z",
   "settings": {
     "render": {
-      "day": "2",
+      "day": "1",
       "videos": "2",
       "renderMode": "topTransparent",
       "opacity": "0.7",
@@ -22,7 +22,9 @@
       "overlayFolder": "D:\\test\\2ch\\overlays",
       "backgroundFolder": "D:\\test\\2ch\\backgrounds",
       "outputFolder": "D:\\test\\2ch\\done",
-      "chromaKeyFile": "D:\\test\\line\\chromaKey.txt"
+      "chromaKeyFile": "D:\\test\\line\\chromaKey.txt",
+      "cycleDays": "3",
+      "lastRenderAt": "2026-01-30T08:29:25.139Z"
     },
     "download": {
       "urlsFile": "D:\\test\\2ch\\urls.txt",
@@ -33,6 +35,20 @@
       "proxy": "1234214",
       "downloadDrive": false,
       "driveLanguage": "jp"
+    },
+    "stockDownload": {
+      "usePexels": true,
+      "usePixabay": false,
+      "pexelsApiKey": "zJL0Yf2Bu3HDOja0huO7DVBCHGGP6Tf3Ew3YhqpVKekFNMO5ItUO8bdQ",
+      "pixabayApiKey": "",
+      "searchQuery": "city",
+      "maxVideos": "30",
+      "outputFolder": "D:\\test",
+      "orientation": "landscape",
+      "convert720": true,
+      "removeAudio": true,
+      "cut": true,
+      "trimSeconds": "3"
     },
     "videoSnow": {
       "inputFolder": "D:\\test\\line\\images_background",
@@ -81,5 +97,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-01-21T06:23:41.700Z"
+  "updatedAt": "2026-01-30T08:29:51.414Z"
 }

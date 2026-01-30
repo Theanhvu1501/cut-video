@@ -517,6 +517,21 @@ async function saveSettings() {
       downloadDrive: selectedDownloadDrive || false,
       driveLanguage: selectedDriveLanguage || "jp",
     },
+    // Stock Download (Pexels & Pixabay) settings
+    stockDownload: {
+      usePexels: document.getElementById("stock-use-pexels")?.checked ?? false,
+      usePixabay: document.getElementById("stock-use-pixabay")?.checked ?? false,
+      pexelsApiKey: document.getElementById("stock-pexels-api-key")?.value?.trim() || "",
+      pixabayApiKey: document.getElementById("stock-pixabay-api-key")?.value?.trim() || "",
+      searchQuery: document.getElementById("stock-search-query")?.value?.trim() || "",
+      maxVideos: document.getElementById("stock-max-videos")?.value || "30",
+      outputFolder: selectedStockOutputFolder || "",
+      orientation: document.getElementById("stock-orientation")?.value || "landscape",
+      convert720: document.getElementById("stock-convert-720")?.checked ?? true,
+      removeAudio: document.getElementById("stock-remove-audio")?.checked ?? true,
+      cut: document.getElementById("stock-cut")?.checked ?? false,
+      trimSeconds: document.getElementById("stock-trim-seconds")?.value || "3",
+    },
     // Video Snow settings
     videoSnow: {
       inputFolder: selectedVideoSnowInputFolder,
@@ -829,6 +844,69 @@ async function loadSettings() {
         if (languageSelect) {
           languageSelect.value = settings.download.driveLanguage;
         }
+      }
+    }
+
+    // Load Stock Download (Pexels & Pixabay) settings
+    if (settings.stockDownload) {
+      const sd = settings.stockDownload;
+      if (sd.usePexels !== undefined) {
+        const cb = document.getElementById("stock-use-pexels");
+        if (cb) {
+          cb.checked = sd.usePexels;
+          toggleStockPexels();
+        }
+      }
+      if (sd.usePixabay !== undefined) {
+        const cb = document.getElementById("stock-use-pixabay");
+        if (cb) {
+          cb.checked = sd.usePixabay;
+          toggleStockPixabay();
+        }
+      }
+      if (sd.pexelsApiKey !== undefined) {
+        const input = document.getElementById("stock-pexels-api-key");
+        if (input) input.value = sd.pexelsApiKey;
+      }
+      if (sd.pixabayApiKey !== undefined) {
+        const input = document.getElementById("stock-pixabay-api-key");
+        if (input) input.value = sd.pixabayApiKey;
+      }
+      if (sd.searchQuery !== undefined) {
+        const input = document.getElementById("stock-search-query");
+        if (input) input.value = sd.searchQuery;
+      }
+      if (sd.maxVideos !== undefined) {
+        const input = document.getElementById("stock-max-videos");
+        if (input) input.value = sd.maxVideos;
+      }
+      if (sd.outputFolder) {
+        selectedStockOutputFolder = sd.outputFolder;
+        const input = document.getElementById("stock-output-folder");
+        if (input) input.value = sd.outputFolder;
+      }
+      if (sd.orientation !== undefined) {
+        const sel = document.getElementById("stock-orientation");
+        if (sel) sel.value = sd.orientation;
+      }
+      if (sd.convert720 !== undefined) {
+        const el = document.getElementById("stock-convert-720");
+        if (el) el.checked = sd.convert720;
+      }
+      if (sd.removeAudio !== undefined) {
+        const el = document.getElementById("stock-remove-audio");
+        if (el) el.checked = sd.removeAudio;
+      }
+      if (sd.cut !== undefined) {
+        const el = document.getElementById("stock-cut");
+        if (el) {
+          el.checked = sd.cut;
+          toggleStockCut();
+        }
+      }
+      if (sd.trimSeconds !== undefined) {
+        const el = document.getElementById("stock-trim-seconds");
+        if (el) el.value = sd.trimSeconds;
       }
     }
 
@@ -1455,6 +1533,21 @@ async function saveCurrentProjectSettings() {
         downloadDrive: selectedDownloadDrive || false,
         driveLanguage: selectedDriveLanguage || "auto",
       },
+      // Stock Download (Pexels & Pixabay) settings
+      stockDownload: {
+        usePexels: document.getElementById("stock-use-pexels")?.checked ?? false,
+        usePixabay: document.getElementById("stock-use-pixabay")?.checked ?? false,
+        pexelsApiKey: document.getElementById("stock-pexels-api-key")?.value?.trim() || "",
+        pixabayApiKey: document.getElementById("stock-pixabay-api-key")?.value?.trim() || "",
+        searchQuery: document.getElementById("stock-search-query")?.value?.trim() || "",
+        maxVideos: document.getElementById("stock-max-videos")?.value || "30",
+        outputFolder: selectedStockOutputFolder || "",
+        orientation: document.getElementById("stock-orientation")?.value || "landscape",
+        convert720: document.getElementById("stock-convert-720")?.checked ?? true,
+        removeAudio: document.getElementById("stock-remove-audio")?.checked ?? true,
+        cut: document.getElementById("stock-cut")?.checked ?? false,
+        trimSeconds: document.getElementById("stock-trim-seconds")?.value || "3",
+      },
       // Video Snow settings
       videoSnow: {
         inputFolder: selectedVideoSnowInputFolder,
@@ -1579,6 +1672,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     "trim-start-time",
     "trim-duration",
     "download-proxy", // Thêm proxy input để tự động lưu khi thay đổi
+    "stock-search-query",
+    "stock-max-videos",
+    "stock-orientation",
+    "stock-pexels-api-key",
+    "stock-pixabay-api-key",
+    "stock-trim-seconds",
   ];
 
   inputsToWatch.forEach((id) => {
@@ -1595,6 +1694,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     "render-keepcolor-crop",
     "render-keepcolor-add-dark-layer",
     "concat-use-thumbs",
+    "stock-use-pexels",
+    "stock-use-pixabay",
+    "stock-convert-720",
+    "stock-remove-audio",
+    "stock-cut",
   ];
 
   checkboxesToWatch.forEach((id) => {
@@ -1607,6 +1711,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (id === "render-use-gpu") {
           handleGpuToggle();
         }
+        if (id === "stock-use-pexels") toggleStockPexels();
+        if (id === "stock-use-pixabay") toggleStockPixabay();
+        if (id === "stock-cut") toggleStockCut();
       });
     }
   });
@@ -2032,6 +2139,7 @@ let selectedDownloadCookiesFile = null;
 let selectedDownloadProxy = null;
 let selectedDownloadDrive = false;
 let selectedDriveLanguage = "jp"; // Mặc định là tiếng Nhật
+let selectedStockOutputFolder = null;
 
 async function selectDownloadFile() {
   if (!checkElectronAPI()) return;
@@ -2392,6 +2500,91 @@ async function runRetry() {
     showOutput("download", "\n\n✅ Hoàn thành!");
   } catch (error) {
     showOutput("download", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
+  }
+}
+
+// Stock Download (Pexels & Pixabay)
+function toggleStockPexels() {
+  const use = document.getElementById("stock-use-pexels")?.checked;
+  const group = document.getElementById("stock-pexels-api-group");
+  if (group) group.style.display = use ? "block" : "none";
+}
+
+function toggleStockPixabay() {
+  const use = document.getElementById("stock-use-pixabay")?.checked;
+  const group = document.getElementById("stock-pixabay-api-group");
+  if (group) group.style.display = use ? "block" : "none";
+}
+
+function toggleStockCut() {
+  const cut = document.getElementById("stock-cut")?.checked;
+  const group = document.getElementById("stock-trim-seconds-group");
+  if (group) group.style.display = cut ? "block" : "none";
+}
+
+async function selectStockOutputFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) {
+    selectedStockOutputFolder = folder;
+    document.getElementById("stock-output-folder").value = folder;
+    saveSettings();
+  }
+}
+
+async function runStockDownload() {
+  if (!checkElectronAPI()) return;
+
+  const usePexels = document.getElementById("stock-use-pexels")?.checked ?? false;
+  const usePixabay = document.getElementById("stock-use-pixabay")?.checked ?? false;
+  if (!usePexels && !usePixabay) {
+    alert("Chọn ít nhất một nguồn: Pexels hoặc Pixabay.");
+    return;
+  }
+  if (usePexels && !document.getElementById("stock-pexels-api-key")?.value?.trim()) {
+    alert("Bật Pexels cần nhập API key Pexels.");
+    return;
+  }
+  if (usePixabay && !document.getElementById("stock-pixabay-api-key")?.value?.trim()) {
+    alert("Bật Pixabay cần nhập API key Pixabay.");
+    return;
+  }
+  const query = document.getElementById("stock-search-query")?.value?.trim();
+  if (!query) {
+    alert("Nhập từ khóa tìm kiếm (Search query).");
+    return;
+  }
+  const maxVideos = parseInt(document.getElementById("stock-max-videos")?.value || "30", 10) || 30;
+  const outFolder = selectedStockOutputFolder || "";
+
+  clearOutput("stock-download");
+  showOutput("stock-download", "🚀 Đang tải video từ Pexels/Pixabay...\n\n");
+
+  const cut = document.getElementById("stock-cut")?.checked ?? false;
+  const trimSeconds = cut ? (parseInt(document.getElementById("stock-trim-seconds")?.value || "3", 10) || 3) : 0;
+  const env = {
+    STOCK_USE_PEXELS: usePexels ? "1" : "0",
+    STOCK_USE_PIXABAY: usePixabay ? "1" : "0",
+    STOCK_PEXELS_API_KEY: usePexels ? (document.getElementById("stock-pexels-api-key")?.value?.trim() || "") : "",
+    STOCK_PIXABAY_API_KEY: usePixabay ? (document.getElementById("stock-pixabay-api-key")?.value?.trim() || "") : "",
+    STOCK_QUERY: query,
+    STOCK_MAX_VIDEOS: String(maxVideos),
+    STOCK_OUT_DIR: outFolder || "",
+    STOCK_ORIENTATION: document.getElementById("stock-orientation")?.value || "landscape",
+    STOCK_CONVERT_720: document.getElementById("stock-convert-720")?.checked ? "1" : "0",
+    STOCK_REMOVE_AUDIO: document.getElementById("stock-remove-audio")?.checked ? "1" : "0",
+    STOCK_TRIM_SECONDS: String(trimSeconds),
+  };
+
+  try {
+    window.electronAPI.removeScriptOutputListener();
+    window.electronAPI.onScriptOutput((data) => {
+      showOutput("stock-download", data);
+    });
+    await window.electronAPI.runScript("stockDownloader.js", [], { env });
+    showOutput("stock-download", "\n\n✅ Hoàn thành!");
+  } catch (error) {
+    showOutput("stock-download", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
   }
 }
 
@@ -3199,6 +3392,36 @@ const helpContents = {
       <ul>
         <li>Tên file sẽ được chuẩn hóa để phù hợp với video tương ứng</li>
         <li>Chức năng này sẽ xử lý tất cả các ảnh trong folder và các folder con</li>
+      </ul>
+    `,
+  },
+  "stock-download": {
+    title: "Hướng dẫn Tải video Pexels & Pixabay",
+    content: `
+      <h4>📋 Chức năng:</h4>
+      <p>Tải video stock từ Pexels và/hoặc Pixabay theo từ khóa tìm kiếm. Có thể chọn một hoặc cả hai nguồn.</p>
+      
+      <h4>🔧 Các bước sử dụng:</h4>
+      <ul>
+        <li><strong>Tải từ Pexels:</strong> Tích vào ô "Tải từ Pexels" và nhập API key (lấy tại <a href="https://www.pexels.com/api/" target="_blank" rel="noopener">pexels.com/api</a>).</li>
+        <li><strong>Tải từ Pixabay:</strong> Tích vào ô "Tải từ Pixabay" và nhập API key (lấy tại <a href="https://pixabay.com/api/docs/" target="_blank" rel="noopener">pixabay.com/api/docs</a>).</li>
+        <li><strong>Từ khóa tìm kiếm:</strong> Nhập từ khóa tiếng Anh (ví dụ: nature, ocean, city).</li>
+        <li><strong>Số lượng video:</strong> Số video cần tải (tổng từ cả hai nguồn nếu chọn cả Pexels và Pixabay).</li>
+        <li><strong>Folder lưu video:</strong> Chọn thư mục lưu. Nếu để trống, video sẽ lưu vào thư mục mặc định.</li>
+        <li><strong>Hướng video:</strong> Landscape (ngang), Portrait (dọc), hoặc Square (vuông).</li>
+      </ul>
+      
+      <h4>Xử lý video sau khi tải:</h4>
+      <ul>
+        <li><strong>Convert về 720p:</strong> Bật để chuyển video về độ phân giải 720p; tắt thì giữ nguyên gốc.</li>
+        <li><strong>Xóa âm thanh:</strong> Bật để bỏ track âm thanh; tắt thì giữ nguyên.</li>
+        <li><strong>Cắt video:</strong> Bật để chỉ lấy N giây đầu; nhập số giây cần cắt. Tắt thì giữ full video.</li>
+      </ul>
+      
+      <h4>💡 Lưu ý:</h4>
+      <ul>
+        <li>Chọn ít nhất một nguồn (Pexels hoặc Pixabay). Có thể tích cả hai để tải từ cả hai nguồn.</li>
+        <li>API key được lưu trong cấu hình dự án, không gửi lên server nào khác.</li>
       </ul>
     `,
   },

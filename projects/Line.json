@@ -34,6 +34,20 @@
       "downloadDrive": false,
       "driveLanguage": "jp"
     },
+    "stockDownload": {
+      "usePexels": true,
+      "usePixabay": false,
+      "pexelsApiKey": "zJL0Yf2Bu3HDOja0huO7DVBCHGGP6Tf3Ew3YhqpVKekFNMO5ItUO8bdQ",
+      "pixabayApiKey": "",
+      "searchQuery": "city",
+      "maxVideos": "30",
+      "outputFolder": "D:\\test",
+      "orientation": "landscape",
+      "convert720": true,
+      "removeAudio": true,
+      "cut": true,
+      "trimSeconds": "3"
+    },
     "videoSnow": {
       "inputFolder": "D:\\test\\line\\images_background",
       "outputFolder": "D:\\test\\line\\output_segments",
@@ -81,5 +95,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-01-21T07:38:06.668Z"
+  "updatedAt": "2026-01-30T06:41:52.811Z"
 }

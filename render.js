@@ -1,4 +1,3 @@
-import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
 import { spawn } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
@@ -48,7 +47,7 @@ const updateProgress = () => {
   if (totalVideosToProcess > 0) {
     const percent = Math.round((processedVideos / totalVideosToProcess) * 100);
     process.stdout.write(
-      `\rTiến độ: ${processedVideos}/${totalVideosToProcess} videos (${percent}%) - Lỗi: ${errorVideos}`
+      `\rTiến độ: ${processedVideos}/${totalVideosToProcess} videos (${percent}%) - Lỗi: ${errorVideos}`,
     );
   }
 };
@@ -83,7 +82,7 @@ try {
   });
   log(
     `Đã lưu currentDay (${currentDay}) vào file: ${currentDayFile}`,
-    LOG_LEVEL.INFO
+    LOG_LEVEL.INFO,
   );
 } catch (error) {
   log(`Lỗi khi ghi currentDay vào file: ${error.message}`, LOG_LEVEL.ERROR);
@@ -95,14 +94,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Cấu hình FFmpeg - sử dụng @ffmpeg-installer như code cũ
-ffmpeg.setFfmpegPath(ffmpegPath);
+const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+ffmpeg.setFfmpegPath(FFMPEG_PATH);
 
 // Cấu hình FFprobe - sử dụng từ thư mục bin
 const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
 ffmpeg.setFfprobePath(FFPROBE_PATH);
-
-// Giữ FFMPEG_PATH cho các hàm khác nếu cần
-const FFMPEG_PATH = ffmpegPath;
 
 // Hàm kiểm tra FFmpeg có hỗ trợ GPU encoder không
 const checkGpuSupport = async (codec) => {
@@ -123,7 +120,7 @@ const checkGpuSupport = async (codec) => {
       if (!hasSupport) {
         log(
           `⚠️ FFmpeg không hỗ trợ codec ${codec}. Kiểm tra: ffmpeg -encoders | grep ${codec}`,
-          LOG_LEVEL.WARN
+          LOG_LEVEL.WARN,
         );
       }
       resolve(hasSupport);
@@ -157,23 +154,26 @@ const detectGpuCodec = async () => {
         resolve("h264_nvenc");
         return;
       }
-      
+
       // Kiểm tra Intel QuickSync
       if (output.includes("h264_qsv")) {
         log("✅ Phát hiện GPU: Intel QuickSync (h264_qsv)", LOG_LEVEL.INFO);
         resolve("h264_qsv");
         return;
       }
-      
+
       // Kiểm tra AMD AMF
       if (output.includes("h264_amf")) {
         log("✅ Phát hiện GPU: AMD AMF (h264_amf)", LOG_LEVEL.INFO);
         resolve("h264_amf");
         return;
       }
-      
+
       // Không tìm thấy GPU encoder nào
-      log("⚠️ Không phát hiện GPU encoder nào. Sẽ sử dụng CPU (libx264)", LOG_LEVEL.WARN);
+      log(
+        "⚠️ Không phát hiện GPU encoder nào. Sẽ sử dụng CPU (libx264)",
+        LOG_LEVEL.WARN,
+      );
       resolve(null);
     });
 
@@ -229,7 +229,10 @@ let config = null;
 if (process.env.RENDER_CONFIG_JSON) {
   try {
     config = JSON.parse(process.env.RENDER_CONFIG_JSON);
-    log(`Đã đọc config từ RENDER_CONFIG_JSON (jobId: ${process.env.RENDER_JOB_ID || 'N/A'})`, LOG_LEVEL.INFO);
+    log(
+      `Đã đọc config từ RENDER_CONFIG_JSON (jobId: ${process.env.RENDER_JOB_ID || "N/A"})`,
+      LOG_LEVEL.INFO,
+    );
   } catch (error) {
     log(`Lỗi khi parse RENDER_CONFIG_JSON: ${error.message}`, LOG_LEVEL.ERROR);
   }
@@ -238,7 +241,8 @@ if (process.env.RENDER_CONFIG_JSON) {
 // Nếu không có RENDER_CONFIG_JSON, đọc từ project JSON
 if (!config) {
   const projectName = process.env.PROJECT_NAME || "default";
-  const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+  const projectsDir =
+    process.env.PROJECTS_DIR || path.join(__dirname, "projects");
   const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
 
   if (fs.existsSync(projectConfigPath)) {
@@ -272,8 +276,7 @@ if (config) {
   if (config.keepColorColors && Array.isArray(config.keepColorColors)) {
     keepColorsList = config.keepColorColors;
   }
-  if (config.keepColorCrop !== undefined)
-    keepColorCrop = config.keepColorCrop;
+  if (config.keepColorCrop !== undefined) keepColorCrop = config.keepColorCrop;
   if (config.keepColorHeight !== undefined)
     keepColorHeight = parseInt(config.keepColorHeight) || 220;
   if (config.keepColorYOffset !== undefined)
@@ -370,7 +373,7 @@ const readChromaKeyColors = () => {
   if (chromaKeyMode !== "file") {
     log(
       `Chế độ Chroma Key là "color", không đọc file. Sử dụng màu: #${color}`,
-      LOG_LEVEL.DEBUG
+      LOG_LEVEL.DEBUG,
     );
     return colors; // Trả về mảng rỗng khi dùng màu
   }
@@ -389,19 +392,19 @@ const readChromaKeyColors = () => {
         } else {
           log(
             `Định dạng màu không hợp lệ trong file ${chromaKeyFile}: ${line}`,
-            LOG_LEVEL.WARN
+            LOG_LEVEL.WARN,
           );
         }
       }
 
       log(
         `Đã đọc ${colors.length} màu chroma key từ file ${chromaKeyFile}`,
-        LOG_LEVEL.DEBUG
+        LOG_LEVEL.DEBUG,
       );
     } else {
       log(
         `Không tìm thấy file ${chromaKeyFile}, sẽ sử dụng màu mặc định: #${color}`,
-        LOG_LEVEL.DEBUG
+        LOG_LEVEL.DEBUG,
       );
     }
   } catch (error) {
@@ -428,7 +431,7 @@ const complexFilterChromaKey = (inputOverlay) => {
   // Chỉ check file khi mode là "file"
   if (chromaKeyMode === "file") {
     const overlayIndex = overlayFiles.findIndex(
-      (file) => file === inputOverlay
+      (file) => file === inputOverlay,
     );
     if (overlayIndex >= 0 && overlayIndex < chromaKeyColors.length) {
       videoColor = chromaKeyColors[overlayIndex];
@@ -520,7 +523,7 @@ const complexFilterKeepColor = () => {
     const cleanHex = hexColor.replace("#", "");
 
     filters.push(
-      `[src_${index}_detect]colorkey=0x${cleanHex}:${similarity}:0.1,alphaextract,negate${maskName}`
+      `[src_${index}_detect]colorkey=0x${cleanHex}:${similarity}:0.1,alphaextract,negate${maskName}`,
     );
     maskNames.push(maskName);
   });
@@ -532,7 +535,7 @@ const complexFilterKeepColor = () => {
     const combinedMaskName = `[combined_mask_${i}]`;
     // Sử dụng blend mode 'max' hoặc 'lighten' để gộp các vùng trắng
     filters.push(
-      `${currentMask}${nextMask}blend=all_expr='max(A,B)'${combinedMaskName}`
+      `${currentMask}${nextMask}blend=all_expr='max(A,B)'${combinedMaskName}`,
     );
     currentMask = combinedMaskName;
   }
@@ -550,13 +553,10 @@ const complexFilterKeepColor = () => {
       `${blackFilter},geq=r=0:g=0:b=0:a=300,format=yuva420p[black_layer]`,
       // Overlay lớp đen lên background trước, sau đó overlay video keepColor lên trên
       `[0:v][black_layer]overlay=0:H-h:shortest=1[bg_with_black]`,
-      `[bg_with_black][final_isolated]overlay=0:H-h:shortest=1[combined_video]`
+      `[bg_with_black][final_isolated]overlay=0:H-h:shortest=1[combined_video]`,
     );
-    
-    return [
-      filters.join(";"),
-      "[1:a]volume=1.0[overlay_audio]",
-    ];
+
+    return [filters.join(";"), "[1:a]volume=1.0[overlay_audio]"];
   }
 
   return [
@@ -574,7 +574,7 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       if (err) {
         log(
           `Lỗi khi lấy metadata video overlay: ${err.message}`,
-          LOG_LEVEL.ERROR
+          LOG_LEVEL.ERROR,
         );
 
         processedVideos++;
@@ -589,38 +589,38 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       if (renderMode === "keepColor") {
         log(
           `🎨 Sử dụng chế độ GIỮ MÀU (Keep Colors) cho ${path.basename(
-            outputPath
+            outputPath,
           )}`,
-          LOG_LEVEL.DEBUG
+          LOG_LEVEL.DEBUG,
         );
         filterConfig = complexFilterKeepColor();
       } else if (renderMode === "topTransparent") {
         log(
           `✨ Sử dụng chế độ đè lớp phủ trong suốt cho ${path.basename(
-            outputPath
+            outputPath,
           )}`,
-          LOG_LEVEL.DEBUG
+          LOG_LEVEL.DEBUG,
         );
         filterConfig = complexFilterTopTransparent();
       } else if (renderMode === "chromaKey") {
         log(
           `🎨 Sử dụng chế độ Chroma Key cho ${path.basename(outputPath)}`,
-          LOG_LEVEL.DEBUG
+          LOG_LEVEL.DEBUG,
         );
         filterConfig = complexFilterChromaKey(inputOverlay);
       } else if (renderMode === "crop") {
         log(
           `✂️ Sử dụng chế độ Crop cho ${path.basename(outputPath)}`,
-          LOG_LEVEL.DEBUG
+          LOG_LEVEL.DEBUG,
         );
         filterConfig = complexFilterCrop();
       } else {
         // Default to topTransparent if mode is invalid
         log(
           `⚠️ Mode không hợp lệ (${renderMode}), sử dụng Top Transparent cho ${path.basename(
-            outputPath
+            outputPath,
           )}`,
-          LOG_LEVEL.WARN
+          LOG_LEVEL.WARN,
         );
         filterConfig = complexFilterTopTransparent();
       }
@@ -648,24 +648,29 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       if (useGPU) {
         log(
           `🚀 Sử dụng GPU (${gpuVideoCodec}) để render ${path.basename(
-            outputPath
+            outputPath,
           )}`,
-          LOG_LEVEL.DEBUG
+          LOG_LEVEL.DEBUG,
         );
 
         // Cấu hình GPU giống code cũ đã chạy được
         if (gpuVideoCodec.includes("nvenc")) {
-          // NVIDIA NVENC - dùng cấu hình giống code cũ
+          // NVIDIA NVENC - Bỏ preset để tự động tương thích mọi Driver
           command.videoCodec(gpuVideoCodec).outputOptions([
-            "-pix_fmt yuv420p", // Chuẩn màu
-            `-r ${FIXED_FPS}`, // FPS cố định
-            `-g ${FIXED_GOP}`, // Khoảng cách Keyframe
-            `-keyint_min ${FIXED_GOP}`, // Ép cứng Keyframe
-            "-sc_threshold 0", // Tắt phát hiện cảnh
-            "-preset fast", // Tốc độ render (giống code cũ)
-            `-cq:v ${VIDEO_QUALITY}`, // Chất lượng
-            "-rc:v vbr", // Bitrate biến thiên
-            "-movflags +faststart", // Hỗ trợ xem nhanh/web
+            "-pix_fmt yuv420p",
+            `-r ${FIXED_FPS}`,
+            `-g ${FIXED_GOP}`,
+            `-keyint_min ${FIXED_GOP}`,
+            "-sc_threshold 0",
+
+            // BỎ HẲN -preset fast Ở ĐÂY (NVIDIA sẽ tự lo)
+
+            // Cấu hình Rate Control chuẩn cho cả Cũ lẫn Mới
+            "-rc:v vbr",
+            `-cq:v ${VIDEO_QUALITY}`,
+            "-b:v 0", // BẮT BUỘC PHẢI THÊM DÒNG NÀY: Để driver mới không bị bóp băng thông gây mờ video
+
+            "-movflags +faststart",
           ]);
         } else if (gpuVideoCodec.includes("qsv")) {
           // Intel QuickSync
@@ -701,7 +706,7 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
         // Cấu hình CPU cũ
         log(
           `🐌 Sử dụng CPU (ultrafast) để render ${path.basename(outputPath)}`,
-          LOG_LEVEL.DEBUG
+          LOG_LEVEL.DEBUG,
         );
         command
           .videoCodec("libx264")
@@ -742,7 +747,7 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
               (endTime - startTime) /
               1000
             ).toFixed(2)}s`,
-            LOG_LEVEL.DEBUG
+            LOG_LEVEL.DEBUG,
           );
           processedVideos++;
           updateProgress();
@@ -754,9 +759,9 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
 
           log(
             `❌ Lỗi khi xử lý video ${path.basename(
-              outputPath
+              outputPath,
             )}: ${errorDetails}`,
-            LOG_LEVEL.ERROR
+            LOG_LEVEL.ERROR,
           );
           log(`❌ Exit code: ${exitCode}`, LOG_LEVEL.ERROR);
 
@@ -776,27 +781,27 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
           ) {
             if (ffmpegStderr.includes("minimum required Nvidia driver")) {
               const driverMatch = ffmpegStderr.match(
-                /minimum required Nvidia driver for nvenc is ([\d.]+)/
+                /minimum required Nvidia driver for nvenc is ([\d.]+)/,
               );
               if (driverMatch) {
                 log(
                   `❌ Driver NVIDIA quá cũ! Cần driver ${driverMatch[1]} hoặc mới hơn.`,
-                  LOG_LEVEL.ERROR
+                  LOG_LEVEL.ERROR,
                 );
                 log(
                   `💡 Giải pháp: Cập nhật driver NVIDIA từ https://www.nvidia.com/drivers hoặc tắt useGPU để dùng CPU.`,
-                  LOG_LEVEL.ERROR
+                  LOG_LEVEL.ERROR,
                 );
               } else {
                 log(
                   `❌ Driver NVIDIA không hỗ trợ NVENC. Cần cập nhật driver NVIDIA.`,
-                  LOG_LEVEL.ERROR
+                  LOG_LEVEL.ERROR,
                 );
               }
             } else {
               log(
                 `💡 Gợi ý: Có thể GPU không khả dụng hoặc FFmpeg không hỗ trợ GPU. Thử tắt useGPU hoặc kiểm tra driver NVIDIA.`,
-                LOG_LEVEL.ERROR
+                LOG_LEVEL.ERROR,
               );
             }
           }
@@ -822,19 +827,22 @@ const processAllVideos = async () => {
       const detectedCodec = await detectGpuCodec();
       if (detectedCodec) {
         gpuVideoCodec = detectedCodec;
-        log(`✅ Đã tự động phát hiện GPU codec: ${gpuVideoCodec}`, LOG_LEVEL.INFO);
+        log(
+          `✅ Đã tự động phát hiện GPU codec: ${gpuVideoCodec}`,
+          LOG_LEVEL.INFO,
+        );
       } else {
         log(`⚠️ Không phát hiện GPU encoder, sẽ sử dụng CPU`, LOG_LEVEL.WARN);
         useGPU = false; // Tắt GPU nếu không phát hiện được
       }
     }
-    
+
     // 1. Kiểm tra video overlay
     const totalOverlays = overlayFiles.length;
     if (totalOverlays === 0) {
       log(
         "❌ Không tìm thấy video overlay nào trong thư mục overlays!",
-        LOG_LEVEL.ERROR
+        LOG_LEVEL.ERROR,
       );
       return;
     }
@@ -845,7 +853,7 @@ const processAllVideos = async () => {
       const combinedVideosFolders = fs
         .readdirSync(combinedVideosFolder)
         .filter((folder) =>
-          fs.lstatSync(path.join(combinedVideosFolder, folder)).isDirectory()
+          fs.lstatSync(path.join(combinedVideosFolder, folder)).isDirectory(),
         );
       totalVideoBackgrounds = combinedVideosFolders.length;
       log(`Sử dụng video từ thư mục combined_videos`, LOG_LEVEL.INFO);
@@ -853,7 +861,7 @@ const processAllVideos = async () => {
       const backgroundFolders = fs
         .readdirSync(backgroundFolder)
         .filter((folder) =>
-          fs.lstatSync(path.join(backgroundFolder, folder)).isDirectory()
+          fs.lstatSync(path.join(backgroundFolder, folder)).isDirectory(),
         );
       totalVideoBackgrounds = backgroundFolders.length;
       log(`Sử dụng video từ thư mục backgrounds`, LOG_LEVEL.INFO);
@@ -868,11 +876,11 @@ const processAllVideos = async () => {
     // 4. Hiển thị thông tin tổng quan về quá trình xử lý
     log(
       `🚀 Bắt đầu xử lý với ${totalOverlays} video overlay và ${totalVideoBackgrounds} thư mục background`,
-      LOG_LEVEL.INFO
+      LOG_LEVEL.INFO,
     );
     log(
       `📅 Ngày hiện tại: ${currentDay}, Số video mỗi folder: ${videosPerFolder}`,
-      LOG_LEVEL.INFO
+      LOG_LEVEL.INFO,
     );
 
     // 5. Tính tổng số video sẽ xử lý
@@ -880,7 +888,7 @@ const processAllVideos = async () => {
     log(`Tổng số video sẽ xử lý: ${totalVideosToProcess}`, LOG_LEVEL.INFO);
     log(
       `Xử lý tối đa ${maxConcurrentProcesses} video cùng lúc`,
-      LOG_LEVEL.INFO
+      LOG_LEVEL.INFO,
     );
 
     // 6. Xử lý từng folder background
@@ -901,13 +909,13 @@ const processAllVideos = async () => {
         // Sử dụng video từ combined_videos
         const combinedVideosFolderPath = path.join(
           combinedVideosFolder,
-          folderName
+          folderName,
         );
         backgroundFiles = getFilesFromFolder(combinedVideosFolderPath);
         totalBackgroundsForFolder = backgroundFiles.length;
         log(
           `Sử dụng ${totalBackgroundsForFolder} video từ thư mục combined_videos/${folderName}`,
-          LOG_LEVEL.INFO
+          LOG_LEVEL.INFO,
         );
       } else {
         // Sử dụng video từ backgrounds
@@ -916,7 +924,7 @@ const processAllVideos = async () => {
         totalBackgroundsForFolder = backgroundFiles.length;
         log(
           `Sử dụng ${totalBackgroundsForFolder} video từ thư mục backgrounds/${folderName}`,
-          LOG_LEVEL.INFO
+          LOG_LEVEL.INFO,
         );
       }
 
@@ -924,7 +932,7 @@ const processAllVideos = async () => {
       if (totalBackgroundsForFolder === 0) {
         log(
           `❌ Không có file background nào cho folder ${folderName}`,
-          LOG_LEVEL.ERROR
+          LOG_LEVEL.ERROR,
         );
         // Bỏ qua folder này và cập nhật số lượng video đã xử lý
         processedVideos += videosPerFolder;
@@ -937,7 +945,7 @@ const processAllVideos = async () => {
         `📁 Đang xử lý folder ${folderName} (${
           i + 1
         }/${totalVideoBackgrounds})`,
-        LOG_LEVEL.INFO
+        LOG_LEVEL.INFO,
       );
 
       // 9. Tính vị trí bắt đầu cho ngày hiện tại
@@ -950,7 +958,7 @@ const processAllVideos = async () => {
       for (let j = 0; j < videosPerFolder; j++) {
         const overlayIndex = (startIndex + j) % totalOverlays;
         const backgroundIndex = Math.floor(
-          Math.random() * totalBackgroundsForFolder
+          Math.random() * totalBackgroundsForFolder,
         );
 
         const overlay = overlayFiles[overlayIndex];
@@ -962,7 +970,7 @@ const processAllVideos = async () => {
         if (fs.existsSync(outputPath)) {
           log(
             `👉 Video đã tồn tại, bỏ qua: ${path.basename(outputPath)}`,
-            LOG_LEVEL.INFO // Hoặc DEBUG nếu bạn không muốn thấy quá nhiều log
+            LOG_LEVEL.INFO, // Hoặc DEBUG nếu bạn không muốn thấy quá nhiều log
           );
           processedVideos++; // Vẫn tăng biến này để hiển thị đúng tiến độ
           updateProgress();
@@ -971,9 +979,9 @@ const processAllVideos = async () => {
 
         log(
           `🎬 Chuẩn bị video ${j + 1}/${videosPerFolder}: ${path.basename(
-            overlay
+            overlay,
           )}`,
-          LOG_LEVEL.DEBUG
+          LOG_LEVEL.DEBUG,
         );
 
         tasks.push({
@@ -991,9 +999,9 @@ const processAllVideos = async () => {
               (error) => {
                 // Lỗi đã được xử lý trong hàm processVideo
                 log(`Lỗi xử lý video: ${error.message}`, LOG_LEVEL.ERROR);
-              }
-            )
-          )
+              },
+            ),
+          ),
         );
       };
 
@@ -1071,7 +1079,7 @@ const deleteVpsFiles = () => {
     } catch (error) {
       log(
         `Lỗi khi xóa file trên VPS ${vpsName}: ${error.message}`,
-        LOG_LEVEL.ERROR
+        LOG_LEVEL.ERROR,
       );
     }
   }

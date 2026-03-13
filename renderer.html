@@ -1030,13 +1030,49 @@
         align-items: stretch;
       }
 
-      .folder-select input {
+      .folder-input-wrap {
         flex: 1;
+        position: relative;
+        display: flex;
+      }
+
+      .folder-input-wrap input {
+        flex: 1;
+        padding-right: 32px;
       }
 
       .folder-select .btn {
         flex-shrink: 0;
         min-width: 120px;
+      }
+
+      .folder-clear {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(148, 163, 184, 0.2);
+        color: #9ca3af;
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+      }
+
+      .folder-clear:hover {
+        background: rgba(148, 163, 184, 0.35);
+        color: #e5e7eb;
+      }
+
+      .folder-input-wrap:hover .folder-clear {
+        display: flex;
       }
 
       .btn {
@@ -1854,12 +1890,22 @@
           <div class="form-group">
             <label>Folder Overlay (video đầu vào):</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="render-overlay-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./overlays"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="render-overlay-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./overlays"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearRenderOverlayFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectRenderOverlayFolder()"
@@ -1876,12 +1922,22 @@
           <div class="form-group">
             <label>Folder Background:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="render-background-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="render-background-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearRenderBackgroundFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectRenderBackgroundFolder()"
@@ -1898,12 +1954,22 @@
           <div class="form-group">
             <label>Folder Output:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="render-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./done"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="render-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./done"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearRenderOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectRenderOutputFolder()"
@@ -2029,12 +2095,22 @@
                 >
                   <label>File chromaKey.txt:</label>
                   <div class="folder-select">
-                    <input
-                      type="text"
-                      id="render-chromakey-file"
-                      placeholder="Chọn file hoặc để trống dùng ./chromaKey.txt"
-                      readonly
-                    />
+                    <div class="folder-input-wrap">
+                      <input
+                        type="text"
+                        id="render-chromakey-file"
+                        placeholder="Chọn file hoặc để trống dùng ./chromaKey.txt"
+                        readonly
+                      />
+                      <button
+                        class="folder-clear"
+                        type="button"
+                        title="Xóa file đã chọn"
+                        onclick="clearRenderChromaKeyFile()"
+                      >
+                        ×
+                      </button>
+                    </div>
                     <button
                       class="btn btn-secondary"
                       onclick="selectRenderChromaKeyFile()"
@@ -2298,12 +2374,22 @@
           <div class="form-group">
             <label>File URLs (urls.txt):</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="download-urls-file"
-                placeholder="Chọn file urls.txt hoặc để trống dùng ./urls.txt"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="download-urls-file"
+                  placeholder="Chọn file urls.txt hoặc để trống dùng ./urls.txt"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa file đã chọn"
+                  onclick="clearDownloadUrlsFile()"
+                >
+                  ×
+                </button>
+              </div>
               <button class="btn btn-secondary" onclick="selectDownloadFile()">
                 Chọn File
               </button>
@@ -2317,12 +2403,22 @@
           <div class="form-group">
             <label>Folder tải về:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="download-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./overlays"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="download-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./overlays"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearDownloadOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectDownloadOutputFolder()"
@@ -2339,12 +2435,22 @@
           <div class="form-group">
             <label>Folder ảnh overlay:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="download-overlay-images-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./images"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="download-overlay-images-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./images"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearDownloadOverlayImagesFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectDownloadOverlayImagesFolder()"
@@ -2361,12 +2467,22 @@
           <div class="form-group">
             <label>Folder output thumbs:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="download-thumbs-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./thumbs"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="download-thumbs-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./thumbs"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearDownloadThumbsFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectDownloadThumbsFolder()"
@@ -2383,12 +2499,22 @@
           <div class="form-group">
             <label>File cookies.txt:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="download-cookies-file"
-                placeholder="Chọn file cookies.txt hoặc để trống dùng ./cookies.txt"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="download-cookies-file"
+                  placeholder="Chọn file cookies.txt hoặc để trống dùng ./cookies.txt"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa file đã chọn"
+                  onclick="clearDownloadCookiesFile()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectDownloadCookiesFile()"
@@ -2562,12 +2688,22 @@
           <div class="form-group">
             <label>Folder lưu video:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="stock-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./stock_videos"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="stock-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./stock_videos"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearStockOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button class="btn btn-secondary" onclick="selectStockOutputFolder()">
                 Chọn Folder
               </button>
@@ -2634,12 +2770,22 @@
           <div class="form-group">
             <label>Folder ảnh input:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="video-snow-input-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./image_backgrounds"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="video-snow-input-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./image_backgrounds"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearVideoSnowInputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectVideoSnowInputFolder()"
@@ -2656,12 +2802,22 @@
           <div class="form-group">
             <label>Folder output:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="video-snow-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./output_segments"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="video-snow-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./output_segments"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearVideoSnowOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectVideoSnowOutputFolder()"
@@ -2678,12 +2834,22 @@
           <div class="form-group">
             <label>File Snow Video (snow1.mp4):</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="video-snow-snow-file"
-                placeholder="Chọn file hoặc để trống dùng ./snow1.mp4"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="video-snow-snow-file"
+                  placeholder="Chọn file hoặc để trống dùng ./snow1.mp4"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa file đã chọn"
+                  onclick="clearVideoSnowSnowFile()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectVideoSnowSnowFile()"
@@ -2757,12 +2923,22 @@
           <div class="form-group">
             <label>Folder input segments:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="bg-input-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./output_segments"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="bg-input-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./output_segments"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearBgInputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button class="btn btn-secondary" onclick="selectBgInputFolder()">
                 Chọn Folder
               </button>
@@ -2776,12 +2952,22 @@
           <div class="form-group">
             <label>Folder output:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="bg-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="bg-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearBgOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectBgOutputFolder()"
@@ -2832,12 +3018,22 @@
           <div class="form-group">
             <label>Folder input:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="trim-input-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./overlays"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="trim-input-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./overlays"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearTrimInputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectTrimInputFolder()"
@@ -2854,12 +3050,22 @@
           <div class="form-group">
             <label>Folder output:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="trim-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./overlays_trimmed"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="trim-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./overlays_trimmed"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearTrimOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectTrimOutputFolder()"
@@ -2929,12 +3135,22 @@
           <div class="form-group">
             <label>Folder input:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="cut-bg-input-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./bgs"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="cut-bg-input-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./bgs"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearCutBgInputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectCutBgInputFolder()"
@@ -2951,12 +3167,22 @@
           <div class="form-group">
             <label>Folder output:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="cut-bg-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="cut-bg-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./backgrounds"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearCutBgOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectCutBgOutputFolder()"
@@ -2995,12 +3221,22 @@
           <div class="form-group">
             <label>Folder input video:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="thumb-input-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./overlays"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="thumb-input-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./overlays"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearThumbInputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectThumbInputFolder()"
@@ -3017,12 +3253,22 @@
           <div class="form-group">
             <label>Folder ảnh overlay:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="thumb-overlay-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./images"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="thumb-overlay-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./images"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearThumbOverlayFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectThumbOverlayFolder()"
@@ -3039,12 +3285,22 @@
           <div class="form-group">
             <label>Folder output thumbs:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="thumb-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./thumbs"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="thumb-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./thumbs"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearThumbOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectThumbOutputFolder()"
@@ -3089,12 +3345,22 @@
           <div class="form-group">
             <label>Folder lưu kết quả:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="get-url-output-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./channels"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="get-url-output-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./channels"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearGetUrlOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectGetUrlOutputFolder()"
@@ -3133,12 +3399,22 @@
           <div class="form-group">
             <label>Folder thumbs:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="normalize-input-folder"
-                placeholder="Chọn folder hoặc để trống dùng ./thumbs"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="normalize-input-folder"
+                  placeholder="Chọn folder hoặc để trống dùng ./thumbs"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearNormalizeInputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectNormalizeInputFolder()"
@@ -3180,12 +3456,22 @@
           <div class="form-group">
             <label>Folder video input:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="concat-input-folder"
-                placeholder="Chọn folder chứa video cần ghép"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="concat-input-folder"
+                  placeholder="Chọn folder chứa video cần ghép"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearConcatInputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectConcatInputFolder()"
@@ -3202,12 +3488,22 @@
           <div class="form-group">
             <label>Folder output:</label>
             <div class="folder-select">
-              <input
-                type="text"
-                id="concat-output-folder"
-                placeholder="Chọn folder lưu video đã ghép"
-                readonly
-              />
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="concat-output-folder"
+                  placeholder="Chọn folder lưu video đã ghép"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearConcatOutputFolder()"
+                >
+                  ×
+                </button>
+              </div>
               <button
                 class="btn btn-secondary"
                 onclick="selectConcatOutputFolder()"
@@ -3253,12 +3549,22 @@
             <div class="form-group">
               <label>Folder chứa thumb:</label>
               <div class="folder-select">
-                <input
-                  type="text"
-                  id="concat-thumbs-folder"
-                  placeholder="Chọn folder chứa thumbnail"
-                  readonly
-                />
+                <div class="folder-input-wrap">
+                  <input
+                    type="text"
+                    id="concat-thumbs-folder"
+                    placeholder="Chọn folder chứa thumbnail"
+                    readonly
+                  />
+                  <button
+                    class="folder-clear"
+                    type="button"
+                    title="Xóa folder đã chọn"
+                    onclick="clearConcatThumbsFolder()"
+                  >
+                    ×
+                  </button>
+                </div>
                 <button
                   class="btn btn-secondary"
                   onclick="selectConcatThumbsFolder()"

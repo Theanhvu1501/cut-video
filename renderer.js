@@ -2017,13 +2017,19 @@ async function selectRenderChromaKeyFile() {
     if (filePath) {
       selectedRenderChromaKeyFile = filePath;
       document.getElementById("render-chromakey-file").value = filePath;
-      // Removed folder path display
       saveSettings();
     }
   } catch (error) {
     console.error("Error selecting file:", error);
     alert("Lỗi khi chọn file: " + error.message);
   }
+}
+
+function clearRenderChromaKeyFile() {
+  selectedRenderChromaKeyFile = null;
+  const input = document.getElementById("render-chromakey-file");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 // Tự động lấy màu chroma key từ video (dùng get-video-chroma.js)
@@ -2171,6 +2177,13 @@ async function selectRenderOverlayFolder() {
   }
 }
 
+function clearRenderOverlayFolder() {
+  selectedRenderOverlayFolder = null;
+  const input = document.getElementById("render-overlay-folder");
+  if (input) input.value = "";
+  saveSettings();
+}
+
 async function selectRenderBackgroundFolder() {
   if (!checkElectronAPI()) return;
   const folder = await window.electronAPI.selectFolder();
@@ -2182,6 +2195,13 @@ async function selectRenderBackgroundFolder() {
   }
 }
 
+function clearRenderBackgroundFolder() {
+  selectedRenderBackgroundFolder = null;
+  const input = document.getElementById("render-background-folder");
+  if (input) input.value = "";
+  saveSettings();
+}
+
 async function selectRenderOutputFolder() {
   if (!checkElectronAPI()) return;
   const folder = await window.electronAPI.selectFolder();
@@ -2191,6 +2211,13 @@ async function selectRenderOutputFolder() {
     // Removed folder path display
     saveSettings();
   }
+}
+
+function clearRenderOutputFolder() {
+  selectedRenderOutputFolder = null;
+  const input = document.getElementById("render-output-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function runRender() {
@@ -2369,6 +2396,13 @@ async function selectDownloadFile() {
   }
 }
 
+function clearDownloadUrlsFile() {
+  selectedUrlsFile = null;
+  const input = document.getElementById("download-urls-file");
+  if (input) input.value = "";
+  saveSettings();
+}
+
 async function selectDownloadOutputFolder() {
   if (!checkElectronAPI()) return;
   const folder = await window.electronAPI.selectFolder();
@@ -2378,6 +2412,13 @@ async function selectDownloadOutputFolder() {
     // Removed folder path display
     saveSettings();
   }
+}
+
+function clearDownloadOutputFolder() {
+  selectedDownloadOutputFolder = null;
+  const input = document.getElementById("download-output-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectDownloadOverlayImagesFolder() {
@@ -2391,15 +2432,28 @@ async function selectDownloadOverlayImagesFolder() {
   }
 }
 
+function clearDownloadOverlayImagesFolder() {
+  selectedDownloadOverlayImagesFolder = null;
+  const input = document.getElementById("download-overlay-images-folder");
+  if (input) input.value = "";
+  saveSettings();
+}
+
 async function selectDownloadThumbsFolder() {
   if (!checkElectronAPI()) return;
   const folder = await window.electronAPI.selectFolder();
   if (folder) {
     selectedDownloadThumbsFolder = folder;
     document.getElementById("download-thumbs-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearDownloadThumbsFolder() {
+  selectedDownloadThumbsFolder = null;
+  const input = document.getElementById("download-thumbs-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectDownloadCookiesFile() {
@@ -2414,13 +2468,19 @@ async function selectDownloadCookiesFile() {
     if (filePath) {
       selectedDownloadCookiesFile = filePath;
       document.getElementById("download-cookies-file").value = filePath;
-      // Removed folder path display
       saveSettings();
     }
   } catch (error) {
     console.error("Error selecting cookies file:", error);
     alert("Lỗi khi chọn file: " + error.message);
   }
+}
+
+function clearDownloadCookiesFile() {
+  selectedDownloadCookiesFile = null;
+  const input = document.getElementById("download-cookies-file");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 function toggleDownloadDrive() {
@@ -2739,6 +2799,13 @@ async function selectStockOutputFolder() {
   }
 }
 
+function clearStockOutputFolder() {
+  selectedStockOutputFolder = null;
+  const input = document.getElementById("stock-output-folder");
+  if (input) input.value = "";
+  saveSettings();
+}
+
 async function runStockDownload() {
   if (!checkElectronAPI()) return;
 
@@ -2806,9 +2873,15 @@ async function selectVideoSnowInputFolder() {
   if (folder) {
     selectedVideoSnowInputFolder = folder;
     document.getElementById("video-snow-input-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearVideoSnowInputFolder() {
+  selectedVideoSnowInputFolder = null;
+  const input = document.getElementById("video-snow-input-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectVideoSnowOutputFolder() {
@@ -2817,9 +2890,15 @@ async function selectVideoSnowOutputFolder() {
   if (folder) {
     selectedVideoSnowOutputFolder = folder;
     document.getElementById("video-snow-output-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearVideoSnowOutputFolder() {
+  selectedVideoSnowOutputFolder = null;
+  const input = document.getElementById("video-snow-output-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectVideoSnowSnowFile() {
@@ -2834,13 +2913,19 @@ async function selectVideoSnowSnowFile() {
     if (filePath) {
       selectedVideoSnowSnowFile = filePath;
       document.getElementById("video-snow-snow-file").value = filePath;
-      // Removed folder path display
       saveSettings();
     }
   } catch (error) {
     console.error("Error selecting file:", error);
     alert("Lỗi khi chọn file: " + error.message);
   }
+}
+
+function clearVideoSnowSnowFile() {
+  selectedVideoSnowSnowFile = null;
+  const input = document.getElementById("video-snow-snow-file");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function runVideoSnow() {
@@ -2882,9 +2967,15 @@ async function selectBgInputFolder() {
   if (folder) {
     selectedBgInputFolder = folder;
     document.getElementById("bg-input-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearBgInputFolder() {
+  selectedBgInputFolder = null;
+  const input = document.getElementById("bg-input-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectBgOutputFolder() {
@@ -2893,9 +2984,15 @@ async function selectBgOutputFolder() {
   if (folder) {
     selectedBgOutputFolder = folder;
     document.getElementById("bg-output-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearBgOutputFolder() {
+  selectedBgOutputFolder = null;
+  const input = document.getElementById("bg-output-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function runBgVideo() {
@@ -2951,9 +3048,15 @@ async function selectTrimInputFolder() {
   if (folder) {
     selectedTrimInputFolder = folder;
     document.getElementById("trim-input-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearTrimInputFolder() {
+  selectedTrimInputFolder = null;
+  const input = document.getElementById("trim-input-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectTrimOutputFolder() {
@@ -3017,9 +3120,15 @@ async function selectCutBgInputFolder() {
   if (folder) {
     selectedCutBgInputFolder = folder;
     document.getElementById("cut-bg-input-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearCutBgInputFolder() {
+  selectedCutBgInputFolder = null;
+  const input = document.getElementById("cut-bg-input-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectCutBgOutputFolder() {
@@ -3028,9 +3137,15 @@ async function selectCutBgOutputFolder() {
   if (folder) {
     selectedCutBgOutputFolder = folder;
     document.getElementById("cut-bg-output-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearCutBgOutputFolder() {
+  selectedCutBgOutputFolder = null;
+  const input = document.getElementById("cut-bg-output-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function runCutBg() {
@@ -3066,9 +3181,15 @@ async function selectThumbInputFolder() {
   if (folder) {
     selectedThumbInputFolder = folder;
     document.getElementById("thumb-input-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearThumbInputFolder() {
+  selectedThumbInputFolder = null;
+  const input = document.getElementById("thumb-input-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectThumbOverlayFolder() {
@@ -3077,9 +3198,15 @@ async function selectThumbOverlayFolder() {
   if (folder) {
     selectedThumbOverlayFolder = folder;
     document.getElementById("thumb-overlay-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearThumbOverlayFolder() {
+  selectedThumbOverlayFolder = null;
+  const input = document.getElementById("thumb-overlay-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectThumbOutputFolder() {
@@ -3088,9 +3215,15 @@ async function selectThumbOutputFolder() {
   if (folder) {
     selectedThumbOutputFolder = folder;
     document.getElementById("thumb-output-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearThumbOutputFolder() {
+  selectedThumbOutputFolder = null;
+  const input = document.getElementById("thumb-output-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function runThumb() {
@@ -3124,9 +3257,15 @@ async function selectGetUrlOutputFolder() {
   if (folder) {
     selectedGetUrlOutputFolder = folder;
     document.getElementById("get-url-output-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearGetUrlOutputFolder() {
+  selectedGetUrlOutputFolder = null;
+  const input = document.getElementById("get-url-output-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function runGetUrl() {
@@ -3167,9 +3306,15 @@ async function selectNormalizeInputFolder() {
   if (folder) {
     selectedNormalizeInputFolder = folder;
     document.getElementById("normalize-input-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearNormalizeInputFolder() {
+  selectedNormalizeInputFolder = null;
+  const input = document.getElementById("normalize-input-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function runNormalize() {
@@ -3784,9 +3929,15 @@ async function selectConcatInputFolder() {
   if (folder) {
     selectedConcatInputFolder = folder;
     document.getElementById("concat-input-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearConcatInputFolder() {
+  selectedConcatInputFolder = null;
+  const input = document.getElementById("concat-input-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectConcatThumbsFolder() {
@@ -3795,9 +3946,15 @@ async function selectConcatThumbsFolder() {
   if (folder) {
     selectedConcatThumbsFolder = folder;
     document.getElementById("concat-thumbs-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearConcatThumbsFolder() {
+  selectedConcatThumbsFolder = null;
+  const input = document.getElementById("concat-thumbs-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 async function selectConcatOutputFolder() {
@@ -3806,9 +3963,15 @@ async function selectConcatOutputFolder() {
   if (folder) {
     selectedConcatOutputFolder = folder;
     document.getElementById("concat-output-folder").value = folder;
-    // Removed folder path display
     saveSettings();
   }
+}
+
+function clearConcatOutputFolder() {
+  selectedConcatOutputFolder = null;
+  const input = document.getElementById("concat-output-folder");
+  if (input) input.value = "";
+  saveSettings();
 }
 
 function toggleConcatThumbs() {

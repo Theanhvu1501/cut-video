@@ -3,36 +3,36 @@
   "createdAt": "2026-01-21T04:36:35.963Z",
   "settings": {
     "render": {
-      "day": "2",
+      "day": "1",
       "videos": "1",
       "renderMode": "chromaKey",
       "opacity": "0.7",
-      "chromaKeyMode": "file",
+      "chromaKeyMode": "color",
       "chromaKeyColor": "D4F9D7",
       "keepColorColors": "F6FF00",
       "keepColorCrop": true,
       "keepColorHeight": "150",
       "keepColorYOffset": "550",
       "keepColorAddDarkLayer": false,
-      "useGPU": false,
+      "useGPU": true,
       "maxConcurrentProcesses": "2",
       "gpuVideoCodec": "h264_nvenc",
       "height": "220",
       "y_offset": "490",
-      "overlayFolder": null,
-      "backgroundFolder": null,
-      "outputFolder": "D:\\test\\line\\done",
+      "overlayFolder": "D:\\VidMaster\\01.2ch_BKT\\overlays",
+      "backgroundFolder": "D:\\VidMaster\\01.2ch_BKT\\backgrounds",
+      "outputFolder": "D:\\VidMaster\\01.2ch_BKT\\done_test",
       "chromaKeyFile": "D:\\test\\line\\chromaKey.txt",
-      "cycleDays": "2",
-      "lastRenderAt": "2026-01-30T08:30:09.921Z"
+      "cycleDays": "1",
+      "lastRenderAt": "2026-03-18T00:35:00.391Z"
     },
     "download": {
-      "urlsFile": null,
-      "outputFolder": "D:\\Youtube\\test\\overlays",
-      "overlayImagesFolder": "D:\\Youtube\\test\\images",
+      "urlsFile": "D:\\HuongDan\\urls.txt",
+      "outputFolder": "D:\\HuongDan\\overlays",
+      "overlayImagesFolder": null,
       "thumbsFolder": null,
       "cookiesFile": null,
-      "proxy": "socks5://14.225.52.172:33650:nkkk4n7d:tQdW5t1w",
+      "proxy": null,
       "downloadDrive": false,
       "driveLanguage": "jp"
     },
@@ -43,17 +43,17 @@
       "pixabayApiKey": "",
       "searchQuery": "city",
       "maxVideos": "30",
-      "outputFolder": "D:\\test",
+      "outputFolder": "",
       "orientation": "landscape",
-      "convert720": true,
+      "convert720": false,
       "removeAudio": true,
       "cut": true,
       "trimSeconds": "3"
     },
     "videoSnow": {
-      "inputFolder": "D:\\test\\line\\images_background",
-      "outputFolder": "D:\\test\\line\\output_segments",
-      "snowFile": "D:\\test\\line\\snow1.mp4",
+      "inputFolder": "D:\\HuongDan\\background_images",
+      "outputFolder": "D:\\HuongDan\\backgrounds",
+      "snowFile": "D:\\HuongDan\\snow1.mp4",
       "maxConcurrent": "3",
       "segmentMin": "10",
       "segmentMax": "15"
@@ -97,5 +97,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-13T17:07:31.403Z"
+  "updatedAt": "2026-03-18T00:35:00.391Z"
 }

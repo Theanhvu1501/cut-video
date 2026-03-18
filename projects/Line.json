@@ -19,12 +19,12 @@
       "gpuVideoCodec": "h264_nvenc",
       "height": "220",
       "y_offset": "490",
-      "overlayFolder": "D:\\VidMaster\\01.2ch_BKT\\overlays",
-      "backgroundFolder": "D:\\VidMaster\\01.2ch_BKT\\backgrounds",
-      "outputFolder": "D:\\VidMaster\\01.2ch_BKT\\done_test",
+      "overlayFolder": "D:\\VidMaster\\03.Test\\overlays_trimmed",
+      "backgroundFolder": "D:\\VidMaster\\03.Test\\backgrounds",
+      "outputFolder": "D:\\VidMaster\\03.Test\\done",
       "chromaKeyFile": "D:\\test\\line\\chromaKey.txt",
       "cycleDays": "1",
-      "lastRenderAt": "2026-03-18T00:35:00.391Z"
+      "lastRenderAt": "2026-03-18T13:44:49.923Z"
     },
     "download": {
       "urlsFile": "D:\\HuongDan\\urls.txt",
@@ -97,5 +97,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-18T00:35:00.391Z"
+  "updatedAt": "2026-03-18T13:44:49.923Z"
 }

@@ -1,5 +1,5 @@
 import { path as ffmpegPath } from "@ffmpeg-installer/ffmpeg";
-import { spawn } from "child_process";
+import { spawn, spawnSync } from "child_process";
 import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
@@ -94,15 +94,75 @@ try {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Cấu hình FFmpeg - sử dụng @ffmpeg-installer như code cũ
-ffmpeg.setFfmpegPath(ffmpegPath);
+// Chọn FFmpeg path theo NVIDIA-SMI:
+// - Nếu NVIDIA-SMI < 560.94: giữ nguyên @ffmpeg-installer/ffmpeg
+// - Nếu NVIDIA-SMI > 560.94: dùng ffmpeg từ thư mục bin
+// - Nếu không đọc được NVIDIA-SMI: giữ nguyên @ffmpeg-installer/ffmpeg
+const NVIDIA_SMI_THRESHOLD = "560.94";
+const BIN_FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
+
+const parseNvidiaSmiVersion = (text) => {
+  if (!text) return null;
+  // Hỗ trợ cả 2 dạng phổ biến:
+  // "NVIDIA-SMI 560.94" (một số máy/driver)
+  // "NVIDIA-SMI version  : 560.94" (như output trên Windows)
+  const m =
+    text.match(/NVIDIA-SMI\s+(\d+\.\d+)/i) ||
+    text.match(/NVIDIA-SMI\s*version\s*:\s*(\d+\.\d+)/i);
+  return m?.[1] ?? null;
+};
+
+const compareVersionDot = (a, b) => {
+  // So sánh version dạng "560.94" theo [major, minor]
+  // Trả về: -1 nếu a<b, 0 nếu a==b, 1 nếu a>b
+  const toParts = (v) => {
+    const [maj, min = "0"] = String(v || "").split(".");
+    const major = Number.parseInt(maj, 10);
+    const minor = Number.parseInt(min, 10);
+    if (Number.isNaN(major) || Number.isNaN(minor)) return null;
+    return [major, minor];
+  };
+
+  const pa = toParts(a);
+  const pb = toParts(b);
+  if (!pa || !pb) return 0;
+
+  if (pa[0] !== pb[0]) return pa[0] > pb[0] ? 1 : -1;
+  if (pa[1] !== pb[1]) return pa[1] > pb[1] ? 1 : -1;
+  return 0;
+};
+
+const pickFfmpegPath = () => {
+  try {
+    const res = spawnSync("nvidia-smi", ["--version"], {
+      encoding: "utf-8",
+      windowsHide: true,
+    });
+
+    const smiText = `${res?.stdout || ""}\n${res?.stderr || ""}`;
+    const smiVersion = parseNvidiaSmiVersion(smiText);
+    if (!smiVersion) return ffmpegPath;
+
+    const cmp = compareVersionDot(smiVersion, NVIDIA_SMI_THRESHOLD);
+    if (cmp === 1 && fs.existsSync(BIN_FFMPEG_PATH)) {
+      return BIN_FFMPEG_PATH;
+    }
+
+    return ffmpegPath;
+  } catch {
+    return ffmpegPath;
+  }
+};
+
+const SELECTED_FFMPEG_PATH = pickFfmpegPath();
+ffmpeg.setFfmpegPath(SELECTED_FFMPEG_PATH);
 
 // Cấu hình FFprobe - sử dụng từ thư mục bin
 const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
 ffmpeg.setFfprobePath(FFPROBE_PATH);
 
 // Giữ FFMPEG_PATH cho các hàm khác nếu cần
-const FFMPEG_PATH = ffmpegPath;
+const FFMPEG_PATH = SELECTED_FFMPEG_PATH;
 
 // Hàm kiểm tra FFmpeg có hỗ trợ GPU encoder không
 const checkGpuSupport = async (codec) => {
@@ -662,7 +722,7 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
             `-g ${FIXED_GOP}`, // Khoảng cách Keyframe
             `-keyint_min ${FIXED_GOP}`, // Ép cứng Keyframe
             "-sc_threshold 0", // Tắt phát hiện cảnh
-            "-preset fast", // Tốc độ render (giống code cũ)
+            "-preset medium", // Tốc độ render (giống code cũ)
             `-cq:v ${VIDEO_QUALITY}`, // Chất lượng
             "-rc:v vbr", // Bitrate biến thiên
             "-movflags +faststart", // Hỗ trợ xem nhanh/web

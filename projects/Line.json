@@ -6,7 +6,7 @@
       "day": "1",
       "videos": "4",
       "renderMode": "chromaKey",
-      "opacity": "0.7",
+      "opacity": "0.4",
       "chromaKeyMode": "file",
       "chromaKeyColor": "D4F9D7",
       "keepColorColors": "F6FF00",
@@ -24,7 +24,8 @@
       "outputFolder": "D:\\VidMaster\\03.Test\\done",
       "chromaKeyFile": "D:\\VidMaster\\03.Test\\chromaKey.txt",
       "cycleDays": "1",
-      "lastRenderAt": "2026-03-26T16:02:24.845Z"
+      "videoSpeed": "0.5",
+      "lastRenderAt": "2026-03-26T16:25:54.588Z"
     },
     "download": {
       "urlsFile": "D:\\VidMaster\\03.Test\\urls.txt",
@@ -98,5 +99,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-26T16:02:24.845Z"
+  "updatedAt": "2026-03-26T16:25:54.588Z"
 }

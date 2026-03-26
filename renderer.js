@@ -466,6 +466,7 @@ async function saveSettings() {
     render: {
       day: document.getElementById("render-day")?.value || "1",
       videos: document.getElementById("render-videos")?.value || "1",
+      videoSpeed: document.getElementById("render-video-speed")?.value || "0.95",
       renderMode:
         document.querySelector('input[name="render-mode"]:checked')?.value ||
         "topTransparent",
@@ -663,8 +664,11 @@ async function loadSettings() {
         document.getElementById("render-day").value = settings.render.day;
       if (settings.render.videos)
         document.getElementById("render-videos").value = settings.render.videos;
+      if (settings.render.videoSpeed)
+        document.getElementById("render-video-speed").value = settings.render.videoSpeed;
       if (settings.render.cycleDays != null)
         document.getElementById("render-cycle-days").value = settings.render.cycleDays;
+   
       if (settings.render.renderMode) {
         // Map renderMode value to actual radio button ID (HTML uses kebab-case)
         const modeIdMap = {
@@ -1660,6 +1664,7 @@ async function saveCurrentProjectSettings() {
       render: {
         day: document.getElementById("render-day")?.value || "1",
         videos: document.getElementById("render-videos")?.value || "1",
+        videoSpeed: document.getElementById("render-video-speed")?.value || "0.95",
         renderMode:
           document.querySelector('input[name="render-mode"]:checked')?.value ||
           "topTransparent",
@@ -1882,6 +1887,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     "trim-duration",
     "download-proxy", // Thêm proxy input để tự động lưu khi thay đổi
     "download-max-concurrent",
+    "render-video-speed",
     "stock-search-query",
     "stock-max-videos",
     "stock-orientation",
@@ -2230,6 +2236,7 @@ function clearRenderOutputFolder() {
 async function runRender() {
   const day = document.getElementById("render-day").value;
   const videos = document.getElementById("render-videos").value;
+  const videoSpeed = document.getElementById("render-video-speed").value;
   const renderMode =
     document.querySelector('input[name="render-mode"]:checked')?.value ||
     "topTransparent";
@@ -2357,6 +2364,7 @@ async function runRender() {
         overlayFolder: selectedRenderOverlayFolder || "./overlays",
         backgroundFolder: selectedRenderBackgroundFolder || "./backgrounds",
         outputFolder: selectedRenderOutputFolder || "./done",
+        videoSpeed,
       },
     };
 

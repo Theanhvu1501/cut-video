@@ -253,6 +253,7 @@ let outputFolder = "./done";
 let gpuVideoCodec = "h264_nvenc";
 let useGPU = false;
 let maxConcurrentProcesses = 2;
+let videoSpeed = 0.95;
 
 // VPS
 const useAutoUploadVps = false;
@@ -318,6 +319,7 @@ if (!config) {
 // Áp dụng config nếu có
 if (config) {
   if (config.renderMode) renderMode = config.renderMode;
+  if (config.videoSpeed) videoSpeed = config.videoSpeed;
   if (config.opacity !== undefined) opacity = config.opacity;
   if (config.chromaKeyMode) chromaKeyMode = config.chromaKeyMode;
   if (config.chromaKeyColor) color = config.chromaKeyColor;
@@ -629,7 +631,6 @@ const complexFilterKeepColor = () => {
 const processVideo = async (inputOverlay, inputBackground, outputPath) => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
-    const videoSpeed = 0.95;
 
     ffmpeg.ffprobe(inputOverlay, (err, metadata) => {
       if (err) {
@@ -939,6 +940,8 @@ const processAllVideos = async () => {
       `📅 Ngày hiện tại: ${currentDay}, Số video mỗi folder: ${videosPerFolder}`,
       LOG_LEVEL.INFO
     );
+    log(`Tốc độ video: ${videoSpeed}`, LOG_LEVEL.INFO);
+
 
     // 5. Tính tổng số video sẽ xử lý
     totalVideosToProcess = totalVideoBackgrounds * videosPerFolder;

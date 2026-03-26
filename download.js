@@ -6,7 +6,9 @@ import path from "path";
 import sharp from "sharp";
 import { fileURLToPath } from "url";
 import { create as createYoutubeDl } from "youtube-dl-exec";
+import electron from "electron";
 
+const { app } = electron;
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
 // =================================================================
@@ -144,6 +146,27 @@ function normalizeProxy(raw) {
   return null;
 }
 
+
+function getNodeExecutable() {
+  if (!app || !app.isPackaged) return "node";
+
+  const possiblePaths = [
+    path.join(
+      process.resourcesPath,
+      "app.asar.unpacked",
+      "bin",
+      "node.exe"
+    ),
+    path.join(process.resourcesPath, "bin", "node.exe"),
+  ];
+
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) return p;
+  }
+
+  return "node";
+}
+
 /**
  * Tải một video YouTube duy nhất.
  */
@@ -176,6 +199,7 @@ const downloadVideo = async (url, outputPath) => {
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
     extractorArgs: ["youtube:player_client=default,-android_sdkless"],
+    jsRuntime: getNodeExecutable(),
   };
 
   // Thêm proxy nếu có (validate và trim)
@@ -235,17 +259,25 @@ const downloadVideoWithYtdl = (url, outputPath) => {
  * Tải tất cả video từ một danh sách URL, báo cáo kết quả.
  * Trả về danh sách các tác vụ bị từ chối (failed URLs).
  */
+
+const sleepRandom = (min, max) => {
+  const sleepTime = Math.random() * (max - min) + min;
+  console.log(`💤 Đang ngủ ${sleepTime}ms...`);
+  return new Promise((resolve) => setTimeout(resolve, sleepTime));
+};
+
 const downloadVideosFromList = async (urls, savePath) => {
   if (!fs.existsSync(savePath)) fs.mkdirSync(savePath, { recursive: true });
 
   console.log(`📄 Bắt đầu tải ${urls.length} URL.`);
   if (urls.length === 0) return [];
 
-  const limit = pLimit(3); // Giới hạn 3 video tải song song
+  const limit = pLimit(2); // Giới hạn 3 video tải song song
 
   const downloadPromises = urls.map((url) =>
     limit(async () => {
       try {
+        await sleepRandom(1000, 2500);
         await downloadVideo(url, savePath);
         return { status: "fulfilled", url: url };
       } catch (error) {

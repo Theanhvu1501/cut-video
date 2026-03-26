@@ -27,11 +27,11 @@
       "lastRenderAt": "2026-03-18T13:44:49.923Z"
     },
     "download": {
-      "urlsFile": "D:\\HuongDan\\urls.txt",
-      "outputFolder": "D:\\HuongDan\\overlays",
+      "urlsFile": "D:\\VidMaster\\03.Test\\urls.txt",
+      "outputFolder": "D:\\VidMaster\\03.Test\\overlays",
       "overlayImagesFolder": null,
       "thumbsFolder": null,
-      "cookiesFile": null,
+      "cookiesFile": "D:\\VidMaster\\03.Test\\studio.youtube.com_cookies.txt",
       "proxy": null,
       "downloadDrive": false,
       "driveLanguage": "jp"
@@ -97,5 +97,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-18T13:44:49.923Z"
+  "updatedAt": "2026-03-26T15:14:25.949Z"
 }

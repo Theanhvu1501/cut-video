@@ -4,10 +4,10 @@
   "settings": {
     "render": {
       "day": "1",
-      "videos": "1",
+      "videos": "4",
       "renderMode": "chromaKey",
       "opacity": "0.7",
-      "chromaKeyMode": "color",
+      "chromaKeyMode": "file",
       "chromaKeyColor": "D4F9D7",
       "keepColorColors": "F6FF00",
       "keepColorCrop": true,
@@ -22,9 +22,9 @@
       "overlayFolder": "D:\\VidMaster\\03.Test\\overlays_trimmed",
       "backgroundFolder": "D:\\VidMaster\\03.Test\\backgrounds",
       "outputFolder": "D:\\VidMaster\\03.Test\\done",
-      "chromaKeyFile": "D:\\test\\line\\chromaKey.txt",
+      "chromaKeyFile": "D:\\VidMaster\\03.Test\\chromaKey.txt",
       "cycleDays": "1",
-      "lastRenderAt": "2026-03-18T13:44:49.923Z"
+      "lastRenderAt": "2026-03-26T16:02:24.845Z"
     },
     "download": {
       "urlsFile": "D:\\VidMaster\\03.Test\\urls.txt",
@@ -32,7 +32,7 @@
       "overlayImagesFolder": null,
       "thumbsFolder": null,
       "cookiesFile": "D:\\VidMaster\\03.Test\\studio.youtube.com_cookies.txt",
-      "maxConcurrent": "3",
+      "maxConcurrent": "2",
       "proxy": null,
       "downloadDrive": false,
       "driveLanguage": "jp"
@@ -68,10 +68,10 @@
       "avgClipDuration": "12"
     },
     "trim": {
-      "inputFolder": "D:\\test\\line\\overlays",
-      "outputFolder": "D:\\test\\line\\overlays_trimmed",
+      "inputFolder": "D:\\VidMaster\\03.Test\\overlays",
+      "outputFolder": "D:\\VidMaster\\03.Test\\overlays_trimmed",
       "startTime": "0",
-      "duration": "60"
+      "duration": "30"
     },
     "cutBg": {
       "inputFolder": "D:\\test\\line\\bgs",
@@ -98,5 +98,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-26T15:42:30.709Z"
+  "updatedAt": "2026-03-26T16:02:24.845Z"
 }

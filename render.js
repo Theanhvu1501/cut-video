@@ -629,6 +629,7 @@ const complexFilterKeepColor = () => {
 const processVideo = async (inputOverlay, inputBackground, outputPath) => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
+    const videoSpeed = 0.95;
 
     ffmpeg.ffprobe(inputOverlay, (err, metadata) => {
       if (err) {
@@ -644,6 +645,7 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       }
 
       const duration = metadata.format.duration;
+      const newDuration = duration / videoSpeed; // Điều chỉnh duration theo tốc độ video
 
       let filterConfig;
       if (renderMode === "keepColor") {
@@ -685,6 +687,9 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
         filterConfig = complexFilterTopTransparent();
       }
 
+      filterConfig.push(`[combined_video]setpts=PTS/${videoSpeed}[final_video_speed]`);
+      filterConfig.push(`[overlay_audio]atempo=${videoSpeed}[final_audio_speed]`);
+
       // Code cũ không có format filter, để nguyên filterConfig
 
       const command = ffmpeg(inputBackground);
@@ -698,12 +703,12 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
         .inputOptions(["-stream_loop", "-1"])
         .input(inputOverlay)
         .complexFilter(filterConfig)
-        .outputOptions("-t", duration)
+        .outputOptions("-t", newDuration)
         .audioCodec("aac")
         .audioFrequency(AUDIO_FREQ)
         .audioChannels(2)
-        .map("[combined_video]")
-        .map("[overlay_audio]");
+        .map("[final_video_speed]")
+        .map("[final_audio_speed]");
 
       if (useGPU) {
         log(

@@ -505,6 +505,7 @@ async function saveSettings() {
       overlayImagesFolder: selectedDownloadOverlayImagesFolder,
       thumbsFolder: selectedDownloadThumbsFolder,
       cookiesFile: selectedDownloadCookiesFile,
+      maxConcurrent: document.getElementById("download-max-concurrent")?.value || "2",
       proxy: (() => {
         const proxyInput = document.getElementById("download-proxy");
         const proxyValue = proxyInput?.value?.trim();
@@ -801,6 +802,10 @@ async function loadSettings() {
         document.getElementById("download-cookies-file").value =
           settings.download.cookiesFile;
         // Removed folder path display
+      }
+      if (settings.download.maxConcurrent) {
+        document.getElementById("download-max-concurrent").value =
+          settings.download.maxConcurrent;
       }
       // Chỉ restore proxy nếu có giá trị hợp lệ (không phải null, undefined, hoặc empty string)
       if (settings.download.proxy !== undefined && settings.download.proxy !== null) {
@@ -1694,6 +1699,7 @@ async function saveCurrentProjectSettings() {
         overlayImagesFolder: selectedDownloadOverlayImagesFolder,
         thumbsFolder: selectedDownloadThumbsFolder,
         cookiesFile: selectedDownloadCookiesFile,
+        maxConcurrent: document.getElementById("download-max-concurrent")?.value || "2",
         proxy: (() => {
           const proxyInput = document.getElementById("download-proxy");
           const proxyValue = proxyInput?.value?.trim();
@@ -1875,6 +1881,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     "trim-start-time",
     "trim-duration",
     "download-proxy", // Thêm proxy input để tự động lưu khi thay đổi
+    "download-max-concurrent",
     "stock-search-query",
     "stock-max-videos",
     "stock-orientation",

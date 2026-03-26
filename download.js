@@ -34,9 +34,11 @@ let DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbna
 let OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
 let OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
 let COOKIES_FILE = "./cookies.txt"; // File cookies.txt
+let MAX_CONCURRENT = 2; // Số video tải song song
 let PROXY = null; // Proxy để sử dụng khi download (vd: http://proxy.example.com:8080)
 let DOWNLOAD_DRIVE = false; // Bật tải Drive với giới hạn độ dài tên file
 let DRIVE_LANGUAGE = "jp"; // Ngôn ngữ cho Drive: "auto", "jp", "cn", "kr", "vi", "en", etc.
+
 
 // Đọc config từ project JSON (mặc định là "default")
 // Kiểm tra PROJECT_NAME và PROJECTS_DIR environment variable (được set bởi Electron main process)
@@ -58,6 +60,7 @@ if (fs.existsSync(projectConfigPath)) {
         OVERLAY_IMAGES_DIR = config.overlayImagesFolder;
       if (config.thumbsFolder) OUTPUT_THUMBS_BASE_DIR = config.thumbsFolder;
       if (config.cookiesFile !== undefined) COOKIES_FILE = config.cookiesFile;
+      if (config.maxConcurrent !== undefined) MAX_CONCURRENT = parseInt(config.maxConcurrent) || 2;
       if (config.proxy !== undefined && config.proxy) {
         // Trim và validate proxy
         const proxyValue =
@@ -262,17 +265,16 @@ const downloadVideoWithYtdl = (url, outputPath) => {
 
 const sleepRandom = (min, max) => {
   const sleepTime = Math.random() * (max - min) + min;
-  console.log(`💤 Đang ngủ ${sleepTime}ms...`);
   return new Promise((resolve) => setTimeout(resolve, sleepTime));
 };
 
 const downloadVideosFromList = async (urls, savePath) => {
   if (!fs.existsSync(savePath)) fs.mkdirSync(savePath, { recursive: true });
 
-  console.log(`📄 Bắt đầu tải ${urls.length} URL.`);
+  console.log(`📄 Bắt đầu tải ${urls.length} URL với giới hạn ${MAX_CONCURRENT} video tải song song.`);
   if (urls.length === 0) return [];
 
-  const limit = pLimit(2); // Giới hạn 3 video tải song song
+  const limit = pLimit(MAX_CONCURRENT); // Giới hạn 3 video tải song song
 
   const downloadPromises = urls.map((url) =>
     limit(async () => {

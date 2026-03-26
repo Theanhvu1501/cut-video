@@ -32,6 +32,7 @@
       "overlayImagesFolder": null,
       "thumbsFolder": null,
       "cookiesFile": "D:\\VidMaster\\03.Test\\studio.youtube.com_cookies.txt",
+      "maxConcurrent": "3",
       "proxy": null,
       "downloadDrive": false,
       "driveLanguage": "jp"
@@ -97,5 +98,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-26T15:14:25.949Z"
+  "updatedAt": "2026-03-26T15:42:30.709Z"
 }

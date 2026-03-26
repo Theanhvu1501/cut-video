@@ -5,6 +5,7 @@
     "render": {
       "day": "1",
       "videos": "4",
+      "videoSpeed": "0.95",
       "renderMode": "chromaKey",
       "opacity": "0.4",
       "chromaKeyMode": "file",
@@ -24,7 +25,6 @@
       "outputFolder": "D:\\VidMaster\\03.Test\\done",
       "chromaKeyFile": "D:\\VidMaster\\03.Test\\chromaKey.txt",
       "cycleDays": "1",
-      "videoSpeed": "0.5",
       "lastRenderAt": "2026-03-26T16:25:54.588Z"
     },
     "download": {
@@ -99,5 +99,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-26T16:25:54.588Z"
+  "updatedAt": "2026-03-26T16:27:12.593Z"
 }

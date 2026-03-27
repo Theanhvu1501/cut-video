@@ -2437,6 +2437,33 @@
             ></div>
           </div>
           <div class="form-group">
+            <label>Folder lưu mô tả (Desc):</label>
+            <div class="folder-select">
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="download-desc-folder"
+                  placeholder="Chọn folder hoặc để trống nếu không lưu desc"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa folder đã chọn"
+                  onclick="clearDownloadDescFolder()"
+                >
+                  ×
+                </button>
+              </div>
+              <button
+                class="btn btn-secondary"
+                onclick="selectDownloadDescFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+          </div>
+          <div class="form-group">
             <label>Folder ảnh overlay:</label>
             <div class="folder-select">
               <div class="folder-input-wrap">

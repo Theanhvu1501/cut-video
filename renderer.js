@@ -503,6 +503,7 @@ async function saveSettings() {
     download: {
       urlsFile: selectedUrlsFile,
       outputFolder: selectedDownloadOutputFolder,
+      descFolder: selectedDownloadDescFolder,
       overlayImagesFolder: selectedDownloadOverlayImagesFolder,
       thumbsFolder: selectedDownloadThumbsFolder,
       cookiesFile: selectedDownloadCookiesFile,
@@ -787,6 +788,11 @@ async function loadSettings() {
         document.getElementById("download-output-folder").value =
           settings.download.outputFolder;
         // Removed folder path display
+      }
+      if (settings.download.descFolder) {
+        selectedDownloadDescFolder = settings.download.descFolder;
+        const el = document.getElementById("download-desc-folder");
+        if (el) el.value = settings.download.descFolder;
       }
       if (settings.download.overlayImagesFolder) {
         selectedDownloadOverlayImagesFolder =
@@ -1701,6 +1707,7 @@ async function saveCurrentProjectSettings() {
       download: {
         urlsFile: selectedUrlsFile,
         outputFolder: selectedDownloadOutputFolder,
+        descFolder: selectedDownloadDescFolder,
         overlayImagesFolder: selectedDownloadOverlayImagesFolder,
         thumbsFolder: selectedDownloadThumbsFolder,
         cookiesFile: selectedDownloadCookiesFile,
@@ -2382,6 +2389,7 @@ async function runRender() {
 // Download - Selected paths
 let selectedUrlsFile = null;
 let selectedDownloadOutputFolder = null;
+let selectedDownloadDescFolder = null;
 let selectedDownloadOverlayImagesFolder = null;
 let selectedDownloadThumbsFolder = null;
 let selectedDownloadCookiesFile = null;
@@ -2432,6 +2440,23 @@ async function selectDownloadOutputFolder() {
 function clearDownloadOutputFolder() {
   selectedDownloadOutputFolder = null;
   const input = document.getElementById("download-output-folder");
+  if (input) input.value = "";
+  saveSettings();
+}
+
+async function selectDownloadDescFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) {
+    selectedDownloadDescFolder = folder;
+    document.getElementById("download-desc-folder").value = folder;
+    saveSettings();
+  }
+}
+
+function clearDownloadDescFolder() {
+  selectedDownloadDescFolder = null;
+  const input = document.getElementById("download-desc-folder");
   if (input) input.value = "";
   saveSettings();
 }
@@ -2583,6 +2608,9 @@ async function runDownload() {
         }
         if (result.config.download.outputFolder) {
           selectedDownloadOutputFolder = result.config.download.outputFolder;
+        }
+        if (result.config.download.descFolder) {
+          selectedDownloadDescFolder = result.config.download.descFolder;
         }
         if (result.config.download.overlayImagesFolder) {
           selectedDownloadOverlayImagesFolder =
@@ -2752,6 +2780,9 @@ async function runRetry() {
         }
         if (result.config.download.outputFolder) {
           selectedDownloadOutputFolder = result.config.download.outputFolder;
+        }
+        if (result.config.download.descFolder) {
+          selectedDownloadDescFolder = result.config.download.descFolder;
         }
         if (result.config.download.overlayImagesFolder) {
           selectedDownloadOverlayImagesFolder =

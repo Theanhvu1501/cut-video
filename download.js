@@ -38,6 +38,7 @@ let MAX_CONCURRENT = 2; // Số video tải song song
 let PROXY = null; // Proxy để sử dụng khi download (vd: http://proxy.example.com:8080)
 let DOWNLOAD_DRIVE = false; // Bật tải Drive với giới hạn độ dài tên file
 let DRIVE_LANGUAGE = "jp"; // Ngôn ngữ cho Drive: "auto", "jp", "cn", "kr", "vi", "en", etc.
+let DESC_DIR = null; // Thư mục lưu mô tả (desc)
 
 
 // Đọc config từ project JSON (mặc định là "default")
@@ -56,6 +57,7 @@ if (fs.existsSync(projectConfigPath)) {
     if (config) {
       if (config.urlsFile) ALL_URLS_FILE = config.urlsFile;
       if (config.outputFolder) DOWNLOAD_DIR = config.outputFolder;
+      if (config.descFolder !== undefined) DESC_DIR = config.descFolder;
       if (config.overlayImagesFolder)
         OVERLAY_IMAGES_DIR = config.overlayImagesFolder;
       if (config.thumbsFolder) OUTPUT_THUMBS_BASE_DIR = config.thumbsFolder;
@@ -204,6 +206,10 @@ const downloadVideo = async (url, outputPath) => {
     extractorArgs: ["youtube:player_client=default,-android_sdkless"],
     jsRuntime: getNodeExecutable(),
   };
+
+  if (DESC_DIR && fs.existsSync(DESC_DIR)) {
+    options.writeDescription = true;
+  }
 
   // Thêm proxy nếu có (validate và trim)
   if (PROXY && typeof PROXY === "string" && PROXY.trim()) {
@@ -570,6 +576,24 @@ async function main() {
     urlsToProcess,
     DOWNLOAD_DIR,
   );
+
+  // --- Di chuyển descriptions ---
+  if (DESC_DIR && fs.existsSync(DESC_DIR)) {
+    console.log(`\n📦 Đang di chuyển file mô tả (.description) vào: ${DESC_DIR}...`);
+    try {
+        const files = fs.readdirSync(DOWNLOAD_DIR);
+        for (const file of files) {
+           if (file.endsWith('.description')) {
+               const oldPath = path.join(DOWNLOAD_DIR, file);
+               const newPath = path.join(DESC_DIR, file.replace(/\.description$/, '.txt'));
+               fs.renameSync(oldPath, newPath);
+               console.log(`  - Đã xuất mô tả: ${file.replace(/\.description$/, '.txt')}`);
+           }
+        }
+    } catch(err) {
+        console.error(`❌ Lỗi khi di chuyển file mô tả: `, err.message);
+    }
+  }
 
   // --- Sửa tên file ---
   console.log(`\n🔧 Đang sửa tên file trong thư mục: ${DOWNLOAD_DIR}...`);

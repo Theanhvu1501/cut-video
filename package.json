@@ -78,6 +78,7 @@
       "createVideoSnow.js",
       "concat-video.js",
       "get-video-chroma.js",
+      "stockDownloader.js",
       "bin/**",
       "node_modules/**"
     ],

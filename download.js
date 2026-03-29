@@ -6,9 +6,7 @@ import path from "path";
 import sharp from "sharp";
 import { fileURLToPath } from "url";
 import { create as createYoutubeDl } from "youtube-dl-exec";
-import electron from "electron";
 
-const { app } = electron;
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
 // =================================================================
@@ -153,18 +151,19 @@ function normalizeProxy(raw) {
 
 
 function getNodeExecutable() {
-  if (!app || !app.isPackaged) return "node";
+  // Vì process được chạy độc lập, chúng ta kiểm tra đường dẫn thư mục hiện tại để biết đang chạy trong production hay không
+  const isPackaged = __dirname.includes('app.asar') || __dirname.includes('resources');
 
+  if (!isPackaged) return "node";
+
+  // Đường dẫn có thể có bin/node.exe dựa vào vị trí của app.asar.unpacked
   const possiblePaths = [
-    path.join(
-      process.resourcesPath,
-      "app.asar.unpacked",
-      "bin",
-      "node.exe"
-    ),
-    path.join(process.resourcesPath, "bin", "node.exe"),
+    path.join(__dirname, "bin", "node.exe"), // Nếu script chạy thẳng trong app.asar.unpacked
+    path.join(__dirname, "..", "bin", "node.exe"), // Trong trường hợp nằm trong thư mục con nào đó
+    path.join(__dirname, "..", "..", "bin", "node.exe") // Nếu cần lùi thêm cấp
   ];
 
+  // Nếu tìm được file exe, trả về đường dẫn
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) return p;
   }

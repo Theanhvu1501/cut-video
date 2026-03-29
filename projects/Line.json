@@ -33,7 +33,7 @@
       "descFolder": "D:\\VidMaster\\03.Test\\desc",
       "overlayImagesFolder": null,
       "thumbsFolder": null,
-      "cookiesFile": "D:\\VidMaster\\03.Test\\studio.youtube.com_cookies.txt",
+      "cookiesFile": "D:\\VidMaster\\03.Test\\www.youtube.com_cookies.txt",
       "maxConcurrent": "2",
       "proxy": null,
       "downloadDrive": false,
@@ -100,5 +100,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-27T09:22:59.722Z"
+  "updatedAt": "2026-03-28T07:46:14.548Z"
 }

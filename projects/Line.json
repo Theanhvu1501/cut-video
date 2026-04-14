@@ -4,12 +4,12 @@
   "settings": {
     "render": {
       "day": "1",
-      "videos": "4",
+      "videos": "60",
       "videoSpeed": "0.95",
       "renderMode": "chromaKey",
       "opacity": "0.4",
-      "chromaKeyMode": "file",
-      "chromaKeyColor": "D4F9D7",
+      "chromaKeyMode": "color",
+      "chromaKeyColor": "4D82EB",
       "keepColorColors": "F6FF00",
       "keepColorCrop": true,
       "keepColorHeight": "150",
@@ -20,12 +20,12 @@
       "gpuVideoCodec": "h264_nvenc",
       "height": "220",
       "y_offset": "490",
-      "overlayFolder": "D:\\VidMaster\\03.Test\\overlays_trimmed",
-      "backgroundFolder": "D:\\VidMaster\\03.Test\\backgrounds",
-      "outputFolder": "D:\\VidMaster\\03.Test\\done",
-      "chromaKeyFile": "D:\\VidMaster\\03.Test\\chromaKey.txt",
+      "overlayFolder": "D:\\VidMaster\\01.2ch_BKT\\overlays",
+      "backgroundFolder": "D:\\VidMaster\\01.2ch_BKT\\backgrounds",
+      "outputFolder": "D:\\VidMaster\\02.2CH_ME_1\\done",
+      "chromaKeyFile": "D:\\VidMaster\\02.2CH_ME_1\\chromaKey.txt",
       "cycleDays": "1",
-      "lastRenderAt": "2026-03-26T16:25:54.588Z"
+      "lastRenderAt": "2026-04-13T06:56:16.758Z"
     },
     "download": {
       "urlsFile": "D:\\VidMaster\\03.Test\\urls.txt",
@@ -70,8 +70,8 @@
       "avgClipDuration": "12"
     },
     "trim": {
-      "inputFolder": "D:\\VidMaster\\03.Test\\overlays",
-      "outputFolder": "D:\\VidMaster\\03.Test\\overlays_trimmed",
+      "inputFolder": "D:\\VidMaster\\02.2CH_ME_1\\overlays",
+      "outputFolder": "D:\\VidMaster\\02.2CH_ME_1\\overlays_30s",
       "startTime": "0",
       "duration": "30"
     },
@@ -100,5 +100,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-03-28T07:46:14.548Z"
+  "updatedAt": "2026-04-13T06:56:16.758Z"
 }

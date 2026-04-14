@@ -217,21 +217,21 @@ const detectGpuCodec = async () => {
         resolve("h264_nvenc");
         return;
       }
-      
+
       // Kiểm tra Intel QuickSync
       if (output.includes("h264_qsv")) {
         log("✅ Phát hiện GPU: Intel QuickSync (h264_qsv)", LOG_LEVEL.INFO);
         resolve("h264_qsv");
         return;
       }
-      
+
       // Kiểm tra AMD AMF
       if (output.includes("h264_amf")) {
         log("✅ Phát hiện GPU: AMD AMF (h264_amf)", LOG_LEVEL.INFO);
         resolve("h264_amf");
         return;
       }
-      
+
       // Không tìm thấy GPU encoder nào
       log("⚠️ Không phát hiện GPU encoder nào. Sẽ sử dụng CPU (libx264)", LOG_LEVEL.WARN);
       resolve(null);
@@ -266,6 +266,7 @@ let opacity = 0.7;
 let color = "D4F9D7";
 let chromaKeyFile = "./chromaKey.txt";
 let chromaKeyMode = "color"; // "color" hoặc "file"
+let chromaKeySimilarity = 0.3;
 
 // VPS
 let ipList = "./vps.txt";
@@ -323,6 +324,8 @@ if (config) {
   if (config.opacity !== undefined) opacity = config.opacity;
   if (config.chromaKeyMode) chromaKeyMode = config.chromaKeyMode;
   if (config.chromaKeyColor) color = config.chromaKeyColor;
+  if (config.chromaKeySimilarity !== undefined)
+    chromaKeySimilarity = parseFloat(config.chromaKeySimilarity) || 0.3;
   if (config.chromaKeyFile) chromaKeyFile = config.chromaKeyFile;
   if (config.useGPU !== undefined) useGPU = config.useGPU;
   if (config.maxConcurrentProcesses !== undefined)
@@ -499,8 +502,9 @@ const complexFilterChromaKey = (inputOverlay) => {
   // Nếu mode là "color", chỉ dùng màu từ config (đã set ở trên)
 
   const filter = [
-    `[1:v]scale=1280:720,colorkey=0x${videoColor}:0.3:0.1,format=yuva420p[overlay_video]`,
+    `[1:v]scale=1280:720,colorkey=0x${videoColor}:${chromaKeySimilarity}:0.1,format=yuva420p[overlay_video]`,
   ];
+
 
   return [
     filter.join(";"),
@@ -614,7 +618,7 @@ const complexFilterKeepColor = () => {
       `[0:v][black_layer]overlay=0:H-h:shortest=1[bg_with_black]`,
       `[bg_with_black][final_isolated]overlay=0:H-h:shortest=1[combined_video]`
     );
-    
+
     return [
       filters.join(";"),
       "[1:a]volume=1.0[overlay_audio]",
@@ -894,7 +898,7 @@ const processAllVideos = async () => {
         useGPU = false; // Tắt GPU nếu không phát hiện được
       }
     }
-    
+
     // 1. Kiểm tra video overlay
     const totalOverlays = overlayFiles.length;
     if (totalOverlays === 0) {
@@ -1002,8 +1006,7 @@ const processAllVideos = async () => {
       }
 
       log(
-        `📁 Đang xử lý folder ${folderName} (${
-          i + 1
+        `📁 Đang xử lý folder ${folderName} (${i + 1
         }/${totalVideoBackgrounds})`,
         LOG_LEVEL.INFO
       );

@@ -476,6 +476,8 @@ async function saveSettings() {
         "color",
       chromaKeyColor:
         document.getElementById("render-chromakey-color")?.value || "D4F9D7",
+      chromaKeySimilarity:
+        document.getElementById("render-chromakey-similarity")?.value || "0.3",
       keepColorColors:
         document.getElementById("render-keepcolor-colors")?.value || "FBFF02",
       keepColorCrop:
@@ -710,6 +712,9 @@ async function loadSettings() {
       if (settings.render.chromaKeyColor)
         document.getElementById("render-chromakey-color").value =
           settings.render.chromaKeyColor;
+      if (settings.render.chromaKeySimilarity)
+        document.getElementById("render-chromakey-similarity").value =
+          settings.render.chromaKeySimilarity;
       if (settings.render.keepColorColors)
         document.getElementById("render-keepcolor-colors").value =
           settings.render.keepColorColors;
@@ -2301,6 +2306,10 @@ async function runRender() {
     }
   }
 
+  const chromaKeySimilarity =
+    parseFloat(document.getElementById("render-chromakey-similarity")?.value) ||
+    0.3;
+
   // Keep Color config
   let keepColorColors = null;
   let keepColorCrop = false;
@@ -2355,6 +2364,7 @@ async function runRender() {
         renderMode,
         chromaKeyMode,
         chromaKeyColor,
+        chromaKeySimilarity,
         chromaKeyFile,
         keepColorColors,
         keepColorCrop,

@@ -26,13 +26,30 @@ function getVideoDuration(inputFile) {
 }
 
 // Hàm để cắt một đoạn video
-function cutVideoSegment(inputFile, outputFile, startTime, duration) {
+function cutVideoSegment(inputFile, outputFile, startTime, duration, options = {}) {
   return new Promise((resolve, reject) => {
-    ffmpeg(inputFile)
+    let command = ffmpeg(inputFile)
       .setStartTime(startTime)
       .setDuration(duration)
-      .output(outputFile)
-      .videoCodec("copy")
+      .output(outputFile);
+
+    const filters = [];
+    if (options.blur) {
+      filters.push(`boxblur=${options.blur}`);
+    }
+    if (options.darken) {
+      filters.push(`drawbox=w=iw:h=ih:color=black@${options.darken}:t=fill`);
+    }
+
+    if (filters.length > 0) {
+      command.videoFilters(filters);
+      command.videoCodec("libx264");
+      command.outputOptions(["-crf 23", "-preset fast"]);
+    } else {
+      command.videoCodec("copy");
+    }
+
+    command
       .noAudio()
       .on("end", () => {
         console.log(`Conversion done for ${outputFile}`);
@@ -47,7 +64,7 @@ function cutVideoSegment(inputFile, outputFile, startTime, duration) {
 }
 
 // Hàm chính xử lý cắt video trong tất cả thư mục
-async function processAllVideosInFolders(inputRoot, outputRoot) {
+async function processAllVideosInFolders(inputRoot, outputRoot, options = {}) {
   try {
     const folders = fs.readdirSync(inputRoot).filter((item) => {
       const fullPath = path.join(inputRoot, item);
@@ -85,7 +102,8 @@ async function processAllVideosInFolders(inputRoot, outputRoot) {
             inputFile,
             outputFile,
             startTime,
-            segmentDuration
+            segmentDuration,
+            options
           );
         }
       }
@@ -100,10 +118,12 @@ async function processAllVideosInFolders(inputRoot, outputRoot) {
 // Thư mục nguồn và đích
 let inputRoot = "./bgs";
 let outputRoot = "./backgrounds";
+let currentOptions = {};
 
 // Đọc config từ project JSON (mặc định là "default")
 const projectName = process.env.PROJECT_NAME || "default";
-const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectsDir =
+  process.env.PROJECTS_DIR || path.join(__dirname, "projects");
 const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
 
 if (fs.existsSync(projectConfigPath)) {
@@ -116,6 +136,10 @@ if (fs.existsSync(projectConfigPath)) {
       if (config.inputFolder) inputRoot = config.inputFolder;
       if (config.outputFolder) outputRoot = config.outputFolder;
 
+      // Đọc các tùy chọn filters
+      if (config.darken) currentOptions.darken = config.darken;
+      if (config.blur) currentOptions.blur = config.blur;
+
       console.log(`Đã đọc config từ project: ${projectName}`);
     }
   } catch (error) {
@@ -124,4 +148,4 @@ if (fs.existsSync(projectConfigPath)) {
 }
 
 // Gọi hàm chính
-processAllVideosInFolders(inputRoot, outputRoot);
+processAllVideosInFolders(inputRoot, outputRoot, currentOptions);

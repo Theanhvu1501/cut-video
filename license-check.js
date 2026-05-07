@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Cấu hình server URL - thay đổi URL này theo server của bạn
-const LICENSE_SERVER_URL = "http://103.162.21.31:3456/api/check-license";
+const LICENSE_SERVER_URL = "https://vidmaster.nbcuong.com/api/check-license";
 
 // Grace period cho phép offline (7 ngày = 7 * 24 * 60 * 60 * 1000 ms)
 const OFFLINE_GRACE_PERIOD_MS = 7 * 24 * 60 * 60 * 1000;

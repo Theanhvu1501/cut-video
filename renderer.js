@@ -572,6 +572,8 @@ async function saveSettings() {
     cutBg: {
       inputFolder: selectedCutBgInputFolder,
       outputFolder: selectedCutBgOutputFolder,
+      darken: document.getElementById("cut-bg-darken")?.value || "",
+      blur: document.getElementById("cut-bg-blur")?.value || "",
     },
     // Thumb settings
     thumb: {
@@ -1031,6 +1033,12 @@ async function loadSettings() {
         document.getElementById("cut-bg-output-folder").value =
           settings.cutBg.outputFolder;
         // Removed folder path display
+      }
+      if (settings.cutBg.darken !== undefined) {
+        document.getElementById("cut-bg-darken").value = settings.cutBg.darken;
+      }
+      if (settings.cutBg.blur !== undefined) {
+        document.getElementById("cut-bg-blur").value = settings.cutBg.blur;
       }
     }
 
@@ -3206,6 +3214,8 @@ function clearCutBgOutputFolder() {
 
 async function runCutBg() {
   if (!checkElectronAPI()) return;
+
+  await saveSettings(); // Lưu settings trước khi chạy script
 
   clearOutput("cut-bg");
   showOutput("cut-bg", "🚀 Đang cắt video background...\n\n");

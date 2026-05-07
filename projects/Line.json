@@ -10,11 +10,12 @@
       "opacity": "0.4",
       "chromaKeyMode": "color",
       "chromaKeyColor": "4D82EB",
+      "chromaKeySimilarity": "0.1",
       "keepColorColors": "F6FF00",
       "keepColorCrop": true,
       "keepColorHeight": "150",
       "keepColorYOffset": "550",
-      "keepColorAddDarkLayer": false,
+      "keepColorAddDarkLayer": true,
       "useGPU": true,
       "maxConcurrentProcesses": "2",
       "gpuVideoCodec": "h264_nvenc",
@@ -22,18 +23,18 @@
       "y_offset": "490",
       "overlayFolder": "D:\\VidMaster\\01.2ch_BKT\\overlays",
       "backgroundFolder": "D:\\VidMaster\\01.2ch_BKT\\backgrounds",
-      "outputFolder": "D:\\VidMaster\\02.2CH_ME_1\\done",
+      "outputFolder": "D:\\VidMaster\\01.2ch_BKT\\done",
       "chromaKeyFile": "D:\\VidMaster\\02.2CH_ME_1\\chromaKey.txt",
       "cycleDays": "1",
-      "lastRenderAt": "2026-04-13T06:56:16.758Z"
+      "lastRenderAt": "2026-05-02T13:14:27.325Z"
     },
     "download": {
-      "urlsFile": "D:\\VidMaster\\03.Test\\urls.txt",
-      "outputFolder": "D:\\VidMaster\\03.Test\\overlays",
-      "descFolder": "D:\\VidMaster\\03.Test\\desc",
+      "urlsFile": "D:\\VidMaster\\02.2CH_ME_1\\urls.txt",
+      "outputFolder": "D:\\VidMaster\\02.2CH_ME_1\\overlays",
+      "descFolder": null,
       "overlayImagesFolder": null,
       "thumbsFolder": null,
-      "cookiesFile": "D:\\VidMaster\\03.Test\\www.youtube.com_cookies.txt",
+      "cookiesFile": null,
       "maxConcurrent": "2",
       "proxy": null,
       "downloadDrive": false,
@@ -70,14 +71,16 @@
       "avgClipDuration": "12"
     },
     "trim": {
-      "inputFolder": "D:\\VidMaster\\02.2CH_ME_1\\overlays",
-      "outputFolder": "D:\\VidMaster\\02.2CH_ME_1\\overlays_30s",
+      "inputFolder": "D:\\VidMaster\\01.2ch_BKT\\overlay_test",
+      "outputFolder": "D:\\VidMaster\\01.2ch_BKT\\overlays_30s",
       "startTime": "0",
       "duration": "30"
     },
     "cutBg": {
       "inputFolder": "D:\\test\\line\\bgs",
-      "outputFolder": "D:\\test\\line\\backgrounds"
+      "outputFolder": "D:\\test\\line\\backgrounds",
+      "darken": "",
+      "blur": ""
     },
     "thumb": {
       "inputFolder": "D:\\test\\line\\overlays",
@@ -100,5 +103,5 @@
       "outputFolder": "D:\\test\\line\\output"
     }
   },
-  "updatedAt": "2026-04-13T06:56:16.758Z"
+  "updatedAt": "2026-05-07T14:39:12.670Z"
 }

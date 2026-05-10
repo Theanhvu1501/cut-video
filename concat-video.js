@@ -1,5 +1,5 @@
 import ffmpeg from "fluent-ffmpeg";
-import fsSync, { promises as fs } from "fs";
+import fs, { promises as fsp } from "fs";
 import path, { dirname } from "path";
 import { fileURLToPath } from "url";
 
@@ -19,12 +19,12 @@ const TEMP_DIR = path.join(__dirname, "temp");
 
 let THUMB_DURATION = 3;
 const THUMB_EXTENSION = ".jpg";
-const DEFAULT_CHUNK_SIZE = 2;
+let DEFAULT_CHUNK_SIZE = 2;
 
 // Tìm file silence.mp3: ưu tiên trong bin/, sau đó là __dirname
 const BIN_SILENCE_PATH = path.join(__dirname, "bin", "silence.mp3");
 const ROOT_SILENCE_PATH = path.join(__dirname, "silence.mp3");
-const SILENT_AUDIO_PATH = fsSync.existsSync(BIN_SILENCE_PATH)
+const SILENT_AUDIO_PATH = fs.existsSync(BIN_SILENCE_PATH)
   ? BIN_SILENCE_PATH
   : ROOT_SILENCE_PATH;
 let USE_THUMBS = true; // Mặc định là true để giữ tương thích với code cũ
@@ -35,13 +35,15 @@ let OUTPUT_FOLDER = null; // Folder output trực tiếp
 let THUMBS_FOLDER = null; // Folder thumbs trực tiếp (nếu useThumbs)
 
 // Đọc config từ project JSON (mặc định là "default")
+// Kiểm tra PROJECT_NAME và PROJECTS_DIR environment variable (được set bởi Electron main process)
 const projectName = process.env.PROJECT_NAME || "default";
-const projectsDir = process.env.PROJECTS_DIR || path.join(__dirname, "projects");
+const projectsDir =
+  process.env.PROJECTS_DIR || path.join(__dirname, "projects");
 const projectConfigPath = path.join(projectsDir, `${projectName}.json`);
 
-if (fsSync.existsSync(projectConfigPath)) {
+if (fs.existsSync(projectConfigPath)) {
   try {
-    const projectContent = fsSync.readFileSync(projectConfigPath, "utf-8");
+    const projectContent = fs.readFileSync(projectConfigPath, "utf-8");
     const projectData = JSON.parse(projectContent);
     const config = projectData.settings?.concat;
 
@@ -199,10 +201,10 @@ async function processFolder(folderName, chunkSize) {
   }
 
   try {
-    await fs.mkdir(outputFolderPath, { recursive: true });
-    await fs.mkdir(TEMP_DIR, { recursive: true }); // Đảm bảo TEMP_DIR tồn tại
+    await fsp.mkdir(outputFolderPath, { recursive: true });
+    await fsp.mkdir(TEMP_DIR, { recursive: true }); // Đảm bảo TEMP_DIR tồn tại
 
-    const videoFiles = (await fs.readdir(videoFolderPath))
+    const videoFiles = (await fsp.readdir(videoFolderPath))
       .map((f) => f.trim())
       .filter(
         (file) =>
@@ -239,7 +241,7 @@ async function processFolder(folderName, chunkSize) {
     // Chỉ kiểm tra và tạo file silence.mp3 nếu cần chèn thumbnail
     if (USE_THUMBS) {
       try {
-        await fs.access(SILENT_AUDIO_PATH);
+        await fsp.access(SILENT_AUDIO_PATH);
         console.log("    ☑️  Đã tìm thấy silence.mp3.");
         // Bạn có thể thêm bước kiểm tra metadata của silence.mp3 ở đây để đảm bảo nó khớp
       } catch {
@@ -319,7 +321,7 @@ async function processFolder(folderName, chunkSize) {
           const thumbPath = path.resolve(thumbFolderPath, thumbName);
 
           try {
-            await fs.access(thumbPath); // Kiểm tra sự tồn tại của thumbnail
+            await fsp.access(thumbPath); // Kiểm tra sự tồn tại của thumbnail
             console.log(`    🖼️  Chuẩn bị thumb: ${thumbName}`);
 
             // Tạo video tạm từ thumbnail với thông số chuẩn
@@ -342,7 +344,7 @@ async function processFolder(folderName, chunkSize) {
 
       // Chỉ thực hiện ghép nếu có ít nhất 2 video (gốc + thumb + gốc) hoặc nhiều hơn
       if (concatFileContent.trim().split("\n").length > 1) {
-        await fs.writeFile(concatListPath, concatFileContent);
+        await fsp.writeFile(concatListPath, concatFileContent);
 
         await new Promise((resolve, reject) => {
           ffmpeg()
@@ -364,13 +366,13 @@ async function processFolder(folderName, chunkSize) {
         console.log("    🗑️  Dọn dẹp file tạm...");
         for (const file of tempVideoFilesToClean) {
           try {
-            await fs.unlink(file);
+            await fsp.unlink(file);
           } catch (e) {
             console.warn(`    Lỗi xóa file tạm "${file}": ${e.message}`);
           }
         }
         try {
-          await fs.unlink(concatListPath);
+          await fsp.unlink(concatListPath);
         } catch (e) {
           console.warn(
             `    Lỗi xóa concat list "${concatListPath}": ${e.message}`
@@ -386,7 +388,7 @@ async function processFolder(folderName, chunkSize) {
     // Luôn dọn dẹp thư mục TEMP_DIR sau khi xử lý xong tất cả các thư mục con
     try {
       console.log("\n🧹 Bắt đầu dọn dẹp thư mục TEMP...");
-      await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      await fsp.rm(TEMP_DIR, { recursive: true, force: true });
       console.log("✅ Dọn dẹp TEMP_DIR thành công.");
     } catch (err) {
       console.error("❌ Lỗi khi dọn dẹp TEMP_DIR:", err.message);
@@ -397,25 +399,8 @@ async function processFolder(folderName, chunkSize) {
 // --- Logic chính ---
 (async () => {
   try {
-    await fs.mkdir(OUTPUT_DIR, { recursive: true });
-    await fs.mkdir(TEMP_DIR, { recursive: true }); // Tạo TEMP_DIR ngay từ đầu
-
-    // Đọc chunkSize, useThumbs, thumbDuration từ config nếu có (đã đọc ở trên, nhưng cần đọc lại để có giá trị mới nhất)
-    let configChunkSize = DEFAULT_CHUNK_SIZE;
-    if (fsSync.existsSync(configFilePath)) {
-      try {
-        const configContent = fsSync.readFileSync(configFilePath, "utf-8");
-        const config = JSON.parse(configContent);
-        if (config.chunkSize)
-          configChunkSize =
-            parseInt(config.chunkSize, 10) || DEFAULT_CHUNK_SIZE;
-        if (config.useThumbs !== undefined) USE_THUMBS = config.useThumbs;
-        if (config.thumbDuration)
-          THUMB_DURATION = parseFloat(config.thumbDuration) || 3;
-      } catch (error) {
-        console.error(`Lỗi khi đọc config: ${error.message}`);
-      }
-    }
+    await fsp.mkdir(OUTPUT_DIR, { recursive: true });
+    await fsp.mkdir(TEMP_DIR, { recursive: true }); // Tạo TEMP_DIR ngay từ đầu
 
     const args = process.argv.slice(2);
     let folderName = null;
@@ -423,8 +408,7 @@ async function processFolder(folderName, chunkSize) {
 
     // Ưu tiên: INPUT_FOLDER từ config > command line args > auto mode
     if (INPUT_FOLDER) {
-      // Mode mới: sử dụng folder input trực tiếp từ config
-      chunkSize = configChunkSize;
+      // Mode mới: sử dụng folder input trực tiếp từ config (chunkSize từ settings.concat)
       await processFolder(null, chunkSize); // folderName không cần thiết nữa
     } else if (args[0] && args[1]) {
       // Chế độ thủ công: node concat-video.js <chunkSize> <folderName>
@@ -436,7 +420,7 @@ async function processFolder(folderName, chunkSize) {
       console.log(
         `Chế độ tự động: Xử lý tất cả các thư mục con trong "${DONE_DIR}"...`
       );
-      const allFolders = await fs.readdir(DONE_DIR, { withFileTypes: true });
+      const allFolders = await fsp.readdir(DONE_DIR, { withFileTypes: true });
       const subDirectories = allFolders
         .filter((d) => d.isDirectory())
         .map((d) => d.name)
@@ -462,7 +446,7 @@ async function processFolder(folderName, chunkSize) {
       // Việc dọn dẹp TEMP_DIR đã được chuyển vào finally của processFolder hoặc chạy sau vòng lặp chính
       // Nếu bạn muốn nó chạy một lần duy nhất ở cuối cùng của toàn bộ script:
       // console.log("\n🧹 Dọn dẹp TEMP_DIR cuối cùng...");
-      // await fs.rm(TEMP_DIR, { recursive: true, force: true });
+      // await fsp.rm(TEMP_DIR, { recursive: true, force: true });
       // console.log("✅ Dọn dẹp TEMP_DIR cuối cùng thành công.");
     } catch (err) {
       // console.error("❌ Lỗi khi dọn dẹp TEMP_DIR cuối cùng:", err.message);

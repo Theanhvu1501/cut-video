@@ -574,6 +574,9 @@ async function saveSettings() {
       outputFolder: selectedCutBgOutputFolder,
       darken: document.getElementById("cut-bg-darken")?.value || "",
       blur: document.getElementById("cut-bg-blur")?.value || "",
+      useGPU: document.getElementById("cut-bg-use-gpu")?.checked || false,
+      maxConcurrent:
+        document.getElementById("cut-bg-max-concurrent")?.value || "2",
     },
     // Thumb settings
     thumb: {
@@ -1039,6 +1042,14 @@ async function loadSettings() {
       }
       if (settings.cutBg.blur !== undefined) {
         document.getElementById("cut-bg-blur").value = settings.cutBg.blur;
+      }
+      if (settings.cutBg.useGPU !== undefined) {
+        document.getElementById("cut-bg-use-gpu").checked =
+          !!settings.cutBg.useGPU;
+      }
+      if (settings.cutBg.maxConcurrent !== undefined) {
+        document.getElementById("cut-bg-max-concurrent").value =
+          settings.cutBg.maxConcurrent;
       }
     }
 

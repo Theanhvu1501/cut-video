@@ -3277,6 +3277,38 @@
               Độ tối của lớp phủ đen (0.1: hơi tối, 0.9: rất tối). Để trống để tắt.
             </small>
           </div>
+
+          <div class="form-group">
+            <label
+              style="
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                font-weight: normal;
+              "
+            >
+              <input type="checkbox" id="cut-bg-use-gpu" />
+              <span>Use GPU (Tự động phát hiện NVIDIA/Intel/AMD)</span>
+            </label>
+            <small style="color: #666; display: block; margin-top: 5px">
+              Chỉ áp dụng khi có Blur/Darken (re-encode). Stream-copy không dùng GPU.
+            </small>
+          </div>
+
+          <div class="form-group">
+            <label>Số tiến trình song song (Max Concurrent):</label>
+            <input
+              type="number"
+              id="cut-bg-max-concurrent"
+              value="2"
+              min="1"
+              step="1"
+            />
+            <small style="color: #666; display: block; margin-top: 5px">
+              Số ffmpeg chạy đồng thời. Tăng lên nếu CPU/GPU còn dư công suất.
+            </small>
+          </div>
+
           <div class="action-buttons">
             <button class="btn btn-primary" onclick="runCutBg()">
               Cắt video background

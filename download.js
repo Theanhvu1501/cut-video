@@ -190,7 +190,7 @@ const downloadVideo = async (url, outputPath) => {
   const options = {
     output: output,
     format:
-      "bestvideo[height=720][ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[height=720][ext=mp4][vcodec^=avc]",
+      "bestvideo[height<=1080][ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4][vcodec^=avc]/bestvideo[ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[ext=mp4][vcodec^=avc]",
     mergeOutputFormat: "mp4",
     writeThumbnail: true,
     convertThumbnails: "jpg",

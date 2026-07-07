@@ -1,3 +1,17 @@
+import { path as installerFfmpeg } from "@ffmpeg-installer/ffmpeg";
+import ffmpeg from "fluent-ffmpeg";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.join(__dirname, "..");
+
+const FIXED_FPS = 30;
+const FIXED_GOP = FIXED_FPS * 2;
+const AUDIO_FREQ = 44100;
+const VIDEO_QUALITY = 23;
+
 export const DEFAULT_RENDER_CFG = {
   opacity: 0.9,
   chromaColor: "D4F9D7",
@@ -107,4 +121,67 @@ export function buildComplexFilter(renderMode, cfgIn = {}) {
     case "topTransparent":
     default: return topTransparent(cfg);
   }
+}
+
+export function resolveFfmpegPaths() {
+  const binFfmpeg = path.join(REPO_ROOT, "bin", "ffmpeg.exe");
+  const binFfprobe = path.join(REPO_ROOT, "bin", "ffprobe.exe");
+  return {
+    ffmpegPath: fs.existsSync(binFfmpeg) ? binFfmpeg : installerFfmpeg,
+    ffprobePath: fs.existsSync(binFfprobe) ? binFfprobe : installerFfmpeg.replace("ffmpeg", "ffprobe"),
+  };
+}
+
+export function renderOne({
+  overlayFile, backgroundFile, outputPath,
+  renderMode, cfg: cfgIn = {}, useGPU = false, gpuVideoCodec = "h264_nvenc",
+  onProgress,
+}) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  const { ffmpegPath, ffprobePath } = resolveFfmpegPaths();
+  ffmpeg.setFfmpegPath(ffmpegPath);
+  ffmpeg.setFfprobePath(ffprobePath);
+
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(overlayFile, (err, metadata) => {
+      if (err) return reject(err);
+      const duration = metadata.format.duration;
+      const newDuration = duration / cfg.videoSpeed;
+
+      const filterConfig = buildComplexFilter(renderMode, cfg);
+      filterConfig.push(`[combined_video]setpts=PTS/${cfg.videoSpeed}[final_video_speed]`);
+      filterConfig.push(`[overlay_audio]atempo=${cfg.videoSpeed}[final_audio_speed]`);
+
+      const command = ffmpeg(backgroundFile)
+        .inputOptions(["-stream_loop", "-1"])
+        .input(overlayFile)
+        .complexFilter(filterConfig)
+        .outputOptions("-t", String(newDuration))
+        .audioCodec("aac")
+        .audioFrequency(AUDIO_FREQ)
+        .audioChannels(2)
+        .map("[final_video_speed]")
+        .map("[final_audio_speed]");
+
+      if (useGPU && gpuVideoCodec.includes("nvenc")) {
+        command.videoCodec(gpuVideoCodec).outputOptions([
+          "-pix_fmt yuv420p", `-r ${FIXED_FPS}`, `-g ${FIXED_GOP}`, `-keyint_min ${FIXED_GOP}`,
+          "-sc_threshold 0", "-preset medium", `-cq:v ${VIDEO_QUALITY}`, "-rc:v vbr", "-movflags +faststart",
+        ]);
+      } else if (useGPU) {
+        command.videoCodec(gpuVideoCodec).outputOptions(["-pix_fmt", "yuv420p", "-movflags", "+faststart"]);
+      } else {
+        command.videoCodec("libx264").outputOptions([
+          "-preset ultrafast", "-pix_fmt yuv420p", `-r ${FIXED_FPS}`, `-g ${FIXED_GOP}`,
+          `-keyint_min ${FIXED_GOP}`, "-sc_threshold 0", `-crf ${VIDEO_QUALITY}`, "-movflags +faststart",
+        ]);
+      }
+
+      command
+        .on("stderr", (line) => { if (onProgress) onProgress(line); })
+        .on("end", () => resolve({ outputPath, durationSec: newDuration }))
+        .on("error", (e) => reject(e))
+        .save(outputPath);
+    });
+  });
 }

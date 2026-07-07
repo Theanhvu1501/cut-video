@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildComplexFilter } from "../sheet/render-core.js";
+import { buildComplexFilter, resolveFfmpegPaths } from "../sheet/render-core.js";
 
 test("topTransparent uses opacity and overlay at 0:0", () => {
   const f = buildComplexFilter("topTransparent", { opacity: 0.7 });
@@ -32,4 +32,11 @@ test("keepColor builds per-color masks and alphamerge", () => {
 test("invalid mode falls back to topTransparent", () => {
   const f = buildComplexFilter("nope", {});
   assert.ok(f.some((s) => s.includes("[base_video][top_video]overlay=0:0[combined_video]")));
+});
+
+test("resolveFfmpegPaths returns string paths", () => {
+  const { ffmpegPath, ffprobePath } = resolveFfmpegPaths();
+  assert.equal(typeof ffmpegPath, "string");
+  assert.equal(typeof ffprobePath, "string");
+  assert.ok(ffmpegPath.length > 0);
 });

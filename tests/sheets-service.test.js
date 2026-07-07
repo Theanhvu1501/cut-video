@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { parseConfigRows, parseUrlRows } from "../sheet/sheets-service.js";
+import { pickDownloadedFile } from "../sheet/channel-download.js";
 
 const HEADER = ["sheetName","enabled","videosPerDay","renderMode","opacity","chromaColor","chromaSimilarity","keepColors","cropHeight","cropYOffset","proxy"];
 
@@ -45,4 +46,14 @@ test("parseUrlRows keeps 1-based index, skips blanks and header", () => {
 test("parseUrlRows treats first row as data if it is a URL", () => {
   const out = parseUrlRows([["https://youtu.be/x",""]]);
   assert.deepEqual(out, [{ rowIndex: 1, url: "https://youtu.be/x", status: "" }]);
+});
+
+test("pickDownloadedFile returns the new mp4", () => {
+  const before = ["old.mp4"];
+  const after = ["old.mp4", "New Title.mp4", "New Title.jpg"];
+  assert.equal(pickDownloadedFile(before, after), "New Title.mp4");
+});
+
+test("pickDownloadedFile returns null when no new mp4", () => {
+  assert.equal(pickDownloadedFile(["a.mp4"], ["a.mp4"]), null);
 });

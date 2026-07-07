@@ -39,4 +39,5 @@ test("resolveFfmpegPaths returns string paths", () => {
   assert.equal(typeof ffmpegPath, "string");
   assert.equal(typeof ffprobePath, "string");
   assert.ok(ffmpegPath.length > 0);
+  assert.ok(ffprobePath.length > 0);
 });

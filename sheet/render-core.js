@@ -128,7 +128,7 @@ export function resolveFfmpegPaths() {
   const binFfprobe = path.join(REPO_ROOT, "bin", "ffprobe.exe");
   return {
     ffmpegPath: fs.existsSync(binFfmpeg) ? binFfmpeg : installerFfmpeg,
-    ffprobePath: fs.existsSync(binFfprobe) ? binFfprobe : installerFfmpeg.replace("ffmpeg", "ffprobe"),
+    ffprobePath: fs.existsSync(binFfprobe) ? binFfprobe : installerFfmpeg.replace(/ffmpeg(\.exe)?$/, "ffprobe$1"),
   };
 }
 
@@ -156,7 +156,7 @@ export function renderOne({
         .inputOptions(["-stream_loop", "-1"])
         .input(overlayFile)
         .complexFilter(filterConfig)
-        .outputOptions("-t", String(newDuration))
+        .outputOptions(`-t ${newDuration}`)
         .audioCodec("aac")
         .audioFrequency(AUDIO_FREQ)
         .audioChannels(2)

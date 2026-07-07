@@ -497,6 +497,20 @@ function createWindow() {
 
   mainWindow.loadFile("renderer.html");
 
+  // Auto-run sheet-watch khi mở app nếu người dùng đã bật "Tự chạy khi mở app"
+  // Delay 4 s để renderer kịp gắn listener 'sheet:event' trước khi runner bắt đầu emit
+  try {
+    const sw = loadSheetSettings();
+    if (sw.autoRunOnOpen && sw.spreadsheetId && sw.credentialsPath && sw.channelsRoot) {
+      setTimeout(() => {
+        try {
+          sheetRunner = buildSheetRunner(mainWindow);
+          sheetRunner.start((sw.pollSec || 300) * 1000);
+        } catch (err) { console.error("Auto-run sheet-watch lỗi:", err); }
+      }, 4000);
+    }
+  } catch (err) { console.error(err); }
+
   // Đợi window load xong rồi mới check update
   // Đảm bảo renderer.js đã load và setup listeners
   mainWindow.webContents.once("did-finish-load", () => {

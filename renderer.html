@@ -1830,6 +1830,7 @@
           Sửa tên ảnh thu nhỏ
         </button>
         <button class="tab-button" data-tab="concat">Ghép video</button>
+        <button class="tab-button" data-tab="sheet-watch">Theo dõi Sheet</button>
       </div>
 
       <div class="content">
@@ -3677,6 +3678,62 @@
             </button>
           </div>
           <div id="concat-output" class="output" style="display: none"></div>
+        </div>
+
+        <!-- Theo dõi Sheet Tab -->
+        <div id="sheet-watch" class="tab-content">
+          <div class="tab-header">
+            <h2>Theo dõi Sheet — tự động tải &amp; render</h2>
+          </div>
+          <div class="form-group">
+            <label>Spreadsheet ID</label>
+            <input id="sw-spreadsheet-id" type="text" style="width:100%">
+          </div>
+          <div class="form-group">
+            <label>Service account JSON</label>
+            <div class="folder-select">
+              <div class="folder-input-wrap">
+                <input id="sw-cred-path" type="text" readonly style="width:100%">
+              </div>
+              <button class="btn btn-secondary" id="sw-pick-cred">Chọn file…</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Channels root folder</label>
+            <div class="folder-select">
+              <div class="folder-input-wrap">
+                <input id="sw-root" type="text" readonly style="width:100%">
+              </div>
+              <button class="btn btn-secondary" id="sw-pick-root">Chọn folder…</button>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Poll (giây)</label>
+            <input id="sw-poll" type="number" value="300" style="width:100px">
+          </div>
+          <div class="form-group">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+              <input id="sw-auto-open" type="checkbox"> Tự chạy khi mở app
+            </label>
+          </div>
+          <div class="action-buttons">
+            <button class="btn btn-secondary" id="sw-save">Lưu cấu hình</button>
+            <button class="btn btn-primary" id="sw-start">Start theo dõi</button>
+            <button class="btn btn-secondary" id="sw-stop">Stop</button>
+            <button class="btn btn-secondary" id="sw-run-now">Chạy tất cả ngay</button>
+          </div>
+          <table id="sw-status-table" style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px">
+            <thead>
+              <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                <th style="text-align:left;padding:10px 12px;">Kênh</th>
+                <th style="text-align:left;padding:10px 12px;">Trạng thái</th>
+                <th style="text-align:left;padding:10px 12px;">Hôm nay</th>
+                <th style="text-align:left;padding:10px 12px;">Lỗi</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <pre id="sw-log" style="height:200px;overflow:auto;background:#1a1a2e;color:#0f0;padding:12px;margin-top:16px;border-radius:8px;font-size:12px;line-height:1.5;"></pre>
         </div>
       </div>
     </div>

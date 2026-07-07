@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import pLimit from "p-limit";
 import { createSheetRunner, pickRandomBackground } from "../sheet/sheet-runner.js";
 
 test("pickRandomBackground picks by rand", () => {
@@ -85,4 +86,94 @@ test("runNow skips channel when enabled is false", async () => {
   });
   await createSheetRunner(deps).runNow();
   assert.equal(calls.downloaded.length, 0);
+});
+
+test("downloads are serialized (max concurrency 1) while renders run in parallel (max concurrency >= 2) with renderConcurrency:3", async () => {
+  // Track download concurrency
+  let activeDl = 0;
+  let maxActiveDl = 0;
+  // Track render concurrency
+  let activeRender = 0;
+  let maxActiveRender = 0;
+
+  // Downloads are short (5ms each, serialized) so 3 downloads finish quickly at 0ms, 5ms, 10ms.
+  // Renders are longer (30ms) so all 3 renders overlap — proving parallel render execution.
+  const DOWNLOAD_HOLD_MS = 5;
+  const RENDER_HOLD_MS = 30;
+
+  const calls2 = { status: [], rendered: [], downloaded: [] };
+  let savedState2 = {};
+  const { deps } = makeDeps({
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 3 },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 3, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [
+        { rowIndex: 2, url: "u1", status: "" },
+        { rowIndex: 3, url: "u2", status: "" },
+        { rowIndex: 4, url: "u3", status: "" },
+      ],
+      setUrlStatus: async (sheetName, rowIndex, status) => calls2.status.push({ sheetName, rowIndex, status }),
+    },
+    stateStore: { load: () => savedState2, save: (s) => { savedState2 = JSON.parse(JSON.stringify(s)); } },
+    pLimitFn: (n) => pLimit(n),
+    downloader: async (url) => {
+      activeDl++;
+      if (activeDl > maxActiveDl) maxActiveDl = activeDl;
+      await new Promise((resolve) => setTimeout(resolve, DOWNLOAD_HOLD_MS));
+      activeDl--;
+      calls2.downloaded.push(url);
+      return { filePath: `/ov/${url}.mp4`, title: url };
+    },
+    renderer: async ({ outputPath }) => {
+      activeRender++;
+      if (activeRender > maxActiveRender) maxActiveRender = activeRender;
+      await new Promise((resolve) => setTimeout(resolve, RENDER_HOLD_MS));
+      activeRender--;
+      calls2.rendered.push(outputPath);
+      return { outputPath };
+    },
+  });
+
+  await createSheetRunner(deps).runNow();
+
+  assert.equal(calls2.downloaded.length, 3, "all 3 URLs downloaded");
+  assert.equal(calls2.rendered.length, 3, "all 3 URLs rendered");
+  assert.equal(maxActiveDl, 1, "downloads never overlapped — max concurrent downloads must be 1");
+  assert.ok(maxActiveRender >= 2, `renders ran in parallel — expected max concurrent renders >= 2, got ${maxActiveRender}`);
+});
+
+test("runNow skips overlapping poll if already running", async () => {
+  const logs = [];
+  let resolveBlock;
+  const blockPromise = new Promise((res) => { resolveBlock = res; });
+  let callCount = 0;
+
+  const calls3 = { status: [], downloaded: [] };
+  const { deps } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => {
+        callCount++;
+        // First call blocks until we release it; subsequent calls resolve immediately
+        if (callCount === 1) await blockPromise;
+        return [{ sheetName: "Kênh A", enabled: false, videosPerDay: 2, renderMode: "topTransparent", cfg: {}, proxy: "" }];
+      },
+      readChannelUrls: async () => [],
+      setUrlStatus: async (sheetName, rowIndex, status) => calls3.status.push({ sheetName, rowIndex, status }),
+    },
+    emit: (e) => { if (e.type === "log") logs.push(e.message); },
+    pLimitFn: (n) => pLimit(n),
+  });
+
+  const runner = createSheetRunner(deps);
+  // Start first run (will block at readConfigSheet)
+  const first = runner.runNow();
+  // Attempt second run while first is still in flight — should be skipped
+  await runner.runNow();
+  // Now release the block so first run can finish
+  resolveBlock();
+  await first;
+
+  assert.ok(logs.some((m) => /bỏ qua/i.test(m)), "second runNow should emit a skip log message");
 });

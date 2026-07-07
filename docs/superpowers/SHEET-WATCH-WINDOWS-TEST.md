@@ -42,6 +42,7 @@
 | 3.9 | Check `C:\Videos\Kênh Test\output\` — confirm 2 `.mp4` files exist. | 2 output mp4 files present. | |
 | 3.10 | Open the Google Sheet `Kênh Test` tab. Confirm column B of the 2 processed rows = **`done`**. The 3rd row's col B remains empty. | 2 rows have "done"; 1 row still blank. | |
 | 3.11 | Check `C:\Videos\runner-state.json`. Confirm it contains `{ "Kênh Test": { "countToday": 2, ... } }`. | countToday = 2. | |
+| 3.12 | Open each of the 2 rendered `.mp4` files in `output\`. Confirm that each video corresponds to the URL in the same sheet row — i.e. the video content matches the source URL listed in col A (guards against row/video misattribution from concurrent downloads). | Video 1 matches row 1's URL; video 2 matches row 2's URL. | |
 
 ---
 

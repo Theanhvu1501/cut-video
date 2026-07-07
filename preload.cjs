@@ -49,4 +49,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("script-output");
   },
   detectGpuCodec: () => ipcRenderer.invoke("detect-gpu-codec"),
+  sheet: {
+    loadSettings: () => ipcRenderer.invoke("sheet:load-settings"),
+    saveSettings: (s) => ipcRenderer.invoke("sheet:save-settings", s),
+    selectCredentials: () => ipcRenderer.invoke("sheet:select-credentials"),
+    selectRoot: () => ipcRenderer.invoke("sheet:select-root"),
+    start: () => ipcRenderer.invoke("sheet:start"),
+    stop: () => ipcRenderer.invoke("sheet:stop"),
+    runNow: (sheetName) => ipcRenderer.invoke("sheet:run-now", sheetName),
+    onEvent: (cb) => ipcRenderer.on("sheet:event", (e, data) => cb(data)),
+    removeEventListener: () => ipcRenderer.removeAllListeners("sheet:event"),
+  },
 });

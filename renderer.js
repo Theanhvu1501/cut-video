@@ -4113,6 +4113,7 @@ async function runConcat() {
   const logEl = $("sw-log");
   const statusBody = $("sw-status-table")?.querySelector("tbody");
   const rows = new Map(); // channel -> {statusEl, todayEl, errEl}
+  const rendered = new Map(); // channel -> count rendered this session
 
   function log(msg) {
     if (!logEl) return;
@@ -4120,6 +4121,7 @@ async function runConcat() {
     logEl.scrollTop = logEl.scrollHeight;
   }
   function ensureRow(channel) {
+    if (!statusBody) return null;
     if (rows.has(channel)) return rows.get(channel);
     const tr = document.createElement("tr");
     tr.innerHTML = `<td style="padding:8px 12px;">${channel}</td><td class="st" style="padding:8px 12px;"></td><td class="td" style="padding:8px 12px;"></td><td class="er" style="padding:8px 12px;color:#c00"></td>`;
@@ -4164,6 +4166,9 @@ async function runConcat() {
       log(`[${evt.channel}] ${evt.status}${evt.url ? " — " + evt.url : ""}`);
     } else if (evt.type === "video-rendered") {
       const r = ensureRow(evt.channel); r.statusEl.textContent = "xong";
+      const n = (rendered.get(evt.channel) || 0) + 1;
+      rendered.set(evt.channel, n);
+      r.todayEl.textContent = String(n);
       log(`[${evt.channel}] ✅ ${evt.title}`);
     } else if (evt.type === "error") {
       const r = evt.channel ? ensureRow(evt.channel) : null;

@@ -1370,6 +1370,7 @@ ipcMain.handle("sheet:select-root", async () => {
 ipcMain.handle("sheet:start", async (e) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   const s = loadSheetSettings();
+  if (sheetRunner) sheetRunner.stop();
   sheetRunner = buildSheetRunner(win);
   sheetRunner.start((s.pollSec || 300) * 1000);
   return { success: true };

@@ -1,3 +1,8 @@
+import { google } from "googleapis";
+import fs from "fs";
+
+const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
+
 function truthy(v) {
   const s = String(v ?? "").trim().toLowerCase();
   if (s === "") return true; // trống = bật
@@ -60,4 +65,36 @@ export function parseUrlRows(values) {
     out.push({ rowIndex: r + 1, url, status: String(row[1] ?? "").trim() });
   }
   return out;
+}
+
+export function createSheetsClient(credentialsPath) {
+  if (!fs.existsSync(credentialsPath))
+    throw new Error(`Không tìm thấy file credentials: ${credentialsPath}`);
+  const key = JSON.parse(fs.readFileSync(credentialsPath, "utf-8"));
+  const auth = new google.auth.GoogleAuth({ credentials: key, scopes: SCOPES });
+  return google.sheets({ version: "v4", auth });
+}
+
+export async function listSheetTabs(sheets, spreadsheetId) {
+  const res = await sheets.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" });
+  return (res.data.sheets || []).map((s) => s.properties.title);
+}
+
+export async function readConfigSheet(sheets, spreadsheetId, configTab = "⚙config") {
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${configTab}!A:Z` });
+  return parseConfigRows(res.data.values || []);
+}
+
+export async function readChannelUrls(sheets, spreadsheetId, sheetName) {
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A:B` });
+  return parseUrlRows(res.data.values || []);
+}
+
+export async function setUrlStatus(sheets, spreadsheetId, sheetName, rowIndex, status) {
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${sheetName}!B${rowIndex}`,
+    valueInputOption: "RAW",
+    requestBody: { values: [[status]] },
+  });
 }

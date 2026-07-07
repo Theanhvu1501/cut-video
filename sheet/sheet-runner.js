@@ -43,6 +43,8 @@ export function createSheetRunner(deps) {
           outputPath, renderMode: ch.renderMode, cfg: ch.cfg,
         });
         await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, "done");
+        // stateStore.load/save are synchronous — no await between them, so concurrent
+        // pLimit tasks cannot interleave this load-modify-save (no lost increments).
         const s = stateStore.load();
         recordRendered(s, ch.sheetName, today);
         stateStore.save(s);

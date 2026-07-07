@@ -72,3 +72,17 @@ test("runNow errors channel with no backgrounds", async () => {
   assert.equal(calls.downloaded.length, 0);
   assert.ok(calls.errors.some((e) => /background/i.test(e.message)));
 });
+
+test("runNow skips channel when enabled is false", async () => {
+  const { deps, calls } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: false, videosPerDay: 2, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "" }],
+      setUrlStatus: async () => {},
+    },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.equal(calls.downloaded.length, 0);
+});

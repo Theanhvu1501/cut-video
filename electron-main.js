@@ -1476,6 +1476,16 @@ ipcMain.handle("gpm:list-channels", async () => {
   }
 });
 
+ipcMain.handle("gpm:test-telegram", async (e, { token, chatId } = {}) => {
+  try {
+    const r = await sendTelegram((token || "").trim(), (chatId || "").trim(),
+      "✅ VidMaster: test thông báo Telegram thành công.");
+    return r.ok ? { ok: true } : { ok: false, error: r.error || "gửi thất bại" };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
+
 ipcMain.handle("gpm:connect", async (e, { gpmHost, profileId } = {}) => {
   try {
     const host = (gpmHost || "").trim() || "127.0.0.1:19995";

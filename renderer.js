@@ -4257,6 +4257,18 @@ async function runConcat() {
     else { statusEl.textContent = `❌ ${r?.error || "lỗi"}`; statusEl.style.color = "#c00"; }
   });
 
+  $("sw-gpm-tg-test")?.addEventListener("click", async () => {
+    const statusEl = $("sw-gpm-tg-status");
+    const token = $("sw-gpm-tg-token").value.trim();
+    const chatId = $("sw-gpm-tg-chat").value.trim();
+    if (!token || !chatId) { statusEl.textContent = "❌ thiếu token/chat ID"; statusEl.style.color = "#c00"; return; }
+    statusEl.textContent = "⏳ đang gửi…"; statusEl.style.color = "#666";
+    await saveNow();
+    const r = await api.gpmTestTelegram(token, chatId);
+    if (r?.ok) { statusEl.textContent = "✅ đã gửi — kiểm tra Telegram"; statusEl.style.color = "#1a7f37"; }
+    else { statusEl.textContent = `❌ ${r?.error || "lỗi"}`; statusEl.style.color = "#c00"; }
+  });
+
   function gpmRenderRow(ch) {
     const tb = $("sw-gpm-table").querySelector("tbody");
     const tr = document.createElement("tr");

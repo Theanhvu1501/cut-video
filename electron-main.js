@@ -9,9 +9,10 @@ import { checkLicense } from "./license-check.js";
 import pLimit from "p-limit";
 import sharp from "sharp";
 import { createSheetRunner } from "./sheet/sheet-runner.js";
-import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus, testSheetConnection } from "./sheet/sheets-service.js";
+import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus, setUploadStatus, testSheetConnection } from "./sheet/sheets-service.js";
 import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
+import { sendTelegram, buildDigest } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne } from "./sheet/channel-download.js";
@@ -1354,6 +1355,17 @@ function buildSheetRunner(win) {
     loadState: () => loadState(gpmStatePath),
     saveState: (st) => saveState(gpmStatePath, st),
     log: (message) => emitEvent({ type: "log", message }),
+    // Ghi ngược trạng thái từng bước vào cột C của tab kênh.
+    setUploadStatus: (sheetName, rowIndex, status) =>
+      setUploadStatus(sheets, s.spreadsheetId, sheetName, rowIndex, status),
+    // Gửi 1 digest Telegram khi hàng đợi upload rảnh.
+    notifyDigest: async (results) => {
+      const text = buildDigest(results);
+      if (!text) return;
+      if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;
+      const r = await sendTelegram(s.gpmTelegramToken, s.gpmTelegramChatId, text);
+      if (!r.ok) emitEvent({ type: "log", message: `Telegram lỗi: ${r.error || "?"}` });
+    },
   });
   return createSheetRunner({
     uploadQueue,

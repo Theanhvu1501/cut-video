@@ -4153,6 +4153,8 @@ async function runConcat() {
     $("sw-use-gpu").checked = !!s.useGPU;
     $("sw-gpm-enabled").checked = !!s.gpmEnabled;
     $("sw-gpm-host").value = s.gpmHost || "127.0.0.1:19995";
+    $("sw-gpm-tg-token").value = s.gpmTelegramToken || "";
+    $("sw-gpm-tg-chat").value = s.gpmTelegramChatId || "";
     $("sw-gpm-panel").style.display = s.gpmEnabled ? "" : "none";
   }
   function currentSettings() {
@@ -4166,6 +4168,8 @@ async function runConcat() {
       useGPU: $("sw-use-gpu").checked,
       gpmEnabled: $("sw-gpm-enabled").checked,
       gpmHost: $("sw-gpm-host").value.trim() || "127.0.0.1:19995",
+      gpmTelegramToken: $("sw-gpm-tg-token").value.trim(),
+      gpmTelegramChatId: $("sw-gpm-tg-chat").value.trim(),
     };
   }
 
@@ -4177,7 +4181,8 @@ async function runConcat() {
     $(id)?.addEventListener("input", saveDebounced));
   ["sw-auto-open", "sw-use-gpu", "sw-gpm-enabled"].forEach((id) =>
     $(id)?.addEventListener("change", saveNow));
-  $("sw-gpm-host")?.addEventListener("input", saveDebounced);
+  ["sw-gpm-host", "sw-gpm-tg-token", "sw-gpm-tg-chat"].forEach((id) =>
+    $(id)?.addEventListener("input", saveDebounced));
   $("sw-gpm-enabled")?.addEventListener("change", () => {
     $("sw-gpm-panel").style.display = $("sw-gpm-enabled").checked ? "" : "none";
   });

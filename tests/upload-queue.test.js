@@ -81,3 +81,60 @@ test("queue: video đã lên lịch thì bỏ qua (resume)", async () => {
   await q.enqueue({ sheetName: "K", gpmHost: "h", profileId: "p", videoPath: "/o/v1.mp4", overlaysDir: "/ov", title: "v1", postTimes: "8:00" });
   assert.equal(ran, false);
 });
+
+test("queue: retry khi lỗi TRƯỚC upload rồi thành công", async () => {
+  let state = {};
+  let attempts = 0;
+  const q = createUploadQueue({
+    loadState: () => state, saveState: (s) => { state = s; },
+    connect: async () => ({ page: {} }),
+    runUpload: async ({ onUploaded }) => {
+      attempts++;
+      if (attempts === 1) throw new Error("lỗi tạm");
+      onUploaded();
+    },
+    now: () => NOW, listFiles: () => ["v1.jpg"],
+    retries: 3, retryDelayMs: 1, sleepFn: () => Promise.resolve(),
+  });
+  await q.enqueue({ sheetName: "K", gpmHost: "h", profileId: "p", videoPath: "/o/v1.mp4", overlaysDir: "/ov", title: "v1", postTimes: "8:00" });
+  await q.drain();
+  assert.equal(attempts, 2);
+  assert.equal(state.K.videos["/o/v1.mp4"].status, "scheduled");
+});
+
+test("queue: KHÔNG retry sau khi đã bắt đầu upload (tránh trùng)", async () => {
+  let state = {};
+  let attempts = 0;
+  const q = createUploadQueue({
+    loadState: () => state, saveState: (s) => { state = s; },
+    connect: async () => ({ page: {} }),
+    runUpload: async ({ onUploaded }) => { attempts++; onUploaded(); throw new Error("lỗi sau upload"); },
+    now: () => NOW, listFiles: () => [], retries: 3, sleepFn: () => Promise.resolve(),
+  });
+  await q.enqueue({ sheetName: "K", gpmHost: "h", profileId: "p", videoPath: "/o/v1.mp4", overlaysDir: "/ov", title: "v1", postTimes: "8:00" });
+  await q.drain();
+  assert.equal(attempts, 1);
+  assert.equal(state.K?.videos?.["/o/v1.mp4"], undefined);
+});
+
+test("queue: gửi digest khi rảnh + ghi trạng thái vào Sheet", async () => {
+  let state = {};
+  const statuses = [];
+  let digest = null;
+  const q = createUploadQueue({
+    loadState: () => state, saveState: (s) => { state = s; },
+    connect: async () => ({ page: {} }),
+    runUpload: async ({ onStep }) => { await onStep("b2: upload xong"); },
+    now: () => NOW, listFiles: () => ["v1.jpg"],
+    flushMs: 5, sleepFn: () => Promise.resolve(),
+    setUploadStatus: async (ch, row, st) => { statuses.push([ch, row, st]); },
+    notifyDigest: async (batch) => { digest = batch; },
+  });
+  await q.enqueue({ sheetName: "K", gpmHost: "h", profileId: "p", videoPath: "/o/v1.mp4", overlaysDir: "/ov", title: "v1", postTimes: "8:00", rowIndex: 5 });
+  await q.drain();
+  await new Promise((r) => setTimeout(r, 40)); // đợi flush timer
+  assert.ok(digest && digest.length === 1 && digest[0].ok === true);
+  assert.ok(statuses.some((s) => s[2] === "⏳ đang upload"));
+  assert.ok(statuses.some((s) => /lên lịch/.test(s[2])));
+  assert.ok(statuses.every((s) => s[1] === 5));
+});

@@ -34,9 +34,18 @@ export function createUploadQueue({
   now = () => new Date(),
   listFiles = (dir) => { try { return fs.readdirSync(dir); } catch { return []; } },
   log = () => {},
+  notifyDigest = null,                 // async (results[]) — gửi digest khi hàng đợi rảnh
+  setUploadStatus = async () => {},    // async (sheetName, rowIndex, status) — ghi ngược vào Sheet
+  retries = 3,                         // số lần thử lại khi lỗi (chỉ khi CHƯA bắt đầu upload)
+  retryDelayMs = 3000,
+  flushMs = 3000,                      // chờ rảnh bao lâu trước khi gửi digest
+  sleepFn = (ms) => new Promise((r) => setTimeout(r, ms)),
 } = {}) {
   const chains = new Map(); // sheetName -> Promise (chuỗi serial theo kênh)
   const conns = new Map();  // profileId -> { browser, page } (tái dùng kết nối)
+  const results = [];       // kết quả từ lượt bận hiện tại (để gộp digest)
+  let pending = 0;          // số job đang chờ/chạy
+  let flushTimer = null;
 
   async function getConn(gpmHost, profileId) {
     if (conns.has(profileId)) return conns.get(profileId);
@@ -45,8 +54,24 @@ export function createUploadQueue({
     return c;
   }
 
+  async function writeStatus(sheetName, rowIndex, status) {
+    if (rowIndex == null) return;
+    try { await setUploadStatus(sheetName, rowIndex, status); } catch { /* ignore */ }
+  }
+
+  // Khi hàng đợi rảnh → gửi 1 digest gộp các kết quả từ lượt bận.
+  function scheduleFlush() {
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = setTimeout(async () => {
+      if (pending > 0 || !results.length) return;
+      const batch = results.splice(0, results.length);
+      if (!notifyDigest) return;
+      try { await notifyDigest(batch); } catch (e) { log(`Lỗi gửi Telegram: ${e?.message || e}`); }
+    }, flushMs);
+  }
+
   async function runJob(job) {
-    const { sheetName, gpmHost, profileId, videoPath, overlaysDir, title, postTimes, locale } = job;
+    const { sheetName, gpmHost, profileId, videoPath, overlaysDir, title, postTimes, locale, rowIndex } = job;
     const state = loadState() || {};
     const ch = state[sheetName] || (state[sheetName] = { usedSlots: [], videos: {} });
 
@@ -60,29 +85,67 @@ export function createUploadQueue({
       videoPath, overlaysDir, postTimes, usedSlots: ch.usedSlots, now: now(), listFiles,
     });
 
-    // Hết slot ngày mai → để video chờ lượt sau (không đánh dấu).
+    // Hết slot ngày mai → để video chờ lượt sau (không đánh dấu, không tính vào digest).
     if (!scheduleISO) {
       log(`[${sheetName}] hết slot ngày mai — để chờ: ${title}`);
       return;
     }
 
     log(`[${sheetName}] upload "${title}" → lịch ${scheduleISO}${thumbnailPath ? "" : " (⚠ không thấy thumb)"}`);
+    await writeStatus(sheetName, rowIndex, "⏳ đang upload");
     const { page } = await getConn(gpmHost, profileId);
-    await runUpload({ page, videoPath, title, thumbnailPath, scheduleISO, locale, log });
+    const onStep = (msg) => writeStatus(sheetName, rowIndex, msg);
 
-    // Ghi state: đánh dấu đã lên lịch + slot đã dùng.
+    // Retry: chỉ thử lại khi CHƯA bắt đầu upload (tránh tạo bản nháp trùng trên YouTube).
+    let uploaded = false;
+    let lastErr = null;
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        await runUpload({
+          page, videoPath, title, thumbnailPath, scheduleISO, locale, log,
+          onUploaded: () => { uploaded = true; },
+          onStep,
+        });
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        if (uploaded) break; // đã bắt đầu upload → không retry
+        if (attempt < retries) {
+          log(`[${sheetName}] lỗi (thử ${attempt}/${retries}): ${e?.message || e}`);
+          await sleepFn(retryDelayMs * attempt);
+        }
+      }
+    }
+
+    if (lastErr) {
+      const msg = String(lastErr?.message || lastErr).slice(0, 200);
+      results.push({ sheetName, title, ok: false, error: msg });
+      await writeStatus(sheetName, rowIndex, `❌ lỗi: ${msg}`);
+      log(`❌ [${sheetName}] ${title}: ${msg}`);
+      return;
+    }
+
+    // Thành công → ghi state + digest + Sheet.
     ch.usedSlots.push(scheduleISO);
     ch.videos[videoPath] = { title, status: "scheduled", scheduledAt: scheduleISO };
     saveState(state);
+    results.push({ sheetName, title, ok: true, scheduleISO });
+    await writeStatus(sheetName, rowIndex, `✅ lên lịch ${scheduleISO}`);
     log(`[${sheetName}] ✅ đã lên lịch: ${title}`);
   }
 
   // Enqueue 1 video; các video cùng kênh chạy TUẦN TỰ.
   function enqueue(job) {
+    pending++;
     const prev = chains.get(job.sheetName) || Promise.resolve();
     const next = prev
       .then(() => runJob(job))
-      .catch((e) => log(`❌ [${job.sheetName}] ${e?.message || e}`));
+      .catch((e) => log(`❌ [${job.sheetName}] ${e?.message || e}`))
+      .finally(() => {
+        pending--;
+        if (pending === 0) scheduleFlush(); // hàng đợi rảnh → gửi digest
+      });
     chains.set(job.sheetName, next);
     return next;
   }

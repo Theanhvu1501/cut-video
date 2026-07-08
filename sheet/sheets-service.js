@@ -181,3 +181,13 @@ export async function setUrlStatus(sheets, spreadsheetId, sheetName, rowIndex, s
     requestBody: { values: [[status]] },
   });
 }
+
+// Ghi trạng thái upload (các bước GPM) vào cột C của tab kênh, tách khỏi cột B (trạng thái render).
+export async function setUploadStatus(sheets, spreadsheetId, sheetName, rowIndex, status) {
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${sheetName}!C${rowIndex}`,
+    valueInputOption: "RAW",
+    requestBody: { values: [[status]] },
+  });
+}

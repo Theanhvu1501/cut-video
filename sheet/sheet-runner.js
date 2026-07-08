@@ -97,6 +97,7 @@ export function createSheetRunner(deps) {
               title: dl.title,
               postTimes: ch.postTimes,
               locale: config.gpmLocale,
+              rowIndex: item.rowIndex,
             });
           }
         } catch (e) {

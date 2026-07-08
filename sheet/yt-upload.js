@@ -273,6 +273,8 @@ export async function uploadAndSchedule({
   scheduleISO,
   locale = "vi",
   log = () => {},
+  onUploaded = () => {}, // gọi khi video đã bắt đầu upload (để queue biết KHÔNG retry — tránh trùng)
+  onStep = () => {},     // gọi ở mỗi mốc (để ghi ngược trạng thái vào Sheet)
 }) {
   // Kiểm tra tham số đầu vào bắt buộc.
   if (!page) throw new Error("Thiếu page (trình duyệt GPM).");
@@ -318,6 +320,8 @@ export async function uploadAndSchedule({
   });
   if (!okVideo) throw new Error("Không nạp được file video — kiểm tra SEL.videoFileInput / SEL.selectFilesButton.");
   log("b1: đã nạp file video.");
+  onUploaded(); // video đã lên YouTube (bản nháp) → từ đây lỗi thì KHÔNG retry để tránh trùng
+  await onStep("b1: đã tải file video");
   await humanPause(2000, 3200);
 
   // ══════════════════════════════════════════════════════════
@@ -327,6 +331,7 @@ export async function uploadAndSchedule({
   log("b2: đợi upload đạt 100%…");
   await waitUploadComplete(page);
   log("b2: upload xong.");
+  await onStep("b2: upload xong");
 
   // Điền tiêu đề (gõ kiểu người). YouTube tự điền tiêu đề = tên file,
   // nên nếu muốn giữ nguyên tên file thì có thể bỏ dòng này.
@@ -358,6 +363,7 @@ export async function uploadAndSchedule({
       log("b3: đã chọn ảnh, đợi thumbnail upload xong…");
       await humanPause(5000, 8000);
       log("b3: xong thumbnail.");
+      await onStep("b3: đã thay thumbnail");
     }
   }
 
@@ -381,6 +387,7 @@ export async function uploadAndSchedule({
   await humanPause(400, 900);
   await page.keyboard.press("Enter");
   log("b4: đã đặt giờ.");
+  await onStep("b4: đã đặt giờ lịch");
 
   // --- NHẬP NGÀY: đang TẮT theo yêu cầu. Bật lại nếu cần đặt ngày cụ thể: ---
   // const { dateStr } = formatScheduleForPicker(scheduleISO, locale);

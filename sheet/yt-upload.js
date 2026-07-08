@@ -88,6 +88,18 @@ async function existClick(
   return false;
 }
 
+// Chờ 1 selector xuất hiện (KHÔNG click). Trả true nếu thấy, false + log nếu quá số lần thử.
+async function waitForSelector(page, selector, { intervalMs = 500, maxTries = 40, label = selector, log = () => {} } = {}) {
+  let tries = 0;
+  while (tries < maxTries) {
+    if (await page.$(selector)) { log(`   ✓ thấy: ${label}`); return true; }
+    tries++;
+    await sleep(intervalMs);
+  }
+  log(`   … chờ mãi không thấy: ${label} (${selector}) — vẫn tiếp tục`);
+  return false;
+}
+
 // Gõ vào ô contenteditable/input kiểu người (focus → gõ có delay). Trả false + log nếu không thấy.
 async function humanType(
   page,
@@ -289,10 +301,13 @@ export async function uploadAndSchedule({
   // Bấm nút "Tạo" (góc trên phải). Nếu không thấy → sai selector hoặc chưa login.
   if (!(await existClick(page, SEL.createIcon, { maxTries: 60, label: "nút Tạo", log })))
     throw new Error("Không thấy nút Tạo — kiểm tra SEL.createIcon hoặc chưa login GPM.");
-  await humanPause();
+  await humanPause(1000, 1800);
   // Trong menu vừa mở, chọn "Tải video lên".
   await existClick(page, SEL.uploadMenuItem, { maxTries: 30, label: "menu Tải video lên", log });
-  await humanPause();
+  // Đợi hộp thoại upload hiện ra (đừng nạp file quá sớm khi dialog chưa dựng xong).
+  log("b1: đợi hộp thoại upload hiện…");
+  await waitForSelector(page, SEL.videoFileInput, { maxTries: 40, log, label: "input file video" });
+  await humanPause(1500, 2800);
   // Nạp file video: ưu tiên input[type=file] ẩn, fallback nút chọn file.
   const okVideo = await setFile(page, {
     inputSelector: SEL.videoFileInput,
@@ -303,6 +318,7 @@ export async function uploadAndSchedule({
   });
   if (!okVideo) throw new Error("Không nạp được file video — kiểm tra SEL.videoFileInput / SEL.selectFilesButton.");
   log("b1: đã nạp file video.");
+  await humanPause(2000, 3200);
 
   // ══════════════════════════════════════════════════════════
   // b2: ĐỢI UPLOAD 100%

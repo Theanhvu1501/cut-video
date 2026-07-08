@@ -24,6 +24,36 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
   assert.deepEqual(out[2].cfg, { keepColors: ["F6FF00", "FBFF02"], cropHeight: 150, cropYOffset: 550 });
 });
 
+test("parseConfigRows accepts Vietnamese header names (with/without accents)", () => {
+  const header = ["Tên kênh","Bật","Video mỗi ngày","Kiểu render","Bảng màu tự dò","Màu phông","Độ nhạy chroma","Độ mờ","Màu giữ lại","Bật cắt (giữ màu)","Chiều cao cắt (giữ màu)","Vị trí Y (giữ màu)","Độ nhạy giữ màu","Lớp nền tối","Chiều cao cắt","Vị trí Y cắt","Proxy tải"];
+  const rows = [header,
+    ["Kenh_A","","5","chromaKeyAuto","22BDD6,2B4052","","0.3","","","","","","","","","",""],
+    ["Kenh_D","false","2","keepColor","","","","","F6FF00","true","150","550","0.2","false","","",""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].renderMode, "chromaKeyAuto");
+  assert.deepEqual(out[0].chromaPalette, ["22BDD6","2B4052"]);
+  assert.equal(out[0].cfg.chromaSimilarity, 0.3);
+  assert.equal(out[1].enabled, false);
+  assert.deepEqual(out[1].cfg, {
+    keepColors: ["F6FF00"], keepCrop: true, keepHeight: 150,
+    keepYOffset: 550, keepSimilarity: 0.2, keepAddDarkLayer: false,
+  });
+});
+
+test("parseConfigRows accepts Vietnamese header without accents (ten kenh)", () => {
+  const rows = [
+    ["ten kenh","bat","video moi ngay","kieu render"],
+    ["Kenh_X","","7","topTransparent"],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].sheetName, "Kenh_X");
+  assert.equal(out[0].videosPerDay, 7);
+  assert.equal(out[0].renderMode, "topTransparent");
+});
+
 test("parseConfigRows skips a mode-group row above the header", () => {
   const groupRow = ["THÔNG TIN KÊNH","","","","keepColor","","crop"];
   const header = ["sheetName","enabled","videosPerDay","renderMode","keepColors","keepCrop","cropHeight"];

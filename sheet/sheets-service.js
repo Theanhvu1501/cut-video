@@ -22,14 +22,55 @@ function boolFalse(v) {
   return s === "true" || s === "1" || s === "yes";
 }
 
+// Chuẩn hoá tên cột: bỏ dấu tiếng Việt, đổi đ->d, hạ chữ thường, gộp khoảng trắng.
+function norm(s) {
+  return String(s ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d").replace(/Đ/g, "d")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+// canonical (tên máy) -> danh sách tên hiển thị tiếng Việt được chấp nhận.
+const HEADER_ALIASES = {
+  sheetName: ["tên kênh"],
+  enabled: ["bật", "kích hoạt"],
+  videosPerDay: ["video mỗi ngày", "số video mỗi ngày"],
+  renderMode: ["kiểu render", "chế độ render"],
+  chromaPalette: ["bảng màu tự dò", "palette"],
+  chromaColor: ["màu phông", "màu chroma"],
+  chromaSimilarity: ["độ nhạy chroma"],
+  opacity: ["độ mờ"],
+  keepColors: ["màu giữ lại"],
+  keepCrop: ["bật cắt (giữ màu)", "cắt (giữ màu)"],
+  keepHeight: ["chiều cao cắt (giữ màu)"],
+  keepYOffset: ["vị trí y (giữ màu)"],
+  keepSimilarity: ["độ nhạy giữ màu"],
+  keepAddDarkLayer: ["lớp nền tối"],
+  cropHeight: ["chiều cao cắt"],
+  cropYOffset: ["vị trí y cắt"],
+  proxy: ["proxy tải", "proxy"],
+};
+
+function acceptedNorms(canonical) {
+  return [norm(canonical), ...(HEADER_ALIASES[canonical] || []).map(norm)];
+}
+
 export function parseConfigRows(values) {
   if (!Array.isArray(values) || !values.length) return [];
-  // Tìm dòng header: dòng đầu tiên có ô "sheetName" (bỏ qua dòng nhóm-mode phía trên nếu có).
+  // Tìm dòng header: dòng đầu tiên có ô khớp tên "sheetName" (Anh hoặc Việt),
+  // bỏ qua dòng nhóm-mode phía trên nếu có.
+  const snNorms = acceptedNorms("sheetName");
   let hIdx = values.findIndex((row) =>
-    Array.isArray(row) && row.some((c) => String(c ?? "").trim().toLowerCase() === "sheetname"));
+    Array.isArray(row) && row.some((c) => snNorms.includes(norm(c))));
   if (hIdx < 0) hIdx = 0;
-  const header = (values[hIdx] || []).map((h) => String(h ?? "").trim().toLowerCase());
-  const idx = (name) => header.indexOf(name.toLowerCase());
+  const headerRow = values[hIdx] || [];
+  const idx = (name) => {
+    const accepted = acceptedNorms(name);
+    return headerRow.findIndex((c) => accepted.includes(norm(c)));
+  };
   const col = (row, name) => {
     const i = idx(name);
     return i >= 0 ? String(row[i] ?? "").trim() : "";

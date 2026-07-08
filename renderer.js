@@ -4135,9 +4135,9 @@ async function runConcat() {
     if (!statusBody) return null;
     if (rows.has(channel)) return rows.get(channel);
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td style="padding:8px 12px;">${channel}</td><td class="st" style="padding:8px 12px;"></td><td class="td" style="padding:8px 12px;"></td><td class="er" style="padding:8px 12px;color:#c00"></td>`;
+    tr.innerHTML = `<td style="padding:8px 12px;">${channel}</td><td class="st" style="padding:8px 12px;"></td><td class="td" style="padding:8px 12px;"></td><td class="up" style="padding:8px 12px;"></td><td class="er" style="padding:8px 12px;color:#c00"></td>`;
     statusBody.appendChild(tr);
-    const r = { statusEl: tr.querySelector(".st"), todayEl: tr.querySelector(".td"), errEl: tr.querySelector(".er") };
+    const r = { statusEl: tr.querySelector(".st"), todayEl: tr.querySelector(".td"), uploadEl: tr.querySelector(".up"), errEl: tr.querySelector(".er") };
     rows.set(channel, r);
     return r;
   }
@@ -4239,6 +4239,13 @@ async function runConcat() {
       rendered.set(evt.channel, n);
       r.todayEl.textContent = String(n);
       log(`[${evt.channel}] ✅ ${evt.title}`);
+    } else if (evt.type === "upload-status") {
+      const r = ensureRow(evt.channel);
+      if (r?.uploadEl) {
+        r.uploadEl.textContent = evt.status;
+        r.uploadEl.style.color = evt.status.startsWith("❌") ? "#c00" : evt.status.startsWith("✅") ? "#1a7f37" : "#666";
+      }
+      log(`[${evt.channel}] ${evt.status}${evt.title ? " — " + evt.title : ""}`);
     } else if (evt.type === "error") {
       const r = evt.channel ? ensureRow(evt.channel) : null;
       if (r) r.errEl.textContent = evt.message;

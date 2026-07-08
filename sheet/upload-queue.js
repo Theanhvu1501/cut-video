@@ -34,6 +34,7 @@ export function createUploadQueue({
   now = () => new Date(),
   listFiles = (dir) => { try { return fs.readdirSync(dir); } catch { return []; } },
   log = () => {},
+  emit = () => {},                     // (evt) — phát sự kiện trạng thái lên UI ({type:"upload-status",...})
   notifyDigest = null,                 // async (results[]) — gửi digest khi hàng đợi rảnh
   setUploadStatus = async () => {},    // async (sheetName, rowIndex, status) — ghi ngược vào Sheet
   retries = 3,                         // số lần thử lại khi lỗi (chỉ khi CHƯA bắt đầu upload)
@@ -57,6 +58,11 @@ export function createUploadQueue({
   async function writeStatus(sheetName, rowIndex, status) {
     if (rowIndex == null) return;
     try { await setUploadStatus(sheetName, rowIndex, status); } catch { /* ignore */ }
+  }
+
+  // Cập nhật cả UI (bảng) lẫn Sheet cùng lúc.
+  function emitUpload(channel, status, extra = {}) {
+    try { emit({ type: "upload-status", channel, status, ...extra }); } catch { /* ignore */ }
   }
 
   // Khi hàng đợi rảnh → gửi 1 digest gộp các kết quả từ lượt bận.
@@ -92,9 +98,11 @@ export function createUploadQueue({
     }
 
     log(`[${sheetName}] upload "${title}" → lịch ${scheduleISO}${thumbnailPath ? "" : " (⚠ không thấy thumb)"}`);
+    emitUpload(sheetName, "⏳ đang upload", { title });
     await writeStatus(sheetName, rowIndex, "⏳ đang upload");
     const { page } = await getConn(gpmHost, profileId);
-    const onStep = (msg) => writeStatus(sheetName, rowIndex, msg);
+    // Mỗi bước: cập nhật cả bảng UI lẫn Sheet.
+    const onStep = (msg) => { emitUpload(sheetName, msg, { title }); return writeStatus(sheetName, rowIndex, msg); };
 
     // Retry: chỉ thử lại khi CHƯA bắt đầu upload (tránh tạo bản nháp trùng trên YouTube).
     let uploaded = false;
@@ -121,6 +129,7 @@ export function createUploadQueue({
     if (lastErr) {
       const msg = String(lastErr?.message || lastErr).slice(0, 200);
       results.push({ sheetName, title, ok: false, error: msg });
+      emitUpload(sheetName, `❌ lỗi: ${msg}`, { title, ok: false });
       await writeStatus(sheetName, rowIndex, `❌ lỗi: ${msg}`);
       log(`❌ [${sheetName}] ${title}: ${msg}`);
       return;
@@ -131,6 +140,7 @@ export function createUploadQueue({
     ch.videos[videoPath] = { title, status: "scheduled", scheduledAt: scheduleISO };
     saveState(state);
     results.push({ sheetName, title, ok: true, scheduleISO });
+    emitUpload(sheetName, `✅ lên lịch ${scheduleISO}`, { title, ok: true });
     await writeStatus(sheetName, rowIndex, `✅ lên lịch ${scheduleISO}`);
     log(`[${sheetName}] ✅ đã lên lịch: ${title}`);
   }

@@ -1355,6 +1355,8 @@ function buildSheetRunner(win) {
     loadState: () => loadState(gpmStatePath),
     saveState: (st) => saveState(gpmStatePath, st),
     log: (message) => emitEvent({ type: "log", message }),
+    emit: emitEvent, // phát sự kiện upload-status lên bảng UI
+
     // Ghi ngược trạng thái từng bước vào cột C của tab kênh.
     setUploadStatus: (sheetName, rowIndex, status) =>
       setUploadStatus(sheets, s.spreadsheetId, sheetName, rowIndex, status),

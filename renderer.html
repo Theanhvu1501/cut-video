@@ -3720,6 +3720,8 @@
               style="border:1px solid #cbd5e0;background:#fff;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:5px 8px;">🔌</button>
             <span id="sw-test-status" style="font-size:13px;"></span>
           </div>
+          <details id="sw-config" open>
+            <summary style="cursor:pointer;font-weight:600;padding:8px 0;color:#2d3748;user-select:none;">⚙ Cấu hình (bấm để thu gọn sau khi cài xong)</summary>
           <div class="form-group">
             <label>Spreadsheet ID</label>
             <input id="sw-spreadsheet-id" type="text" style="width:100%">
@@ -3759,11 +3761,6 @@
             <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
               <input id="sw-auto-open" type="checkbox"> Tự chạy khi mở app
             </label>
-          </div>
-          <div class="action-buttons">
-            <button class="btn btn-primary" id="sw-start">Start theo dõi</button>
-            <button class="btn btn-secondary" id="sw-stop">Stop</button>
-            <button class="btn btn-secondary" id="sw-run-now">Chạy tất cả ngay</button>
           </div>
           <div class="form-group" style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:16px;">
             <label style="display:flex;align-items:center;gap:8px;font-weight:600;">
@@ -3806,18 +3803,28 @@
               <tbody></tbody>
             </table>
           </div>
+          </details>
+          <div class="action-buttons">
+            <button class="btn btn-primary" id="sw-start">Start theo dõi</button>
+            <button class="btn btn-secondary" id="sw-stop">Stop</button>
+            <button class="btn btn-secondary" id="sw-run-now">Chạy tất cả ngay</button>
+          </div>
           <table id="sw-status-table" style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px">
             <thead>
               <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
                 <th style="text-align:left;padding:10px 12px;">Kênh</th>
                 <th style="text-align:left;padding:10px 12px;">Trạng thái</th>
                 <th style="text-align:left;padding:10px 12px;">Hôm nay</th>
+                <th style="text-align:left;padding:10px 12px;">Upload GPM</th>
                 <th style="text-align:left;padding:10px 12px;">Lỗi</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
-          <pre id="sw-log" style="height:200px;overflow:auto;background:#1a1a2e;color:#0f0;padding:12px;margin-top:16px;border-radius:8px;font-size:12px;line-height:1.5;"></pre>
+          <details style="margin-top:16px;">
+            <summary style="cursor:pointer;font-size:13px;color:#4a5568;">📜 Log chi tiết</summary>
+            <pre id="sw-log" style="height:200px;overflow:auto;background:#1a1a2e;color:#0f0;padding:12px;margin-top:8px;border-radius:8px;font-size:12px;line-height:1.5;"></pre>
+          </details>
         </div>
       </div>
     </div>

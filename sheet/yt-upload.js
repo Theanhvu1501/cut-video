@@ -6,6 +6,8 @@
 // → Hãy đối chiếu với script GPM Automate của bạn (03.auto_change_thumb / 04.auto_schedule)
 //   và chỉnh SEL cho khớp UI thật của bạn nếu có chỗ lệch.
 
+import fs from "fs";
+
 // ─────────────────────────────────────────────────────────────
 // SELECTOR — sửa ở đây khi UI YouTube đổi
 // ─────────────────────────────────────────────────────────────
@@ -13,10 +15,12 @@ export const SEL = {
   createIcon: "ytcp-button.ytcpAppHeaderCreateIcon", // nút "Tạo" ở góc phải Studio (class, không phụ thuộc ngôn ngữ)
   uploadMenuItem: "#text-item-0", // menu "Tải video lên"
   selectFilesButton: "#select-files-button", // nút chọn file video (mở file chooser)
+  videoFileInput: 'input[type="file"]', // ô input file ẩn của video (nạp thẳng — ổn định nhất)
 
   title: "#title-textarea #child-input #textbox", // ô tiêu đề (contenteditable)
   description: "#description-textarea #child-input #textbox", // ô mô tả (contenteditable)
   addThumbnail: "#add-photo-icon", // nút tải thumbnail tuỳ chỉnh (mở file chooser)
+  thumbnailFileInput: "", // (để trống nếu chưa biết input ẩn của thumbnail; điền sau khi dò DOM)
 
   uploadProgressLabel: ".progress-label", // nhãn tiến trình upload, text chứa "...%"
 
@@ -61,11 +65,11 @@ async function humanMouseTo(page, el) {
   }
 }
 
-// Chờ 1 selector xuất hiện rồi click (poll). Trả false nếu quá số lần thử.
+// Chờ 1 selector xuất hiện rồi click (poll). Trả false + log nếu quá số lần thử.
 async function existClick(
   page,
   selector,
-  { intervalMs = 500, maxTries = Infinity } = {},
+  { intervalMs = 500, maxTries = Infinity, label = selector, log = () => {} } = {},
 ) {
   let tries = 0;
   while (tries < maxTries) {
@@ -73,38 +77,68 @@ async function existClick(
     if (el) {
       await humanMouseTo(page, el); // di chuột kiểu người trước
       await el.click();
+      log(`   ✓ click: ${label}`);
       return true;
     }
     tries++;
     await sleep(intervalMs);
   }
+  log(`   ✗ KHÔNG thấy (sai SEL?): ${label}  →  selector: ${selector}`);
   return false;
 }
 
-// Gõ vào ô contenteditable kiểu người (focus → gõ có delay).
-async function humanType(page, selector, text, { intervalMs = 500 } = {}) {
+// Gõ vào ô contenteditable/input kiểu người (focus → gõ có delay). Trả false + log nếu không thấy.
+async function humanType(
+  page,
+  selector,
+  text,
+  { intervalMs = 500, maxTries = 60, label = selector, log = () => {} } = {},
+) {
   let el = null;
-  while (!(el = await page.$(selector))) await sleep(intervalMs);
+  let tries = 0;
+  while (!(el = await page.$(selector)) && tries < maxTries) {
+    tries++;
+    await sleep(intervalMs);
+  }
+  if (!el) {
+    log(`   ✗ KHÔNG thấy ô nhập (sai SEL?): ${label}  →  selector: ${selector}`);
+    return false;
+  }
   await el.click();
   await humanPause(200, 500);
   await page.keyboard.type(String(text), { delay: rand(30, 90) });
+  log(`   ✓ nhập "${text}" vào ${label}`);
+  return true;
 }
 
-// Mở file chooser bằng cách click trigger rồi set file.
-async function fileChoose(
-  page,
-  triggerSelector,
-  filePath,
-  { intervalMs = 500 } = {},
-) {
-  const chooserPromise = page.waitForEvent("filechooser");
-  const clicked = await existClick(page, triggerSelector, {
-    intervalMs,
-    maxTries: 60,
-  });
-  if (!clicked) throw new Error(`Không thấy nút mở file: ${triggerSelector}`);
-  const chooser = await chooserPromise;
-  await chooser.setFiles(filePath);
+// Nạp file: ưu tiên set thẳng vào input[type=file] ẩn (ổn định nhất); nếu không có thì click nút mở hộp thoại.
+// Trả về true nếu nạp được, false + log nếu không.
+async function setFile(page, { inputSelector, triggerSelector, filePath, label, log = () => {} }) {
+  // Cách 1: input[type=file] ẩn → setInputFiles (không cần click, không lo hộp thoại OS).
+  if (inputSelector) {
+    const input = await page.$(inputSelector);
+    if (input) {
+      await input.setInputFiles(filePath);
+      log(`   ✓ nạp ${label} qua input (${inputSelector})`);
+      return true;
+    }
+    log(`   … không thấy input ẩn (${inputSelector}), thử nút mở hộp thoại…`);
+  }
+  // Cách 2: click nút → bắt filechooser.
+  if (triggerSelector) {
+    const chooserPromise = page.waitForEvent("filechooser", { timeout: 15000 }).catch(() => null);
+    const clicked = await existClick(page, triggerSelector, { maxTries: 30, label, log });
+    if (!clicked) return false;
+    const chooser = await chooserPromise;
+    if (!chooser) {
+      log(`   ✗ click được nhưng hộp thoại chọn file không mở: ${label}`);
+      return false;
+    }
+    await chooser.setFiles(filePath);
+    log(`   ✓ nạp ${label} qua hộp thoại`);
+    return true;
+  }
+  return false;
 }
 
 // b2: đợi upload đạt 100% (hoặc chuyển sang trạng thái xử lý → coi như xong upload).
@@ -175,6 +209,15 @@ export async function uploadAndSchedule({
   if (!videoPath) throw new Error("Thiếu videoPath.");
   if (!scheduleISO) throw new Error("Thiếu scheduleISO.");
 
+  // Kiểm tra file tồn tại (để phân biệt lỗi "sai path" với lỗi "sai SEL").
+  if (!fs.existsSync(videoPath)) throw new Error(`SAI PATH: file video không tồn tại: ${videoPath}`);
+  if (thumbnailPath && !fs.existsSync(thumbnailPath)) {
+    log(`⚠ SAI PATH: file thumbnail không tồn tại: ${thumbnailPath} → sẽ bỏ qua bước thumb.`);
+    thumbnailPath = null;
+  }
+  log(`Paths OK → video: ${videoPath}`);
+  log(`          thumb: ${thumbnailPath || "(không có)"} | lịch: ${scheduleISO}`);
+
   // ══════════════════════════════════════════════════════════
   // b1: UPLOAD VIDEO
   // ══════════════════════════════════════════════════════════
@@ -186,14 +229,22 @@ export async function uploadAndSchedule({
   });
   await humanPause(800, 1600);
   // Bấm nút "Tạo" (góc trên phải). Nếu không thấy → sai selector hoặc chưa login.
-  if (!(await existClick(page, SEL.createIcon, { maxTries: 60 })))
-    throw new Error("Không thấy nút Tạo (#create-icon).");
+  if (!(await existClick(page, SEL.createIcon, { maxTries: 60, label: "nút Tạo", log })))
+    throw new Error("Không thấy nút Tạo — kiểm tra SEL.createIcon hoặc chưa login GPM.");
   await humanPause();
   // Trong menu vừa mở, chọn "Tải video lên".
-  await existClick(page, SEL.uploadMenuItem, { maxTries: 30 });
-  // Bấm nút chọn file → mở hộp thoại chọn file → nạp đường dẫn video.
-  await fileChoose(page, SEL.selectFilesButton, videoPath);
-  log("b1: đã chọn file video.");
+  await existClick(page, SEL.uploadMenuItem, { maxTries: 30, label: "menu Tải video lên", log });
+  await humanPause();
+  // Nạp file video: ưu tiên input[type=file] ẩn, fallback nút chọn file.
+  const okVideo = await setFile(page, {
+    inputSelector: SEL.videoFileInput,
+    triggerSelector: SEL.selectFilesButton,
+    filePath: videoPath,
+    label: "video",
+    log,
+  });
+  if (!okVideo) throw new Error("Không nạp được file video — kiểm tra SEL.videoFileInput / SEL.selectFilesButton.");
+  log("b1: đã nạp file video.");
 
   // ══════════════════════════════════════════════════════════
   // b2: ĐỢI UPLOAD 100%
@@ -218,9 +269,16 @@ export async function uploadAndSchedule({
   if (thumbnailPath) {
     log("b3: thay thumbnail…");
     await humanPause();
-    // Bấm nút thêm thumbnail → mở hộp thoại → nạp đường dẫn ảnh.
-    await fileChoose(page, SEL.addThumbnail, thumbnailPath);
-    log("b3: đã đặt thumbnail.");
+    // Nạp ảnh thumbnail: thử input ẩn của thumbnail, fallback nút thêm ảnh.
+    const okThumb = await setFile(page, {
+      inputSelector: SEL.thumbnailFileInput, // để trống nếu chưa biết → dùng nút bên dưới
+      triggerSelector: SEL.addThumbnail,
+      filePath: thumbnailPath,
+      label: "thumbnail",
+      log,
+    });
+    if (!okThumb) log("⚠ b3: KHÔNG đặt được thumbnail — kiểm tra SEL.addThumbnail / SEL.thumbnailFileInput.");
+    else log("b3: đã đặt thumbnail.");
   }
 
   // ══════════════════════════════════════════════════════════
@@ -229,21 +287,22 @@ export async function uploadAndSchedule({
   log(`b4: lên lịch ${scheduleISO}…`);
   await humanPause();
   // Nhảy tới bước "Hiển thị" (Visibility) — nơi có tuỳ chọn lên lịch.
-  if (!(await existClick(page, SEL.stepReview, { maxTries: 60 })))
-    throw new Error("Không tới được bước Hiển thị (REVIEW).");
+  if (!(await existClick(page, SEL.stepReview, { maxTries: 60, label: "bước Hiển thị", log })))
+    throw new Error("Không tới được bước Hiển thị — kiểm tra SEL.stepReview.");
   await humanPause();
   // Đổi giờ lịch ISO → chuỗi ngày & giờ theo ngôn ngữ UI (để điền đúng vào picker).
   const { dateStr, timeStr } = formatScheduleForPicker(scheduleISO, locale);
-  // Chọn ô "Lên lịch" (thay vì Công khai/Riêng tư).
-  await existClick(page, SEL.scheduleRadio, { maxTries: 30 });
+  log(`b4: ngày="${dateStr}", giờ="${timeStr}" (locale ${locale})`);
+  // Chọn/mở khối "Lên lịch".
+  await existClick(page, SEL.scheduleRadio, { maxTries: 30, label: "ô Lên lịch", log });
   await humanPause();
   // Mở lịch chọn ngày, điền ngày, Enter.
-  await existClick(page, SEL.datepickerTrigger, { maxTries: 30 });
-  await humanType(page, SEL.datePickerInput, dateStr);
+  await existClick(page, SEL.datepickerTrigger, { maxTries: 30, label: "mở lịch ngày", log });
+  await humanType(page, SEL.datePickerInput, dateStr, { label: "ô ngày", log });
   await page.keyboard.press("Enter");
   await humanPause();
   // Điền giờ, Enter.
-  await humanType(page, SEL.timePickerInput, timeStr);
+  await humanType(page, SEL.timePickerInput, timeStr, { label: "ô giờ", log });
   await page.keyboard.press("Enter");
   log("b4: đã đặt ngày giờ.");
 
@@ -252,16 +311,20 @@ export async function uploadAndSchedule({
   // ══════════════════════════════════════════════════════════
   await humanPause();
   // Bấm "Xong" để lưu.
-  await existClick(page, SEL.doneButton, { maxTries: 60 });
+  await existClick(page, SEL.doneButton, { maxTries: 60, label: "nút Xong", log });
   // Nếu hiện hộp thoại cảnh báo tiền-kiểm → bấm nút xác nhận (không phải lúc nào cũng có).
   await existClick(page, SEL.prechecksWarningPrimary, {
     intervalMs: 1000,
     maxTries: 10,
+    label: "dialog cảnh báo (nếu có)",
+    log,
   });
   // Nếu hiện hộp thoại "video vẫn đang xử lý" → đóng (chờ tối đa ~60s).
   await existClick(page, SEL.stillProcessingClose, {
     intervalMs: 1000,
     maxTries: 60,
+    label: "đóng dialog đang xử lý",
+    log,
   });
   log("✅ Xong video này.");
   return { ok: true };

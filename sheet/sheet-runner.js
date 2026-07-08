@@ -20,6 +20,7 @@ export function createSheetRunner(deps) {
   const {
     config, sheetsApi, downloader, renderer, listBackgrounds,
     ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma, sleep,
+    uploadQueue,
   } = deps;
   let timer = null;
   let running = false;
@@ -85,6 +86,19 @@ export function createSheetRunner(deps) {
           stateStore.save(s);
           try { unlink(dl.filePath); } catch { /* ignore */ }
           emit({ type: "video-rendered", channel: ch.sheetName, outputPath, sourceUrl: item.url, title: dl.title });
+          // Nếu bật GPM và kênh có profile + giờ đăng → xếp hàng upload (serial theo kênh).
+          if (uploadQueue && config.gpmEnabled && ch.gpmProfileId && ch.postTimes) {
+            uploadQueue.enqueue({
+              sheetName: ch.sheetName,
+              gpmHost: config.gpmHost,
+              profileId: ch.gpmProfileId,
+              videoPath: outputPath,
+              overlaysDir,
+              title: dl.title,
+              postTimes: ch.postTimes,
+              locale: config.gpmLocale,
+            });
+          }
         } catch (e) {
           const msg = String(e?.message || e).slice(0, 200);
           try { await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, `error: ${msg}`); } catch { /* ignore */ }

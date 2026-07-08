@@ -11,6 +11,7 @@ import sharp from "sharp";
 import { createSheetRunner } from "./sheet/sheet-runner.js";
 import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus, testSheetConnection } from "./sheet/sheets-service.js";
 import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
+import { createUploadQueue } from "./sheet/upload-queue.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne } from "./sheet/channel-download.js";
@@ -1346,12 +1347,24 @@ function buildSheetRunner(win) {
   const s = loadSheetSettings();
   const sheets = createSheetsClient(s.credentialsPath);
   const statePath = path.join(s.channelsRoot, "runner-state.json");
+  const emitEvent = (evt) => { if (win && !win.isDestroyed()) win.webContents.send("sheet:event", evt); };
+  // Hàng đợi upload GPM (state riêng, log ra cùng luồng sự kiện Sheet).
+  const gpmStatePath = path.join(s.channelsRoot, "gpm-upload-state.json");
+  const uploadQueue = createUploadQueue({
+    loadState: () => loadState(gpmStatePath),
+    saveState: (st) => saveState(gpmStatePath, st),
+    log: (message) => emitEvent({ type: "log", message }),
+  });
   return createSheetRunner({
+    uploadQueue,
     config: {
       spreadsheetId: s.spreadsheetId, channelsRoot: s.channelsRoot, statePath, renderConcurrency: 2,
       useGPU: !!s.useGPU,
       gpuVideoCodec: s.gpuVideoCodec || "h264_nvenc",
       videoSpeed: (typeof s.videoSpeed === "number" && s.videoSpeed > 0) ? s.videoSpeed : 0.95,
+      gpmEnabled: !!s.gpmEnabled,
+      gpmHost: s.gpmHost || "127.0.0.1:19995",
+      gpmLocale: s.gpmLocale || "vi",
     },
     sheetsApi: {
       readConfigSheet: () => readConfigSheet(sheets, s.spreadsheetId),
@@ -1373,7 +1386,7 @@ function buildSheetRunner(win) {
       return dirs;
     },
     stateStore: { load: () => loadState(statePath), save: (st) => saveState(statePath, st) },
-    emit: (evt) => { if (win && !win.isDestroyed()) win.webContents.send("sheet:event", evt); },
+    emit: emitEvent,
     now: () => new Date(),
     pLimitFn: (n) => pLimit(n),
     rand: () => Math.random(),

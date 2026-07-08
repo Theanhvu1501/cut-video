@@ -15,7 +15,7 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
   assert.equal(out.length, 3);
   assert.deepEqual(out[0], {
     sheetName: "Kênh A", enabled: true, videosPerDay: 3, renderMode: "topTransparent",
-    cfg: { opacity: 0.7 }, proxy: "", gpmProfileId: "",
+    cfg: { opacity: 0.7 }, proxy: "", gpmProfileId: "", postTimes: "",
   });
   assert.equal(out[1].enabled, true);
   assert.equal(out[1].proxy, "socks5://1.2.3.4:1080");

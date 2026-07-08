@@ -53,6 +53,7 @@ const HEADER_ALIASES = {
   cropYOffset: ["vị trí y cắt"],
   proxy: ["proxy tải", "proxy"],
   gpmProfileId: ["gpm profile id", "gpm", "profile gpm"],
+  postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
 };
 
 function acceptedNorms(canonical) {
@@ -116,6 +117,7 @@ export function parseConfigRows(values) {
       cfg,
       proxy: col(row, "proxy"),
       gpmProfileId: col(row, "gpmProfileId"),
+      postTimes: col(row, "postTimes"),
     };
     if (chromaPalette.length) channel.chromaPalette = chromaPalette;
     out.push(channel);

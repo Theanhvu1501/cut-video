@@ -50,3 +50,13 @@ export async function connectAndOpenStudio(gpmHost, profileId) {
   await page.goto("https://studio.youtube.com", { waitUntil: "domcontentloaded", timeout: 30_000 });
   return { ok: true };
 }
+
+// Kết nối tới profile GPM và trả về { browser, page } để tự động hoá (upload-queue dùng).
+// Không mở trang sẵn — caller (uploadAndSchedule) tự goto Studio.
+export async function connectProfile(gpmHost, profileId) {
+  const address = await startProfile(gpmHost, profileId);
+  const browser = await connectOverCDPWithRetry(address);
+  const ctx = browser.contexts()[0] ?? (await browser.newContext());
+  const page = ctx.pages()[0] ?? (await ctx.newPage());
+  return { browser, page };
+}

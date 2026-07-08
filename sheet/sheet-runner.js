@@ -9,7 +9,7 @@ export function pickRandomBackground(files, rand = Math.random) {
 export function createSheetRunner(deps) {
   const {
     config, sheetsApi, downloader, renderer, listBackgrounds,
-    ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink,
+    ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma,
   } = deps;
   let timer = null;
   let running = false;
@@ -40,10 +40,20 @@ export function createSheetRunner(deps) {
           const dl = await downloadLimit(() => downloader(item.url, overlaysDir, { proxy: ch.proxy }));
           const bg = pickRandomBackground(backgrounds, rand);
           const outputPath = path.join(outputDir, `${dl.title}.mp4`);
+          const cfg = { ...ch.cfg };
+          if (config.videoSpeed != null) cfg.videoSpeed = config.videoSpeed;
+          if (ch.renderMode === "chromaKeyAuto" && ch.chromaPalette?.length) {
+            try {
+              cfg.chromaColor = await detectChroma(dl.filePath, ch.chromaPalette);
+            } catch (err) {
+              emit({ type: "log", message: `Dò màu thất bại (${ch.sheetName}), dùng chromaColor cố định: ${String(err?.message || err).slice(0, 120)}` });
+            }
+          }
           emit({ type: "channel-status", channel: ch.sheetName, status: "đang render", url: item.url });
           await renderer({
             overlayFile: dl.filePath, backgroundFile: path.join(backgroundsDir, bg),
-            outputPath, renderMode: ch.renderMode, cfg: ch.cfg,
+            outputPath, renderMode: ch.renderMode, cfg,
+            useGPU: config.useGPU, gpuVideoCodec: config.gpuVideoCodec,
           });
           await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, "done");
           // stateStore.load/save are synchronous — no await between them, so concurrent

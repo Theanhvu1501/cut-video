@@ -36,9 +36,56 @@ function makeDeps(overrides = {}) {
     pLimitFn: () => (fn) => fn(),
     rand: () => 0,
     unlink: () => {},
+    detectChroma: async () => "000000",
   };
   return { deps: { ...deps, ...overrides }, calls, getState: () => savedState };
 }
+
+test("chromaKeyAuto: detectChroma sets cfg.chromaColor and gpu/speed pass through", async () => {
+  const detectCalls = [];
+  const renderCalls = [];
+  const { deps } = makeDeps({
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/s.json", renderConcurrency: 2,
+      videoSpeed: 0.8, useGPU: true, gpuVideoCodec: "h264_nvenc" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 1, renderMode: "chromaKeyAuto",
+          cfg: { chromaColor: "FALLBACK", chromaSimilarity: 0.3 }, chromaPalette: ["22BDD6","2B4052"], proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "" }],
+      setUrlStatus: async () => {},
+    },
+    detectChroma: async (videoPath, palette) => { detectCalls.push({ videoPath, palette }); return "2B4052"; },
+    renderer: async (opts) => { renderCalls.push(opts); return { outputPath: opts.outputPath }; },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.equal(detectCalls.length, 1);
+  assert.deepEqual(detectCalls[0].palette, ["22BDD6","2B4052"]);
+  assert.equal(renderCalls[0].cfg.chromaColor, "2B4052");
+  assert.equal(renderCalls[0].cfg.videoSpeed, 0.8);
+  assert.equal(renderCalls[0].useGPU, true);
+  assert.equal(renderCalls[0].gpuVideoCodec, "h264_nvenc");
+});
+
+test("chromaKeyAuto without palette falls back to cfg.chromaColor, no detectChroma call", async () => {
+  const detectCalls = [];
+  const renderCalls = [];
+  const { deps } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 1, renderMode: "chromaKeyAuto",
+          cfg: { chromaColor: "FALLBACK" }, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "" }],
+      setUrlStatus: async () => {},
+    },
+    detectChroma: async () => { detectCalls.push(1); return "XXX"; },
+    renderer: async (opts) => { renderCalls.push(opts); return { outputPath: opts.outputPath }; },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.equal(detectCalls.length, 0);
+  assert.equal(renderCalls[0].cfg.chromaColor, "FALLBACK");
+});
 
 test("runNow respects videosPerDay quota (2 of 3 pending)", async () => {
   const { deps, calls, getState } = makeDeps();

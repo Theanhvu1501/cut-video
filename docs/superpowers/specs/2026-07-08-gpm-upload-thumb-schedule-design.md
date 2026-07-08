@@ -53,23 +53,24 @@ Mỗi kênh:
 
 ## Thuật toán slot lịch (hàm thuần, unit-test được)
 
-`computeNextSlot(nextScheduleAt, postTimes, now) -> { slotISO, newNextScheduleAt }`
+**Mô hình "cửa sổ 1 ngày"** (đã chốt với user): mỗi lần chỉ cấp slot TRỐNG của **ngày mai**; video dư thì KHÔNG cấp (chờ lượt sau). → tại mọi thời điểm chỉ có lịch tối đa 1 ngày tới, dễ kiểm soát, không đẩy video ra tương lai xa, không mất video.
 
-- `postTimes` = mảng giờ trong ngày, vd `["08:00","18:00"]`.
-- Baseline: slot sớm nhất hợp lệ là **ngày mai** (so với `now`). Nếu `nextScheduleAt` rỗng hoặc rơi vào quá khứ / hôm nay → đặt lại = **ngày mai + postTimes[0]**.
-- Trả slot hiện tại (`slotISO`) và tính `newNextScheduleAt` = slot kế tiếp: cùng ngày nếu còn giờ sau trong `postTimes`, hết thì sang **ngày kế + postTimes[0]**.
-- Tách bạch khỏi DOM → test bằng cách bơm `now` cố định (giống cách repo bơm `sharp`/`fetch` trong test).
+`assignTomorrowSlots(postTimes, usedSlots, now, wantCount) -> string[]`
 
-Ví dụ: `postTimes=["08:00","18:00"]`, now=`2026-07-08 15:00`:
-- video1 → `2026-07-09 08:00`, next=`2026-07-09 18:00`
-- video2 → `2026-07-09 18:00`, next=`2026-07-10 08:00`
-- video3 → `2026-07-10 08:00`, ...
+- `postTimes` = mảng/CSV giờ trong ngày, vd `["08:00","18:00"]`.
+- Trả về tối đa `wantCount` slot ISO **trống** của ngày mai (bỏ các slot trong `usedSlots`), theo thứ tự giờ. Hết slot / không có postTimes → rỗng (video chờ).
+- Caller (`upload-queue`) lưu slot đã cấp vào state `usedSlots` để lần sau không đặt trùng.
+- Tách bạch khỏi DOM → test bằng cách bơm `now` cố định.
+
+Ví dụ: `postTimes=["08:00","18:00"]`, now=`2026-07-08 15:00`, 5 video chờ:
+- Cấp `["2026-07-09T08:00:00", "2026-07-09T18:00:00"]` (2 slot ngày mai).
+- 3 video còn lại chờ; hôm sau (khi "ngày mai" dịch tới) mới được cấp 2 slot kế.
 
 ## Kiến trúc code (đề xuất, chốt chi tiết ở plan)
 
 Tách **logic điều phối (test được)** khỏi **driver DOM (fragile, test thủ công)**:
 
-- `sheet/schedule-slots.js` — hàm thuần `computeNextSlot`, `parsePostTimes`. **Unit test đầy đủ.**
+- `sheet/schedule-slots.js` — hàm thuần `assignTomorrowSlots`, `parsePostTimes`. **Unit test đầy đủ.**
 - `sheet/thumb-match.js` — hàm thuần chọn file thumb khớp title (từ danh sách file overlays). **Unit test.**
 - `sheet/yt-upload.js` — driver playwright điều khiển YouTube Studio: `uploadVideo`, `waitThumbnailEnabled`, `setThumbnail`, `setSchedule`. Dùng `page` từ context GPM (mở rộng `gpm-client.js`). **Test thủ công** (selector phụ thuộc DOM YouTube).
 - `sheet/upload-queue.js` — hàng đợi serial per-channel + máy trạng thái + đọc/ghi state + resume. Điều phối gọi các module trên. **Unit test phần logic hàng đợi/trạng thái bằng driver giả (inject).**

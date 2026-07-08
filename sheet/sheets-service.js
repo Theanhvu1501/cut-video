@@ -16,16 +16,26 @@ function num(v) {
   return Number.isNaN(n) ? undefined : n;
 }
 
+// Trống/không rõ = false (khác truthy: trống = true, dùng cho các cột bật/tắt tùy chọn)
+function boolFalse(v) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "true" || s === "1" || s === "yes";
+}
+
 export function parseConfigRows(values) {
-  if (!Array.isArray(values) || values.length < 2) return [];
-  const header = values[0].map((h) => String(h ?? "").trim().toLowerCase());
+  if (!Array.isArray(values) || !values.length) return [];
+  // Tìm dòng header: dòng đầu tiên có ô "sheetName" (bỏ qua dòng nhóm-mode phía trên nếu có).
+  let hIdx = values.findIndex((row) =>
+    Array.isArray(row) && row.some((c) => String(c ?? "").trim().toLowerCase() === "sheetname"));
+  if (hIdx < 0) hIdx = 0;
+  const header = (values[hIdx] || []).map((h) => String(h ?? "").trim().toLowerCase());
   const idx = (name) => header.indexOf(name.toLowerCase());
   const col = (row, name) => {
     const i = idx(name);
     return i >= 0 ? String(row[i] ?? "").trim() : "";
   };
   const out = [];
-  for (let r = 1; r < values.length; r++) {
+  for (let r = hIdx + 1; r < values.length; r++) {
     const row = values[r] || [];
     const sheetName = col(row, "sheetName");
     if (!sheetName) continue;
@@ -38,6 +48,16 @@ export function parseConfigRows(values) {
     if (chromaSim !== undefined) cfg.chromaSimilarity = chromaSim;
     const keepColors = col(row, "keepColors");
     if (keepColors) cfg.keepColors = keepColors.split(",").map((s) => s.trim()).filter(Boolean);
+    const keepCropRaw = col(row, "keepCrop");
+    if (keepCropRaw) cfg.keepCrop = boolFalse(keepCropRaw);
+    const keepHeight = num(col(row, "keepHeight"));
+    if (keepHeight !== undefined) cfg.keepHeight = keepHeight;
+    const keepYOffset = num(col(row, "keepYOffset"));
+    if (keepYOffset !== undefined) cfg.keepYOffset = keepYOffset;
+    const keepSimilarity = num(col(row, "keepSimilarity"));
+    if (keepSimilarity !== undefined) cfg.keepSimilarity = keepSimilarity;
+    const keepAddDarkLayerRaw = col(row, "keepAddDarkLayer");
+    if (keepAddDarkLayerRaw) cfg.keepAddDarkLayer = boolFalse(keepAddDarkLayerRaw);
     const cropHeight = num(col(row, "cropHeight"));
     if (cropHeight !== undefined) cfg.cropHeight = cropHeight;
     const cropYOffset = num(col(row, "cropYOffset"));

@@ -24,6 +24,33 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
   assert.deepEqual(out[2].cfg, { keepColors: ["F6FF00", "FBFF02"], cropHeight: 150, cropYOffset: 550 });
 });
 
+test("parseConfigRows skips a mode-group row above the header", () => {
+  const groupRow = ["THÔNG TIN KÊNH","","","","keepColor","","crop"];
+  const header = ["sheetName","enabled","videosPerDay","renderMode","keepColors","keepCrop","cropHeight"];
+  const rows = [groupRow, header,
+    ["Kênh A","","5","keepColor","F6FF00","true","150"],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].sheetName, "Kênh A");
+  assert.equal(out[0].renderMode, "keepColor");
+});
+
+test("parseConfigRows parses keepColor crop columns", () => {
+  const header = ["sheetName","enabled","videosPerDay","renderMode","keepColors","keepCrop","keepHeight","keepYOffset","keepSimilarity","keepAddDarkLayer"];
+  const rows = [header,
+    ["Kênh A","","5","keepColor","F6FF00, FBFF02","true","150","550","0.2","false"],
+    ["Kênh B","","5","keepColor","F6FF00","","","","",""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.deepEqual(out[0].cfg, {
+    keepColors: ["F6FF00","FBFF02"], keepCrop: true, keepHeight: 150,
+    keepYOffset: 550, keepSimilarity: 0.2, keepAddDarkLayer: false,
+  });
+  // ô trống -> không set (dùng mặc định của render-core)
+  assert.deepEqual(out[1].cfg, { keepColors: ["F6FF00"] });
+});
+
 test("parseConfigRows parses chromaPalette and chromaKeyAuto mode", () => {
   const header = ["sheetName","enabled","videosPerDay","renderMode","chromaPalette"];
   const rows = [header,

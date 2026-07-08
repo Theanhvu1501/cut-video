@@ -29,6 +29,14 @@ test("keepColor builds per-color masks and alphamerge", () => {
   assert.match(joined, /\[src_main\]\[mask_0\]alphamerge\[final_isolated\]/);
 });
 
+test("chromaKeyAuto uses same filter as chromaKey (color already resolved)", () => {
+  const cfg = { chromaColor: "2B4052", chromaSimilarity: 0.3 };
+  const auto = buildComplexFilter("chromaKeyAuto", cfg);
+  const manual = buildComplexFilter("chromaKey", cfg);
+  assert.deepEqual(auto, manual);
+  assert.match(auto.join("|"), /colorkey=0x2B4052:0\.3:0\.1/);
+});
+
 test("invalid mode falls back to topTransparent", () => {
   const f = buildComplexFilter("nope", {});
   assert.ok(f.some((s) => s.includes("[base_video][top_video]overlay=0:0[combined_video]")));

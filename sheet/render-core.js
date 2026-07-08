@@ -115,6 +115,7 @@ function keepColor(cfg) {
 export function buildComplexFilter(renderMode, cfgIn = {}) {
   const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
   switch (renderMode) {
+    case "chromaKeyAuto":
     case "chromaKey": return chromaKey(cfg);
     case "crop": return crop(cfg);
     case "keepColor": return keepColor(cfg);

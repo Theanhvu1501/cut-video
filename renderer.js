@@ -4164,32 +4164,46 @@ async function runConcat() {
     };
   }
 
+  // Tự động lưu cấu hình mỗi khi thay đổi (bỏ nút "Lưu cấu hình").
+  let saveTimer = null;
+  async function saveNow() { await api.saveSettings(currentSettings()); }
+  function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
+  ["sw-spreadsheet-id", "sw-poll", "sw-video-speed"].forEach((id) =>
+    $(id)?.addEventListener("input", saveDebounced));
+  ["sw-auto-open", "sw-use-gpu"].forEach((id) =>
+    $(id)?.addEventListener("change", saveNow));
+
   $("sw-pick-cred")?.addEventListener("click", async () => {
-    const p = await api.selectCredentials(); if (p) $("sw-cred-path").value = p;
+    const p = await api.selectCredentials(); if (p) { $("sw-cred-path").value = p; await saveNow(); }
   });
   $("sw-pick-root")?.addEventListener("click", async () => {
-    const p = await api.selectRoot(); if (p) $("sw-root").value = p;
+    const p = await api.selectRoot(); if (p) { $("sw-root").value = p; await saveNow(); }
   });
   $("sw-test")?.addEventListener("click", async () => {
     const btn = $("sw-test");
+    const statusEl = $("sw-test-status");
     if (btn) btn.disabled = true;
+    if (statusEl) { statusEl.textContent = "⏳ đang kiểm tra…"; statusEl.style.color = "#666"; }
     log("🔌 Đang kiểm tra kết nối tới Sheet…");
     try {
+      await saveNow();
       const r = await api.testConnection(currentSettings());
       if (r?.success) {
         log(`✅ Kết nối OK — ${r.channelCount} kênh (${r.enabledCount} đang bật).`);
         log(`   Tab: ${r.tabs.join(", ")}`);
         if (!r.hasConfigTab) log("⚠️ Không thấy tab ⚙config — kiểm tra lại tên tab cấu hình.");
+        if (statusEl) { statusEl.textContent = `✅ OK — ${r.channelCount} kênh`; statusEl.style.color = "#1a7f37"; }
       } else {
         log(`❌ Kết nối thất bại: ${r?.error || "lỗi không rõ"}`);
+        if (statusEl) { statusEl.textContent = "❌ Thất bại"; statusEl.style.color = "#c00"; }
       }
     } catch (e) {
       log(`❌ Kết nối thất bại: ${e?.message || e}`);
+      if (statusEl) { statusEl.textContent = "❌ Thất bại"; statusEl.style.color = "#c00"; }
     } finally {
       if (btn) btn.disabled = false;
     }
   });
-  $("sw-save")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); log("Đã lưu cấu hình."); });
   $("sw-start")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); await api.start(); log("▶ Bắt đầu theo dõi."); });
   $("sw-stop")?.addEventListener("click", async () => { await api.stop(); log("⏹ Đã dừng."); });
   $("sw-run-now")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); log("Chạy tất cả ngay…"); await api.runNow(); });

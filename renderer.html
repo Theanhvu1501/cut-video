@@ -3714,8 +3714,11 @@
 
         <!-- Theo dõi Sheet Tab -->
         <div id="sheet-watch" class="tab-content">
-          <div class="tab-header">
-            <h2>Theo dõi Sheet — tự động tải &amp; render</h2>
+          <div class="tab-header" style="display:flex;align-items:center;gap:10px;">
+            <h2 style="margin:0;">Theo dõi Sheet — tự động tải &amp; render</h2>
+            <button id="sw-test" title="Kiểm tra kết nối tới Sheet"
+              style="border:1px solid #cbd5e0;background:#fff;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:5px 8px;">🔌</button>
+            <span id="sw-test-status" style="font-size:13px;"></span>
           </div>
           <div class="form-group">
             <label>Spreadsheet ID</label>
@@ -3758,8 +3761,6 @@
             </label>
           </div>
           <div class="action-buttons">
-            <button class="btn btn-secondary" id="sw-test">Kiểm tra kết nối</button>
-            <button class="btn btn-secondary" id="sw-save">Lưu cấu hình</button>
             <button class="btn btn-primary" id="sw-start">Start theo dõi</button>
             <button class="btn btn-secondary" id="sw-stop">Stop</button>
             <button class="btn btn-secondary" id="sw-run-now">Chạy tất cả ngay</button>

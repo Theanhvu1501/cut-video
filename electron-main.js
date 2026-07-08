@@ -1377,6 +1377,7 @@ function buildSheetRunner(win) {
     pLimitFn: (n) => pLimit(n),
     rand: () => Math.random(),
     unlink: (p) => { try { fs.unlinkSync(p); } catch { /* ignore */ } },
+    sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   });
 }
 

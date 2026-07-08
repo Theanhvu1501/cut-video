@@ -6,10 +6,20 @@ export function pickRandomBackground(files, rand = Math.random) {
   return files[Math.min(files.length - 1, Math.floor(rand() * files.length))];
 }
 
+// Khoảng chờ ngẫu nhiên (ms) giữa các lần tải để tránh bị nghi là bot.
+// Mặc định 60–120s; đặt downloadDelayMaxMs<=0 để tắt.
+export function pickDownloadDelay(config = {}, rand = Math.random) {
+  const min = config.downloadDelayMinMs ?? 60000;
+  const max = config.downloadDelayMaxMs ?? 120000;
+  if (max <= 0) return 0;
+  if (max <= min) return Math.max(0, min);
+  return Math.floor(min + rand() * (max - min));
+}
+
 export function createSheetRunner(deps) {
   const {
     config, sheetsApi, downloader, renderer, listBackgrounds,
-    ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma,
+    ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma, sleep,
   } = deps;
   let timer = null;
   let running = false;
@@ -34,10 +44,22 @@ export function createSheetRunner(deps) {
 
       const limit = pLimitFn(config.renderConcurrency || 2);
       const downloadLimit = pLimitFn(1);
+      let firstDownload = true;
       await Promise.all(pending.map((item) => limit(async () => {
         try {
           emit({ type: "channel-status", channel: ch.sheetName, status: "đang tải", url: item.url });
-          const dl = await downloadLimit(() => downloader(item.url, overlaysDir, { proxy: ch.proxy }));
+          // Tải nối tiếp 1-cái-một; giãn cách trước mỗi lần tải (trừ lần đầu) để tránh bị nghi là bot.
+          const dl = await downloadLimit(async () => {
+            if (!firstDownload) {
+              const delay = pickDownloadDelay(config, rand);
+              if (delay > 0 && sleep) {
+                emit({ type: "channel-status", channel: ch.sheetName, status: `chờ ${Math.round(delay / 1000)}s trước khi tải`, url: item.url });
+                await sleep(delay);
+              }
+            }
+            firstDownload = false;
+            return downloader(item.url, overlaysDir, { proxy: ch.proxy });
+          });
           const bg = pickRandomBackground(backgrounds, rand);
           const outputPath = path.join(outputDir, `${dl.title}.mp4`);
           const cfg = { ...ch.cfg };

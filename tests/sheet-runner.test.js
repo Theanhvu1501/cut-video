@@ -1,12 +1,39 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import pLimit from "p-limit";
-import { createSheetRunner, pickRandomBackground } from "../sheet/sheet-runner.js";
+import { createSheetRunner, pickRandomBackground, pickDownloadDelay } from "../sheet/sheet-runner.js";
 
 test("pickRandomBackground picks by rand", () => {
   const files = ["a.mp4", "b.mp4", "c.mp4"];
   assert.equal(pickRandomBackground(files, () => 0), "a.mp4");
   assert.equal(pickRandomBackground(files, () => 0.99), "c.mp4");
+});
+
+test("pickDownloadDelay: within [min,max], 0 when disabled", () => {
+  assert.equal(pickDownloadDelay({ downloadDelayMinMs: 60000, downloadDelayMaxMs: 120000 }, () => 0), 60000);
+  assert.equal(pickDownloadDelay({ downloadDelayMinMs: 60000, downloadDelayMaxMs: 120000 }, () => 0.5), 90000);
+  assert.equal(pickDownloadDelay({ downloadDelayMinMs: 0, downloadDelayMaxMs: 0 }), 0);
+});
+
+test("second download is delayed but first is immediate", async () => {
+  const slept = [];
+  const { deps, calls } = makeDeps({
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/s.json", renderConcurrency: 2, downloadDelayMinMs: 90000, downloadDelayMaxMs: 90000 },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "K", enabled: true, videosPerDay: 2, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [
+        { rowIndex: 2, url: "u1", status: "" },
+        { rowIndex: 3, url: "u2", status: "" },
+      ],
+      setUrlStatus: async () => {},
+    },
+    sleep: async (ms) => { slept.push(ms); },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.equal(calls.downloaded.length, 2);
+  assert.deepEqual(slept, [90000]); // chỉ chờ 1 lần: trước lượt tải thứ 2
 });
 
 function makeDeps(overrides = {}) {
@@ -37,6 +64,7 @@ function makeDeps(overrides = {}) {
     rand: () => 0,
     unlink: () => {},
     detectChroma: async () => "000000",
+    sleep: async () => {},
   };
   return { deps: { ...deps, ...overrides }, calls, getState: () => savedState };
 }

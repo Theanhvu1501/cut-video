@@ -3765,6 +3765,35 @@
             <button class="btn btn-secondary" id="sw-stop">Stop</button>
             <button class="btn btn-secondary" id="sw-run-now">Chạy tất cả ngay</button>
           </div>
+          <div class="form-group" style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:16px;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:600;">
+              <input id="sw-gpm-enabled" type="checkbox"> Bật tự động GPM (đăng bằng trình duyệt GPM)
+            </label>
+          </div>
+          <div id="sw-gpm-panel" style="display:none;">
+            <div class="form-group" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <label style="margin:0;">GPM host</label>
+              <input id="sw-gpm-host" type="text" value="127.0.0.1:19995" style="width:200px">
+              <button id="sw-gpm-test" title="Kiểm tra kết nối GPM"
+                style="border:1px solid #cbd5e0;background:#fff;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:5px 8px;">🔌</button>
+              <span id="sw-gpm-test-status" style="font-size:13px;"></span>
+            </div>
+            <div class="action-buttons">
+              <button class="btn btn-secondary" id="sw-gpm-list">Tải danh sách kênh</button>
+              <button class="btn btn-primary" id="sw-gpm-connect-all">Connect tất cả</button>
+            </div>
+            <table id="sw-gpm-table" style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px">
+              <thead>
+                <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                  <th style="text-align:left;padding:10px 12px;">Kênh</th>
+                  <th style="text-align:left;padding:10px 12px;">GPM Profile ID</th>
+                  <th style="text-align:left;padding:10px 12px;">Kết nối</th>
+                  <th style="text-align:left;padding:10px 12px;">Trạng thái</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
           <table id="sw-status-table" style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px">
             <thead>
               <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">

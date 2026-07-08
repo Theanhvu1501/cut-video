@@ -4151,6 +4151,9 @@ async function runConcat() {
     $("sw-auto-open").checked = !!s.autoRunOnOpen;
     $("sw-video-speed").value = (typeof s.videoSpeed === "number" && s.videoSpeed > 0) ? s.videoSpeed : 0.95;
     $("sw-use-gpu").checked = !!s.useGPU;
+    $("sw-gpm-enabled").checked = !!s.gpmEnabled;
+    $("sw-gpm-host").value = s.gpmHost || "127.0.0.1:19995";
+    $("sw-gpm-panel").style.display = s.gpmEnabled ? "" : "none";
   }
   function currentSettings() {
     return {
@@ -4161,6 +4164,8 @@ async function runConcat() {
       autoRunOnOpen: $("sw-auto-open").checked,
       videoSpeed: parseFloat($("sw-video-speed").value) > 0 ? parseFloat($("sw-video-speed").value) : 0.95,
       useGPU: $("sw-use-gpu").checked,
+      gpmEnabled: $("sw-gpm-enabled").checked,
+      gpmHost: $("sw-gpm-host").value.trim() || "127.0.0.1:19995",
     };
   }
 
@@ -4170,8 +4175,12 @@ async function runConcat() {
   function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
   ["sw-spreadsheet-id", "sw-poll", "sw-video-speed"].forEach((id) =>
     $(id)?.addEventListener("input", saveDebounced));
-  ["sw-auto-open", "sw-use-gpu"].forEach((id) =>
+  ["sw-auto-open", "sw-use-gpu", "sw-gpm-enabled"].forEach((id) =>
     $(id)?.addEventListener("change", saveNow));
+  $("sw-gpm-host")?.addEventListener("input", saveDebounced);
+  $("sw-gpm-enabled")?.addEventListener("change", () => {
+    $("sw-gpm-panel").style.display = $("sw-gpm-enabled").checked ? "" : "none";
+  });
 
   $("sw-pick-cred")?.addEventListener("click", async () => {
     const p = await api.selectCredentials(); if (p) { $("sw-cred-path").value = p; await saveNow(); }
@@ -4224,6 +4233,57 @@ async function runConcat() {
       log(`❌ ${evt.channel ? "[" + evt.channel + "] " : ""}${evt.message}`);
     } else if (evt.type === "done") {
       log("— Hoàn tất lượt chạy —");
+    }
+  });
+
+  // ===== GPM =====
+  $("sw-gpm-test")?.addEventListener("click", async () => {
+    const statusEl = $("sw-gpm-test-status");
+    statusEl.textContent = "⏳ đang kiểm tra…"; statusEl.style.color = "#666";
+    const r = await api.gpmTest($("sw-gpm-host").value.trim());
+    if (r?.ok) { statusEl.textContent = `✅ ${r.profiles.length} profiles`; statusEl.style.color = "#1a7f37"; }
+    else { statusEl.textContent = `❌ ${r?.error || "lỗi"}`; statusEl.style.color = "#c00"; }
+  });
+
+  function gpmRenderRow(ch) {
+    const tb = $("sw-gpm-table").querySelector("tbody");
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid #eee";
+    tr.innerHTML = `
+      <td style="padding:8px 12px;">${ch.sheetName}</td>
+      <td style="padding:8px 12px;">${ch.gpmProfileId || '<span style="color:#c00;">(chưa có)</span>'}</td>
+      <td style="padding:8px 12px;"><button class="btn btn-secondary gpm-connect-btn"${ch.gpmProfileId ? "" : " disabled"}>Connect</button></td>
+      <td class="gpm-st" style="padding:8px 12px;"></td>`;
+    const btn = tr.querySelector(".gpm-connect-btn");
+    const st = tr.querySelector(".gpm-st");
+    btn?.addEventListener("click", () => gpmConnectOne(ch, st, btn));
+    tb.appendChild(tr);
+    return { st, btn, ch };
+  }
+
+  async function gpmConnectOne(ch, st, btn) {
+    if (!ch.gpmProfileId) return;
+    if (btn) btn.disabled = true;
+    st.textContent = "⏳ đang kết nối…"; st.style.color = "#666";
+    const r = await api.gpmConnect({ gpmHost: $("sw-gpm-host").value.trim(), profileId: ch.gpmProfileId, sheetName: ch.sheetName });
+    if (r?.ok) { st.textContent = "✅ đã mở Studio"; st.style.color = "#1a7f37"; }
+    else { st.textContent = `❌ ${r?.error || "lỗi"}`; st.style.color = "#c00"; }
+    if (btn) btn.disabled = false;
+  }
+
+  let gpmRows = [];
+  $("sw-gpm-list")?.addEventListener("click", async () => {
+    const tb = $("sw-gpm-table").querySelector("tbody");
+    tb.innerHTML = "";
+    gpmRows = [];
+    const r = await api.gpmListChannels();
+    if (!r?.ok) { alert(r?.error || "Không tải được danh sách kênh."); return; }
+    gpmRows = r.channels.map((ch) => gpmRenderRow(ch));
+  });
+
+  $("sw-gpm-connect-all")?.addEventListener("click", async () => {
+    for (const row of gpmRows) {
+      if (row.ch.gpmProfileId) await gpmConnectOne(row.ch, row.st, row.btn);
     }
   });
 

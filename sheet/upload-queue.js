@@ -7,7 +7,7 @@ import path from "path";
 import fs from "fs";
 import { connectProfile } from "./gpm-client.js";
 import { findThumbnailForVideo } from "./thumb-match.js";
-import { assignTomorrowSlots } from "./schedule-slots.js";
+import { assignTomorrowSlots, formatSchedule } from "./schedule-slots.js";
 import { uploadAndSchedule } from "./yt-upload.js";
 
 /**
@@ -141,8 +141,9 @@ export function createUploadQueue({
     ch.videos[videoPath] = { title, status: "scheduled", scheduledAt: scheduleISO };
     saveState(state);
     results.push({ sheetName, title, ok: true, scheduleISO });
-    emitUpload(sheetName, `✅ lên lịch ${scheduleISO}`, { title, ok: true, url: sourceUrl });
-    await writeStatus(sheetName, rowIndex, `✅ lên lịch ${scheduleISO}`);
+    const schedText = `✅ lên lịch ${formatSchedule(scheduleISO)}`;
+    emitUpload(sheetName, schedText, { title, ok: true, url: sourceUrl });
+    await writeStatus(sheetName, rowIndex, schedText);
     log(`[${sheetName}] ✅ đã lên lịch: ${title}`);
   }
 

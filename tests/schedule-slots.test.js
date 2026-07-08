@@ -1,6 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePostTimes, assignTomorrowSlots } from "../sheet/schedule-slots.js";
+import { parsePostTimes, assignTomorrowSlots, formatSchedule } from "../sheet/schedule-slots.js";
+
+test("formatSchedule đổi ISO -> dd/mm/yyyy hh:mm", () => {
+  assert.equal(formatSchedule("2026-07-09T08:00:00"), "09/07/2026 08:00");
+  assert.equal(formatSchedule("2026-12-31T18:30:00"), "31/12/2026 18:30");
+  assert.equal(formatSchedule(""), "");
+});
 
 test("parsePostTimes chuẩn hoá và lọc giá trị lỗi", () => {
   assert.deepEqual(parsePostTimes("8:00, 18:00"), ["08:00", "18:00"]);

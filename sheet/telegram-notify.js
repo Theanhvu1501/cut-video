@@ -1,3 +1,5 @@
+import { formatSchedule } from "./schedule-slots.js";
+
 // Gửi thông báo Telegram (chỉ sendMessage, không cần bot polling).
 
 export async function sendTelegram(token, chatId, text, deps = {}) {
@@ -29,6 +31,13 @@ export function buildDigest(results) {
   const lines = [`📊 Kết quả upload — ✅ ${totalOk} lên lịch, ❌ ${totalErr} lỗi`, ""];
   for (const [ch, c] of byChannel) {
     lines.push(`• ${ch}: ✅ ${c.ok} | ❌ ${c.err}`);
+  }
+  const oks = results.filter((r) => r.ok);
+  if (oks.length) {
+    lines.push("", "✅ Đã lên lịch:");
+    for (const o of oks) {
+      lines.push(`— ${o.sheetName} · ${o.title}: ${formatSchedule(o.scheduleISO)}`);
+    }
   }
   const errors = results.filter((r) => !r.ok);
   if (errors.length) {

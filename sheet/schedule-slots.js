@@ -18,6 +18,13 @@ function normalizeTime(t) {
   return `${pad(h)}:${pad(min)}`;
 }
 
+// "2026-07-09T08:00:00" -> "09/07/2026 08:00" (để hiển thị/thông báo).
+export function formatSchedule(iso) {
+  const m = String(iso ?? "").match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return String(iso ?? "");
+  return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
+}
+
 export function parsePostTimes(raw) {
   if (Array.isArray(raw)) return raw.map(normalizeTime).filter(Boolean);
   return String(raw ?? "")

@@ -15,7 +15,7 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
   assert.equal(out.length, 3);
   assert.deepEqual(out[0], {
     sheetName: "Kênh A", enabled: true, videosPerDay: 3, renderMode: "topTransparent",
-    cfg: { opacity: 0.7 }, proxy: "",
+    cfg: { opacity: 0.7 }, proxy: "", gpmProfileId: "",
   });
   assert.equal(out[1].enabled, true);
   assert.equal(out[1].proxy, "socks5://1.2.3.4:1080");
@@ -146,4 +146,25 @@ test("pickDownloadedFile returns the new mp4", () => {
 
 test("pickDownloadedFile returns null when no new mp4", () => {
   assert.equal(pickDownloadedFile(["a.mp4"], ["a.mp4"]), null);
+});
+
+test("parseConfigRows đọc cột gpmProfileId qua alias tiếng Việt", () => {
+  const rows = [
+    ["Tên kênh", "Video mỗi ngày", "GPM Profile ID"],
+    ["kenh-a", "2", "  abc123  "],
+    ["kenh-b", "1", ""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].gpmProfileId, "abc123");
+  assert.equal(out[1].gpmProfileId, "");
+});
+
+test("parseConfigRows gpmProfileId rỗng khi không có cột", () => {
+  const rows = [
+    ["Tên kênh", "Video mỗi ngày"],
+    ["kenh-a", "2"],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].gpmProfileId, "");
 });

@@ -24,11 +24,12 @@ export function prepareJob({ videoPath, overlaysDir, postTimes, usedSlots, now, 
 
 /**
  * Tạo hàng đợi upload. Các dep có thể bơm để test.
- * loadState/saveState: đọc/ghi state gpm (mặc định caller cung cấp).
+ * Nguồn sự thật là SHEET (cột C) — không dùng file JSON:
+ *   readChannelUploads(sheetName) → { scheduledUrls: Set<string>, usedSlots: string[] }
+ *   (đọc 1 lần/lượt/kênh rồi cache trong bộ nhớ; ghi cột C là lưu bền vững).
  */
 export function createUploadQueue({
-  loadState,
-  saveState,
+  readChannelUploads = async () => ({ scheduledUrls: new Set(), usedSlots: [] }),
   connect = connectProfile,
   runUpload = uploadAndSchedule,
   now = () => new Date(),
@@ -42,12 +43,25 @@ export function createUploadQueue({
   flushMs = 3000,                      // chờ rảnh bao lâu trước khi gửi digest
   sleepFn = (ms) => new Promise((r) => setTimeout(r, ms)),
 } = {}) {
-  const chains = new Map(); // sheetName -> Promise (chuỗi serial theo kênh)
-  const conns = new Map();  // profileId -> { browser, page } (tái dùng kết nối)
-  const results = [];       // kết quả từ lượt bận hiện tại (để gộp digest)
-  let pending = 0;          // số job đang chờ/chạy
+  const chains = new Map();       // sheetName -> Promise (chuỗi serial theo kênh)
+  const conns = new Map();        // profileId -> { browser, page } (tái dùng kết nối)
+  const channelCache = new Map(); // sheetName -> { scheduledUrls, usedSlots } (đọc từ Sheet 1 lần/lượt)
+  const results = [];             // kết quả từ lượt bận hiện tại (để gộp digest)
+  let pending = 0;                // số job đang chờ/chạy
   let flushTimer = null;
-  let runActive = false;    // lượt chạy (tải+render) còn đang diễn ra → chưa gửi digest
+  let runActive = false;          // lượt chạy (tải+render) còn đang diễn ra → chưa gửi digest
+
+  // Đọc trạng thái upload của kênh từ Sheet (cache trong lượt); lần sau tái dùng.
+  async function getChannelUploads(sheetName) {
+    if (channelCache.has(sheetName)) return channelCache.get(sheetName);
+    const data = await readChannelUploads(sheetName);
+    const cache = {
+      scheduledUrls: data.scheduledUrls instanceof Set ? data.scheduledUrls : new Set(data.scheduledUrls || []),
+      usedSlots: [...(data.usedSlots || [])],
+    };
+    channelCache.set(sheetName, cache);
+    return cache;
+  }
 
   async function getConn(gpmHost, profileId) {
     if (conns.has(profileId)) return conns.get(profileId);
@@ -79,12 +93,12 @@ export function createUploadQueue({
 
   async function runJob(job) {
     const { sheetName, gpmHost, profileId, videoPath, overlaysDir, title, postTimes, locale, rowIndex, sourceUrl } = job;
-    const state = loadState() || {};
-    const ch = state[sheetName] || (state[sheetName] = { usedSlots: [], videos: {} });
+    // Nguồn sự thật = Sheet cột C (đọc 1 lần/lượt, cache).
+    const ch = await getChannelUploads(sheetName);
 
-    // Đã lên lịch rồi → bỏ qua (resume/tránh trùng).
-    if (ch.videos[videoPath]?.status === "scheduled") {
-      log(`[${sheetName}] bỏ qua (đã lên lịch): ${title}`);
+    // Đã lên lịch rồi (cột C của URL này là "✅ lên lịch…") → bỏ qua (tránh up trùng).
+    if (sourceUrl && ch.scheduledUrls.has(sourceUrl)) {
+      log(`[${sheetName}] bỏ qua (Sheet báo đã lên lịch): ${title}`);
       return;
     }
 
@@ -136,10 +150,9 @@ export function createUploadQueue({
       return;
     }
 
-    // Thành công → ghi state + digest + Sheet.
+    // Thành công → cập nhật cache (để video kế cùng kênh lấy slot khác) + digest + ghi Sheet.
     ch.usedSlots.push(scheduleISO);
-    ch.videos[videoPath] = { title, status: "scheduled", scheduledAt: scheduleISO };
-    saveState(state);
+    if (sourceUrl) ch.scheduledUrls.add(sourceUrl);
     results.push({ sheetName, title, ok: true, scheduleISO });
     const schedText = `✅ lên lịch ${formatSchedule(scheduleISO)}`;
     emitUpload(sheetName, schedText, { title, ok: true, url: sourceUrl });
@@ -167,8 +180,8 @@ export function createUploadQueue({
     await Promise.all([...chains.values()].map((p) => p.catch(() => {})));
   }
 
-  // Runner báo: bắt đầu 1 lượt chạy (tải+render) → tạm ngưng gửi digest.
-  function beginRun() { runActive = true; }
+  // Runner báo: bắt đầu 1 lượt chạy (tải+render) → tạm ngưng gửi digest + đọc lại Sheet mới.
+  function beginRun() { runActive = true; channelCache.clear(); }
   // Runner báo: lượt chạy xong → cho phép gửi digest khi upload cũng rỗng.
   function endRun() { runActive = false; if (pending === 0) scheduleFlush(); }
 

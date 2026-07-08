@@ -1,11 +1,20 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePostTimes, assignTomorrowSlots, formatSchedule } from "../sheet/schedule-slots.js";
+import { parsePostTimes, assignTomorrowSlots, formatSchedule, parseScheduledISO } from "../sheet/schedule-slots.js";
 
 test("formatSchedule đổi ISO -> dd/mm/yyyy hh:mm", () => {
   assert.equal(formatSchedule("2026-07-09T08:00:00"), "09/07/2026 08:00");
   assert.equal(formatSchedule("2026-12-31T18:30:00"), "31/12/2026 18:30");
   assert.equal(formatSchedule(""), "");
+});
+
+test("parseScheduledISO trích ISO từ text cột C (đảo của formatSchedule)", () => {
+  assert.equal(parseScheduledISO("✅ lên lịch 09/07/2026 08:00"), "2026-07-09T08:00:00");
+  assert.equal(parseScheduledISO("⏳ đang upload"), null);
+  assert.equal(parseScheduledISO(""), null);
+  // round-trip
+  const iso = "2026-07-09T18:00:00";
+  assert.equal(parseScheduledISO(formatSchedule(iso)), iso);
 });
 
 test("parsePostTimes chuẩn hoá và lọc giá trị lỗi", () => {

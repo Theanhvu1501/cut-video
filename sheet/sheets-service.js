@@ -182,6 +182,20 @@ export async function setUrlStatus(sheets, spreadsheetId, sheetName, rowIndex, s
   });
 }
 
+// Đọc cột A (url) + C (trạng thái upload) của tab kênh → [{ url, uploadStatus }].
+// Dùng làm nguồn sự thật cho việc lên lịch (thay file JSON).
+export async function readUploadStatuses(sheets, spreadsheetId, sheetName) {
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A:C` });
+  const rows = res.data.values || [];
+  const out = [];
+  for (let r = 0; r < rows.length; r++) {
+    const url = String(rows[r]?.[0] ?? "").trim();
+    if (!/^https?:\/\//i.test(url)) continue; // bỏ dòng header/không phải url
+    out.push({ url, uploadStatus: String(rows[r]?.[2] ?? "").trim() });
+  }
+  return out;
+}
+
 // Ghi trạng thái upload (các bước GPM) vào cột C của tab kênh, tách khỏi cột B (trạng thái render).
 export async function setUploadStatus(sheets, spreadsheetId, sheetName, rowIndex, status) {
   await sheets.spreadsheets.values.update({

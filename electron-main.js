@@ -9,7 +9,8 @@ import { checkLicense } from "./license-check.js";
 import pLimit from "p-limit";
 import sharp from "sharp";
 import { createSheetRunner } from "./sheet/sheet-runner.js";
-import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus, setUploadStatus, testSheetConnection } from "./sheet/sheets-service.js";
+import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus, setUploadStatus, readUploadStatuses, testSheetConnection } from "./sheet/sheets-service.js";
+import { parseScheduledISO } from "./sheet/schedule-slots.js";
 import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
 import { sendTelegram, buildDigest } from "./sheet/telegram-notify.js";
@@ -1350,10 +1351,18 @@ function buildSheetRunner(win) {
   const statePath = path.join(s.channelsRoot, "runner-state.json");
   const emitEvent = (evt) => { if (win && !win.isDestroyed()) win.webContents.send("sheet:event", evt); };
   // Hàng đợi upload GPM (state riêng, log ra cùng luồng sự kiện Sheet).
-  const gpmStatePath = path.join(s.channelsRoot, "gpm-upload-state.json");
   const uploadQueue = createUploadQueue({
-    loadState: () => loadState(gpmStatePath),
-    saveState: (st) => saveState(gpmStatePath, st),
+    // Nguồn sự thật = Sheet cột C: đọc trạng thái upload của kênh → slot đã dùng + url đã lên lịch.
+    readChannelUploads: async (sheetName) => {
+      const rows = await readUploadStatuses(sheets, s.spreadsheetId, sheetName);
+      const scheduledUrls = new Set();
+      const usedSlots = [];
+      for (const { url, uploadStatus } of rows) {
+        const iso = parseScheduledISO(uploadStatus);
+        if (iso) { scheduledUrls.add(url); usedSlots.push(iso); }
+      }
+      return { scheduledUrls, usedSlots };
+    },
     log: (message) => emitEvent({ type: "log", message }),
     emit: emitEvent, // phát sự kiện upload-status lên bảng UI
 

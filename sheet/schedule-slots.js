@@ -25,6 +25,13 @@ export function formatSchedule(iso) {
   return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
 }
 
+// Trích giờ lịch ISO từ chuỗi trạng thái cột C ("✅ lên lịch 09/07/2026 08:00" -> "2026-07-09T08:00:00").
+export function parseScheduledISO(statusText) {
+  const m = String(statusText ?? "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);
+  if (!m) return null;
+  return `${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:00`;
+}
+
 export function parsePostTimes(raw) {
   if (Array.isArray(raw)) return raw.map(normalizeTime).filter(Boolean);
   return String(raw ?? "")

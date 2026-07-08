@@ -43,7 +43,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function rand(min, max) {
   return Math.floor(min + Math.random() * (max - min));
 }
-async function humanPause(min = 400, max = 1200) {
+async function humanPause(min = 600, max = 1500) {
   await sleep(rand(min, max));
 }
 
@@ -109,6 +109,36 @@ async function humanType(
   await humanPause(200, 500);
   await page.keyboard.type(String(text), { delay: rand(30, 90) });
   log(`   ✓ nhập "${text}" vào ${label}`);
+  return true;
+}
+
+// Như humanType nhưng XOÁ dữ liệu cũ trong ô trước khi gõ (Ctrl+A → Delete).
+async function clearAndType(
+  page,
+  selector,
+  text,
+  { intervalMs = 500, maxTries = 60, label = selector, log = () => {} } = {},
+) {
+  let el = null;
+  let tries = 0;
+  while (!(el = await page.$(selector)) && tries < maxTries) {
+    tries++;
+    await sleep(intervalMs);
+  }
+  if (!el) {
+    log(`   ✗ KHÔNG thấy ô nhập (sai SEL?): ${label}  →  selector: ${selector}`);
+    return false;
+  }
+  await humanMouseTo(page, el);
+  await el.click();
+  await humanPause(150, 400);
+  // Xoá sạch nội dung có sẵn.
+  await page.keyboard.press("Control+A");
+  await humanPause(80, 200);
+  await page.keyboard.press("Delete");
+  await humanPause(120, 300);
+  await page.keyboard.type(String(text), { delay: rand(60, 140) });
+  log(`   ✓ (xoá cũ) nhập "${text}" vào ${label}`);
   return true;
 }
 
@@ -305,8 +335,14 @@ export async function uploadAndSchedule({
       label: "thumbnail",
       log,
     });
-    if (!okThumb) log("⚠ b3: KHÔNG đặt được thumbnail — kiểm tra SEL.addThumbnail / SEL.thumbnailFileInput.");
-    else log("b3: đã đặt thumbnail.");
+    if (!okThumb) {
+      log("⚠ b3: KHÔNG đặt được thumbnail — kiểm tra SEL.addThumbnail / SEL.thumbnailFileInput.");
+    } else {
+      // Đợi ảnh thumbnail upload xong rồi mới qua bước sau (tránh click khi chưa xong).
+      log("b3: đã chọn ảnh, đợi thumbnail upload xong…");
+      await humanPause(5000, 8000);
+      log("b3: xong thumbnail.");
+    }
   }
 
   // ══════════════════════════════════════════════════════════
@@ -317,22 +353,24 @@ export async function uploadAndSchedule({
   // Nhảy tới bước "Hiển thị" (Visibility) — nơi có tuỳ chọn lên lịch.
   if (!(await existClick(page, SEL.stepReview, { maxTries: 60, label: "bước Hiển thị", log })))
     throw new Error("Không tới được bước Hiển thị — kiểm tra SEL.stepReview.");
-  await humanPause();
-  // Đổi giờ lịch ISO → chuỗi ngày & giờ theo ngôn ngữ UI (để điền đúng vào picker).
-  const { dateStr, timeStr } = formatScheduleForPicker(scheduleISO, locale);
-  log(`b4: ngày="${dateStr}", giờ="${timeStr}" (locale ${locale})`);
-  // Chọn/mở khối "Lên lịch".
+  await humanPause(1000, 1800);
+  // Chỉ lấy GIỜ (bỏ nhập ngày theo yêu cầu — ngày để mặc định của YouTube).
+  const { timeStr } = formatScheduleForPicker(scheduleISO, locale);
+  log(`b4: chỉ đặt GIỜ="${timeStr}" (ngày để mặc định của YouTube).`);
+  // Mở/chọn khối "Lên lịch".
   await existClick(page, SEL.scheduleRadio, { maxTries: 30, label: "ô Lên lịch", log });
-  await humanPause();
-  // Mở lịch chọn ngày, điền ngày, Enter.
-  await existClick(page, SEL.datepickerTrigger, { maxTries: 30, label: "mở lịch ngày", log });
-  await humanType(page, SEL.datePickerInput, dateStr, { label: "ô ngày", log });
+  await humanPause(1000, 1800);
+  // Nhập GIỜ — XOÁ dữ liệu cũ trước rồi mới gõ.
+  await clearAndType(page, SEL.timePickerInput, timeStr, { label: "ô giờ", log });
+  await humanPause(400, 900);
   await page.keyboard.press("Enter");
-  await humanPause();
-  // Điền giờ, Enter.
-  await humanType(page, SEL.timePickerInput, timeStr, { label: "ô giờ", log });
-  await page.keyboard.press("Enter");
-  log("b4: đã đặt ngày giờ.");
+  log("b4: đã đặt giờ.");
+
+  // --- NHẬP NGÀY: đang TẮT theo yêu cầu. Bật lại nếu cần đặt ngày cụ thể: ---
+  // const { dateStr } = formatScheduleForPicker(scheduleISO, locale);
+  // await existClick(page, SEL.datepickerTrigger, { maxTries: 30, label: "mở lịch ngày", log });
+  // await clearAndType(page, SEL.datePickerInput, dateStr, { label: "ô ngày", log });
+  // await page.keyboard.press("Enter");
 
   // ══════════════════════════════════════════════════════════
   // HOÀN TẤT — bấm Xong + đóng các hộp thoại có thể hiện

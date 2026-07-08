@@ -7,6 +7,7 @@
 //   và chỉnh SEL cho khớp UI thật của bạn nếu có chỗ lệch.
 
 import fs from "fs";
+import path from "path";
 
 // ─────────────────────────────────────────────────────────────
 // SELECTOR — sửa ở đây khi UI YouTube đổi
@@ -111,20 +112,47 @@ async function humanType(
   return true;
 }
 
-// Nạp file: ưu tiên set thẳng vào input[type=file] ẩn (ổn định nhất); nếu không có thì click nút mở hộp thoại.
+// Nạp file vào input[type=file] qua CDP DOM.setFileInputFiles — truyền ĐƯỜNG DẪN, không truyền
+// nội dung → KHÔNG dính giới hạn 50MB của connectOverCDP. Tìm cả trong shadow DOM (pierce).
+async function setFileViaCDP(page, cssSelector, filePath) {
+  const absPath = path.isAbsolute(filePath) ? filePath : path.resolve(filePath);
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send("DOM.enable");
+    await cdp.send("DOM.getDocument", { depth: 0 });
+    const { searchId, resultCount } = await cdp.send("DOM.performSearch", {
+      query: cssSelector,
+      includeUserAgentShadowDOM: true,
+    });
+    if (!resultCount) {
+      await cdp.send("DOM.discardSearchResults", { searchId }).catch(() => {});
+      return false;
+    }
+    const { nodeIds } = await cdp.send("DOM.getSearchResults", { searchId, fromIndex: 0, toIndex: resultCount });
+    await cdp.send("DOM.setFileInputFiles", { files: [absPath], nodeId: nodeIds[0] });
+    await cdp.send("DOM.discardSearchResults", { searchId }).catch(() => {});
+    return true;
+  } finally {
+    try { await cdp.detach(); } catch { /* ignore */ }
+  }
+}
+
+// Nạp file: ưu tiên CDP theo path (chịu được file lớn); fallback click nút mở hộp thoại (file nhỏ).
 // Trả về true nếu nạp được, false + log nếu không.
 async function setFile(page, { inputSelector, triggerSelector, filePath, label, log = () => {} }) {
-  // Cách 1: input[type=file] ẩn → setInputFiles (không cần click, không lo hộp thoại OS).
+  // Cách 1: CDP DOM.setFileInputFiles theo path — không lo file >50MB, tìm được cả trong shadow DOM.
   if (inputSelector) {
-    const input = await page.$(inputSelector);
-    if (input) {
-      await input.setInputFiles(filePath);
-      log(`   ✓ nạp ${label} qua input (${inputSelector})`);
-      return true;
+    try {
+      if (await setFileViaCDP(page, inputSelector, filePath)) {
+        log(`   ✓ nạp ${label} qua CDP path (${inputSelector})`);
+        return true;
+      }
+      log(`   … không thấy input (${inputSelector}) qua CDP, thử nút mở hộp thoại…`);
+    } catch (e) {
+      log(`   … CDP nạp file lỗi (${e.message}), thử nút mở hộp thoại…`);
     }
-    log(`   … không thấy input ẩn (${inputSelector}), thử nút mở hộp thoại…`);
   }
-  // Cách 2: click nút → bắt filechooser.
+  // Cách 2: click nút → bắt filechooser (chỉ hợp file nhỏ <50MB, vd thumbnail).
   if (triggerSelector) {
     const chooserPromise = page.waitForEvent("filechooser", { timeout: 15000 }).catch(() => null);
     const clicked = await existClick(page, triggerSelector, { maxTries: 30, label, log });

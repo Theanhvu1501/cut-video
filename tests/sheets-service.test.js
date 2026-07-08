@@ -24,6 +24,18 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
   assert.deepEqual(out[2].cfg, { keepColors: ["F6FF00", "FBFF02"], cropHeight: 150, cropYOffset: 550 });
 });
 
+test("parseConfigRows parses chromaPalette and chromaKeyAuto mode", () => {
+  const header = ["sheetName","enabled","videosPerDay","renderMode","chromaPalette"];
+  const rows = [header,
+    ["Kênh A","","5","chromaKeyAuto","22BDD6, 2b4052 , zzz, 7097B8"],
+    ["Kênh B","","5","chromaKey",""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].renderMode, "chromaKeyAuto");
+  assert.deepEqual(out[0].chromaPalette, ["22BDD6", "2B4052", "7097B8"]);
+  assert.equal("chromaPalette" in out[1], false);
+});
+
 test("parseConfigRows skips rows without sheetName", () => {
   const rows = [HEADER, ["","TRUE","3","topTransparent","","","","","","",""]];
   assert.equal(parseConfigRows(rows).length, 0);

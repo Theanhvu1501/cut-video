@@ -42,14 +42,20 @@ export function parseConfigRows(values) {
     if (cropHeight !== undefined) cfg.cropHeight = cropHeight;
     const cropYOffset = num(col(row, "cropYOffset"));
     if (cropYOffset !== undefined) cfg.cropYOffset = cropYOffset;
-    out.push({
+    const chromaPalette = col(row, "chromaPalette")
+      .split(",")
+      .map((p) => p.trim().replace("#", "").toUpperCase())
+      .filter((p) => /^[0-9A-F]{6}$/.test(p));
+    const channel = {
       sheetName,
       enabled: truthy(col(row, "enabled")),
       videosPerDay: num(col(row, "videosPerDay")) || 0,
       renderMode: col(row, "renderMode") || "topTransparent",
       cfg,
       proxy: col(row, "proxy"),
-    });
+    };
+    if (chromaPalette.length) channel.chromaPalette = chromaPalette;
+    out.push(channel);
   }
   return out;
 }

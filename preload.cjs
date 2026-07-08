@@ -60,5 +60,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     runNow: (sheetName) => ipcRenderer.invoke("sheet:run-now", sheetName),
     onEvent: (cb) => ipcRenderer.on("sheet:event", (e, data) => cb(data)),
     removeEventListener: () => ipcRenderer.removeAllListeners("sheet:event"),
+    gpmTest: (gpmHost) => ipcRenderer.invoke("gpm:test", { gpmHost }),
+    gpmListChannels: () => ipcRenderer.invoke("gpm:list-channels"),
+    gpmConnect: (args) => ipcRenderer.invoke("gpm:connect", args),
   },
 });

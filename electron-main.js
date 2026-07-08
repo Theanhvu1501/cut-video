@@ -10,6 +10,7 @@ import pLimit from "p-limit";
 import sharp from "sharp";
 import { createSheetRunner } from "./sheet/sheet-runner.js";
 import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus, testSheetConnection } from "./sheet/sheets-service.js";
+import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne } from "./sheet/channel-download.js";
@@ -1417,6 +1418,48 @@ ipcMain.handle("sheet:run-now", async (e, sheetName) => {
   const runner = sheetRunner || buildSheetRunner(win);
   await runner.runNow(sheetName || undefined);
   return { success: true };
+});
+
+ipcMain.handle("gpm:test", async (e, { gpmHost } = {}) => {
+  try {
+    const host = (gpmHost || "").trim() || "127.0.0.1:19995";
+    const profiles = await testGpmConnection(host);
+    return { ok: true, profiles };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
+
+ipcMain.handle("gpm:list-channels", async () => {
+  try {
+    const st = loadSheetSettings();
+    if (!st.spreadsheetId) return { ok: false, error: "Chưa nhập Spreadsheet ID." };
+    if (!st.credentialsPath) return { ok: false, error: "Chưa chọn file service account JSON." };
+    const sheets = createSheetsClient(st.credentialsPath);
+    const channels = await readConfigSheet(sheets, st.spreadsheetId);
+    return {
+      ok: true,
+      channels: channels.map((c) => ({
+        sheetName: c.sheetName,
+        gpmProfileId: c.gpmProfileId || "",
+        videosPerDay: c.videosPerDay || 0,
+      })),
+    };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
+
+ipcMain.handle("gpm:connect", async (e, { gpmHost, profileId } = {}) => {
+  try {
+    const host = (gpmHost || "").trim() || "127.0.0.1:19995";
+    const pid = (profileId || "").trim();
+    if (!pid) return { ok: false, error: "Kênh chưa có GPM Profile ID." };
+    await connectAndOpenStudio(host, pid);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
 });
 
 // IPC Handlers

@@ -7,9 +7,11 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { checkLicense } from "./license-check.js";
 import pLimit from "p-limit";
+import sharp from "sharp";
 import { createSheetRunner } from "./sheet/sheet-runner.js";
 import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus } from "./sheet/sheets-service.js";
-import { renderOne } from "./sheet/render-core.js";
+import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
+import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne } from "./sheet/channel-download.js";
 import { loadState, saveState } from "./sheet/runner-state.js";
 
@@ -1332,7 +1334,7 @@ function sheetSettingsPath() {
 }
 function loadSheetSettings() {
   try { return JSON.parse(fs.readFileSync(sheetSettingsPath(), "utf-8")); }
-  catch { return { spreadsheetId: "", credentialsPath: "", channelsRoot: "", pollSec: 300, autoRunOnOpen: false }; }
+  catch { return { spreadsheetId: "", credentialsPath: "", channelsRoot: "", pollSec: 300, autoRunOnOpen: false, useGPU: false, videoSpeed: 0.95, gpuVideoCodec: "h264_nvenc" }; }
 }
 function saveSheetSettings(s) { fs.writeFileSync(sheetSettingsPath(), JSON.stringify(s, null, 2), "utf-8"); }
 
@@ -1344,7 +1346,12 @@ function buildSheetRunner(win) {
   const sheets = createSheetsClient(s.credentialsPath);
   const statePath = path.join(s.channelsRoot, "runner-state.json");
   return createSheetRunner({
-    config: { spreadsheetId: s.spreadsheetId, channelsRoot: s.channelsRoot, statePath, renderConcurrency: 2 },
+    config: {
+      spreadsheetId: s.spreadsheetId, channelsRoot: s.channelsRoot, statePath, renderConcurrency: 2,
+      useGPU: !!s.useGPU,
+      gpuVideoCodec: s.gpuVideoCodec || "h264_nvenc",
+      videoSpeed: (typeof s.videoSpeed === "number" && s.videoSpeed > 0) ? s.videoSpeed : 0.95,
+    },
     sheetsApi: {
       readConfigSheet: () => readConfigSheet(sheets, s.spreadsheetId),
       readChannelUrls: (name) => readChannelUrls(sheets, s.spreadsheetId, name),
@@ -1352,6 +1359,8 @@ function buildSheetRunner(win) {
     },
     downloader: (url, dir, opts) => downloadOne(url, dir, { ...opts, ytdlpPath: YTDLP_PATH }),
     renderer: (opts) => renderOne(opts),
+    detectChroma: (videoPath, palette) =>
+      detectChromaColor(videoPath, palette, { ffmpegPath: resolveFfmpegPaths().ffmpegPath, spawn, sharp }),
     listBackgrounds: (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".mp4")) : []),
     ensureDirs: (root) => {
       const dirs = {

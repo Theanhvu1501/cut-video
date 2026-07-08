@@ -77,7 +77,7 @@ export function createUploadQueue({
   }
 
   async function runJob(job) {
-    const { sheetName, gpmHost, profileId, videoPath, overlaysDir, title, postTimes, locale, rowIndex } = job;
+    const { sheetName, gpmHost, profileId, videoPath, overlaysDir, title, postTimes, locale, rowIndex, sourceUrl } = job;
     const state = loadState() || {};
     const ch = state[sheetName] || (state[sheetName] = { usedSlots: [], videos: {} });
 
@@ -98,11 +98,11 @@ export function createUploadQueue({
     }
 
     log(`[${sheetName}] upload "${title}" → lịch ${scheduleISO}${thumbnailPath ? "" : " (⚠ không thấy thumb)"}`);
-    emitUpload(sheetName, "⏳ đang upload", { title });
+    emitUpload(sheetName, "⏳ đang upload", { title, url: sourceUrl });
     await writeStatus(sheetName, rowIndex, "⏳ đang upload");
     const { page } = await getConn(gpmHost, profileId);
     // Mỗi bước: cập nhật cả bảng UI lẫn Sheet.
-    const onStep = (msg) => { emitUpload(sheetName, msg, { title }); return writeStatus(sheetName, rowIndex, msg); };
+    const onStep = (msg) => { emitUpload(sheetName, msg, { title, url: sourceUrl }); return writeStatus(sheetName, rowIndex, msg); };
 
     // Retry: chỉ thử lại khi CHƯA bắt đầu upload (tránh tạo bản nháp trùng trên YouTube).
     let uploaded = false;
@@ -129,7 +129,7 @@ export function createUploadQueue({
     if (lastErr) {
       const msg = String(lastErr?.message || lastErr).slice(0, 200);
       results.push({ sheetName, title, ok: false, error: msg });
-      emitUpload(sheetName, `❌ lỗi: ${msg}`, { title, ok: false });
+      emitUpload(sheetName, `❌ lỗi: ${msg}`, { title, ok: false, url: sourceUrl });
       await writeStatus(sheetName, rowIndex, `❌ lỗi: ${msg}`);
       log(`❌ [${sheetName}] ${title}: ${msg}`);
       return;
@@ -140,7 +140,7 @@ export function createUploadQueue({
     ch.videos[videoPath] = { title, status: "scheduled", scheduledAt: scheduleISO };
     saveState(state);
     results.push({ sheetName, title, ok: true, scheduleISO });
-    emitUpload(sheetName, `✅ lên lịch ${scheduleISO}`, { title, ok: true });
+    emitUpload(sheetName, `✅ lên lịch ${scheduleISO}`, { title, ok: true, url: sourceUrl });
     await writeStatus(sheetName, rowIndex, `✅ lên lịch ${scheduleISO}`);
     log(`[${sheetName}] ✅ đã lên lịch: ${title}`);
   }

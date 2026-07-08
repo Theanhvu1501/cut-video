@@ -3720,8 +3720,9 @@
               style="border:1px solid #cbd5e0;background:#fff;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:5px 8px;">🔌</button>
             <span id="sw-test-status" style="font-size:13px;"></span>
           </div>
-          <details id="sw-config" open>
-            <summary style="cursor:pointer;font-weight:600;padding:8px 0;color:#2d3748;user-select:none;">⚙ Cấu hình (bấm để thu gọn sau khi cài xong)</summary>
+          <details id="sw-config" open style="margin-top:8px;">
+            <summary style="cursor:pointer;font-weight:600;padding:10px 14px;color:#2d3748;user-select:none;background:#f8f9fa;border:1px solid #e2e8f0;border-radius:8px;list-style:none;">⚙ Cấu hình — bấm để thu gọn/mở</summary>
+          <div style="padding:14px 4px 4px;">
           <div class="form-group">
             <label>Spreadsheet ID</label>
             <input id="sw-spreadsheet-id" type="text" style="width:100%">
@@ -3744,21 +3745,21 @@
               <button class="btn btn-secondary" id="sw-pick-root">Chọn folder…</button>
             </div>
           </div>
-          <div class="form-group">
-            <label>Poll (giây)</label>
-            <input id="sw-poll" type="number" value="300" style="width:100px">
+          <div class="form-group" style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;">
+            <div>
+              <label>Poll (giây)</label>
+              <input id="sw-poll" type="number" value="300" style="width:100px">
+            </div>
+            <div>
+              <label>Tốc độ video</label>
+              <input id="sw-video-speed" type="number" step="0.01" min="0.1" value="0.95" style="width:100px">
+            </div>
           </div>
-          <div class="form-group">
-            <label>Tốc độ video (videoSpeed)</label>
-            <input id="sw-video-speed" type="number" step="0.01" min="0.1" value="0.95" style="width:100px">
-          </div>
-          <div class="form-group">
-            <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+          <div class="form-group" style="display:flex;gap:24px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin:0;">
               <input id="sw-use-gpu" type="checkbox"> Dùng GPU (NVENC)
             </label>
-          </div>
-          <div class="form-group">
-            <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+            <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin:0;">
               <input id="sw-auto-open" type="checkbox"> Tự chạy khi mở app
             </label>
           </div>
@@ -3803,6 +3804,7 @@
               <tbody></tbody>
             </table>
           </div>
+          </div>
           </details>
           <div class="action-buttons">
             <button class="btn btn-primary" id="sw-start">Start theo dõi</button>
@@ -3813,8 +3815,8 @@
             <thead>
               <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
                 <th style="text-align:left;padding:10px 12px;">Kênh</th>
-                <th style="text-align:left;padding:10px 12px;">Trạng thái</th>
-                <th style="text-align:left;padding:10px 12px;">Hôm nay</th>
+                <th style="text-align:left;padding:10px 12px;">Video</th>
+                <th style="text-align:left;padding:10px 12px;">Tải / Render</th>
                 <th style="text-align:left;padding:10px 12px;">Upload GPM</th>
                 <th style="text-align:left;padding:10px 12px;">Lỗi</th>
               </tr>

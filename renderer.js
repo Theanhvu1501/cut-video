@@ -4123,22 +4123,36 @@ async function runConcat() {
   const $ = (id) => document.getElementById(id);
   const logEl = $("sw-log");
   const statusBody = $("sw-status-table")?.querySelector("tbody");
-  const rows = new Map(); // channel -> {statusEl, todayEl, errEl}
-  const rendered = new Map(); // channel -> count rendered this session
+  const rows = new Map(); // url -> {chEl, vidEl, statusEl, uploadEl, errEl}
 
   function log(msg) {
     if (!logEl) return;
     logEl.textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`;
     logEl.scrollTop = logEl.scrollHeight;
   }
-  function ensureRow(channel) {
-    if (!statusBody) return null;
-    if (rows.has(channel)) return rows.get(channel);
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td style="padding:8px 12px;">${channel}</td><td class="st" style="padding:8px 12px;"></td><td class="td" style="padding:8px 12px;"></td><td class="up" style="padding:8px 12px;"></td><td class="er" style="padding:8px 12px;color:#c00"></td>`;
-    statusBody.appendChild(tr);
-    const r = { statusEl: tr.querySelector(".st"), todayEl: tr.querySelector(".td"), uploadEl: tr.querySelector(".up"), errEl: tr.querySelector(".er") };
-    rows.set(channel, r);
+  function shortUrl(u) {
+    const s = String(u || "");
+    const m = s.match(/[?&]v=([\w-]+)/) || s.match(/\/([\w-]{6,})(?:[/?#]|$)/);
+    return m ? m[1] : (s.length > 34 ? "…" + s.slice(-32) : s);
+  }
+  // Mỗi URL (video) = 1 dòng, theo dõi cả vòng đời tải → render → upload.
+  function ensureRow(url, channel, title) {
+    if (!statusBody || !url) return null;
+    let r = rows.get(url);
+    if (!r) {
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid #eee";
+      tr.innerHTML = `<td class="ch" style="padding:8px 12px;"></td><td class="vid" style="padding:8px 12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></td><td class="st" style="padding:8px 12px;"></td><td class="up" style="padding:8px 12px;"></td><td class="er" style="padding:8px 12px;color:#c00"></td>`;
+      statusBody.appendChild(tr);
+      r = {
+        chEl: tr.querySelector(".ch"), vidEl: tr.querySelector(".vid"),
+        statusEl: tr.querySelector(".st"), uploadEl: tr.querySelector(".up"), errEl: tr.querySelector(".er"),
+      };
+      rows.set(url, r);
+    }
+    if (channel) r.chEl.textContent = channel;
+    if (title) { r.vidEl.textContent = title; r.vidEl.title = title; }
+    else if (!r.vidEl.textContent) { r.vidEl.textContent = shortUrl(url); r.vidEl.title = url; }
     return r;
   }
 
@@ -4231,23 +4245,22 @@ async function runConcat() {
 
   api.onEvent((evt) => {
     if (evt.type === "channel-status") {
-      const r = ensureRow(evt.channel); r.statusEl.textContent = evt.status;
-      log(`[${evt.channel}] ${evt.status}${evt.url ? " — " + evt.url : ""}`);
+      // Có url → cập nhật dòng của video đó; không có url = thông báo cấp kênh → chỉ ghi log.
+      if (evt.url) { const r = ensureRow(evt.url, evt.channel); if (r) r.statusEl.textContent = evt.status; }
+      log(`[${evt.channel}] ${evt.status}${evt.url ? " — " + shortUrl(evt.url) : ""}`);
     } else if (evt.type === "video-rendered") {
-      const r = ensureRow(evt.channel); r.statusEl.textContent = "xong";
-      const n = (rendered.get(evt.channel) || 0) + 1;
-      rendered.set(evt.channel, n);
-      r.todayEl.textContent = String(n);
-      log(`[${evt.channel}] ✅ ${evt.title}`);
+      const r = ensureRow(evt.sourceUrl, evt.channel, evt.title);
+      if (r) r.statusEl.textContent = "✅ render xong";
+      log(`[${evt.channel}] ✅ render: ${evt.title}`);
     } else if (evt.type === "upload-status") {
-      const r = ensureRow(evt.channel);
+      const r = ensureRow(evt.url, evt.channel, evt.title);
       if (r?.uploadEl) {
         r.uploadEl.textContent = evt.status;
         r.uploadEl.style.color = evt.status.startsWith("❌") ? "#c00" : evt.status.startsWith("✅") ? "#1a7f37" : "#666";
       }
       log(`[${evt.channel}] ${evt.status}${evt.title ? " — " + evt.title : ""}`);
     } else if (evt.type === "error") {
-      const r = evt.channel ? ensureRow(evt.channel) : null;
+      const r = evt.url ? ensureRow(evt.url, evt.channel) : null;
       if (r) r.errEl.textContent = evt.message;
       log(`❌ ${evt.channel ? "[" + evt.channel + "] " : ""}${evt.message}`);
     } else if (evt.type === "done") {

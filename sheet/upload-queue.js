@@ -47,6 +47,7 @@ export function createUploadQueue({
   const results = [];       // kết quả từ lượt bận hiện tại (để gộp digest)
   let pending = 0;          // số job đang chờ/chạy
   let flushTimer = null;
+  let runActive = false;    // lượt chạy (tải+render) còn đang diễn ra → chưa gửi digest
 
   async function getConn(gpmHost, profileId) {
     if (conns.has(profileId)) return conns.get(profileId);
@@ -69,7 +70,7 @@ export function createUploadQueue({
   function scheduleFlush() {
     if (flushTimer) clearTimeout(flushTimer);
     flushTimer = setTimeout(async () => {
-      if (pending > 0 || !results.length) return;
+      if (runActive || pending > 0 || !results.length) return; // lượt chạy chưa xong → chưa gửi
       const batch = results.splice(0, results.length);
       if (!notifyDigest) return;
       try { await notifyDigest(batch); } catch (e) { log(`Lỗi gửi Telegram: ${e?.message || e}`); }
@@ -165,5 +166,10 @@ export function createUploadQueue({
     await Promise.all([...chains.values()].map((p) => p.catch(() => {})));
   }
 
-  return { enqueue, drain, prepareJob };
+  // Runner báo: bắt đầu 1 lượt chạy (tải+render) → tạm ngưng gửi digest.
+  function beginRun() { runActive = true; }
+  // Runner báo: lượt chạy xong → cho phép gửi digest khi upload cũng rỗng.
+  function endRun() { runActive = false; if (pending === 0) scheduleFlush(); }
+
+  return { enqueue, drain, prepareJob, beginRun, endRun };
 }

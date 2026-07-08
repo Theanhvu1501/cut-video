@@ -118,6 +118,7 @@ export function createSheetRunner(deps) {
       return;
     }
     running = true;
+    if (uploadQueue) uploadQueue.beginRun(); // tạm ngưng gửi digest trong lúc chạy
     try {
       const today = todayStr(now());
       let channels = await sheetsApi.readConfigSheet();
@@ -126,6 +127,8 @@ export function createSheetRunner(deps) {
       emit({ type: "done" });
     } finally {
       running = false;
+      // Lượt chạy xong → digest sẽ gửi 1 lần khi hàng đợi upload cũng rỗng.
+      if (uploadQueue) uploadQueue.endRun();
     }
   }
 

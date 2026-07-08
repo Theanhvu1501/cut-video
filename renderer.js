@@ -4153,8 +4153,10 @@ async function runConcat() {
     $("sw-use-gpu").checked = !!s.useGPU;
     $("sw-gpm-enabled").checked = !!s.gpmEnabled;
     $("sw-gpm-host").value = s.gpmHost || "127.0.0.1:19995";
+    $("sw-gpm-tg-enabled").checked = !!s.gpmTelegramEnabled;
     $("sw-gpm-tg-token").value = s.gpmTelegramToken || "";
     $("sw-gpm-tg-chat").value = s.gpmTelegramChatId || "";
+    $("sw-gpm-tg-fields").style.display = s.gpmTelegramEnabled ? "" : "none";
     $("sw-gpm-panel").style.display = s.gpmEnabled ? "" : "none";
   }
   function currentSettings() {
@@ -4168,6 +4170,7 @@ async function runConcat() {
       useGPU: $("sw-use-gpu").checked,
       gpmEnabled: $("sw-gpm-enabled").checked,
       gpmHost: $("sw-gpm-host").value.trim() || "127.0.0.1:19995",
+      gpmTelegramEnabled: $("sw-gpm-tg-enabled").checked,
       gpmTelegramToken: $("sw-gpm-tg-token").value.trim(),
       gpmTelegramChatId: $("sw-gpm-tg-chat").value.trim(),
     };
@@ -4185,6 +4188,10 @@ async function runConcat() {
     $(id)?.addEventListener("input", saveDebounced));
   $("sw-gpm-enabled")?.addEventListener("change", () => {
     $("sw-gpm-panel").style.display = $("sw-gpm-enabled").checked ? "" : "none";
+  });
+  $("sw-gpm-tg-enabled")?.addEventListener("change", () => {
+    $("sw-gpm-tg-fields").style.display = $("sw-gpm-tg-enabled").checked ? "" : "none";
+    saveNow();
   });
 
   $("sw-pick-cred")?.addEventListener("click", async () => {

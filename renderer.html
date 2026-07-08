@@ -3778,8 +3778,13 @@
                 style="border:1px solid #cbd5e0;background:#fff;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:5px 8px;">🔌</button>
               <span id="sw-gpm-test-status" style="font-size:13px;"></span>
             </div>
-            <div class="form-group" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-              <label style="margin:0;">Telegram (thông báo)</label>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
+                <input id="sw-gpm-tg-enabled" type="checkbox"> Bật thông báo Telegram
+              </label>
+            </div>
+            <div id="sw-gpm-tg-fields" class="form-group" style="display:none;align-items:center;gap:10px;flex-wrap:wrap;">
+              <label style="margin:0;">Telegram</label>
               <input id="sw-gpm-tg-token" type="text" placeholder="Bot token" style="width:260px">
               <input id="sw-gpm-tg-chat" type="text" placeholder="Chat ID" style="width:140px">
             </div>

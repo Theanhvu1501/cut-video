@@ -1360,6 +1360,7 @@ function buildSheetRunner(win) {
       setUploadStatus(sheets, s.spreadsheetId, sheetName, rowIndex, status),
     // Gửi 1 digest Telegram khi hàng đợi upload rảnh.
     notifyDigest: async (results) => {
+      if (!s.gpmTelegramEnabled) return; // người dùng tắt thông báo
       const text = buildDigest(results);
       if (!text) return;
       if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;

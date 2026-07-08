@@ -4170,6 +4170,25 @@ async function runConcat() {
   $("sw-pick-root")?.addEventListener("click", async () => {
     const p = await api.selectRoot(); if (p) $("sw-root").value = p;
   });
+  $("sw-test")?.addEventListener("click", async () => {
+    const btn = $("sw-test");
+    if (btn) btn.disabled = true;
+    log("🔌 Đang kiểm tra kết nối tới Sheet…");
+    try {
+      const r = await api.testConnection(currentSettings());
+      if (r?.success) {
+        log(`✅ Kết nối OK — ${r.channelCount} kênh (${r.enabledCount} đang bật).`);
+        log(`   Tab: ${r.tabs.join(", ")}`);
+        if (!r.hasConfigTab) log("⚠️ Không thấy tab ⚙config — kiểm tra lại tên tab cấu hình.");
+      } else {
+        log(`❌ Kết nối thất bại: ${r?.error || "lỗi không rõ"}`);
+      }
+    } catch (e) {
+      log(`❌ Kết nối thất bại: ${e?.message || e}`);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
   $("sw-save")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); log("Đã lưu cấu hình."); });
   $("sw-start")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); await api.start(); log("▶ Bắt đầu theo dõi."); });
   $("sw-stop")?.addEventListener("click", async () => { await api.stop(); log("⏹ Đã dừng."); });

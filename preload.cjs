@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   },
   detectGpuCodec: () => ipcRenderer.invoke("detect-gpu-codec"),
   sheet: {
+    testConnection: (s) => ipcRenderer.invoke("sheet:test-connection", s),
     loadSettings: () => ipcRenderer.invoke("sheet:load-settings"),
     saveSettings: (s) => ipcRenderer.invoke("sheet:save-settings", s),
     selectCredentials: () => ipcRenderer.invoke("sheet:select-credentials"),

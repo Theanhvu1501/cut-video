@@ -152,6 +152,18 @@ export async function readConfigSheet(sheets, spreadsheetId, configTab = "⚙con
   return parseConfigRows(res.data.values || []);
 }
 
+// Kiểm tra kết nối: đọc danh sách tab + tab ⚙config, trả về tóm tắt.
+export async function testSheetConnection(sheets, spreadsheetId) {
+  const tabs = await listSheetTabs(sheets, spreadsheetId);
+  const channels = await readConfigSheet(sheets, spreadsheetId);
+  return {
+    tabs,
+    channelCount: channels.length,
+    enabledCount: channels.filter((c) => c.enabled).length,
+    hasConfigTab: tabs.includes("⚙config"),
+  };
+}
+
 export async function readChannelUrls(sheets, spreadsheetId, sheetName) {
   const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A:B` });
   return parseUrlRows(res.data.values || []);

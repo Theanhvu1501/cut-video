@@ -9,7 +9,7 @@ import { checkLicense } from "./license-check.js";
 import pLimit from "p-limit";
 import sharp from "sharp";
 import { createSheetRunner } from "./sheet/sheet-runner.js";
-import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus } from "./sheet/sheets-service.js";
+import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus, testSheetConnection } from "./sheet/sheets-service.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne } from "./sheet/channel-download.js";
@@ -1380,6 +1380,18 @@ function buildSheetRunner(win) {
   });
 }
 
+ipcMain.handle("sheet:test-connection", async (e, s) => {
+  try {
+    const st = s || loadSheetSettings();
+    if (!st.spreadsheetId) return { success: false, error: "Chưa nhập Spreadsheet ID." };
+    if (!st.credentialsPath) return { success: false, error: "Chưa chọn file service account JSON." };
+    const sheets = createSheetsClient(st.credentialsPath);
+    const info = await testSheetConnection(sheets, st.spreadsheetId);
+    return { success: true, ...info };
+  } catch (err) {
+    return { success: false, error: String(err?.message || err) };
+  }
+});
 ipcMain.handle("sheet:load-settings", async () => loadSheetSettings());
 ipcMain.handle("sheet:save-settings", async (e, s) => { saveSheetSettings(s); return { success: true }; });
 ipcMain.handle("sheet:select-credentials", async () => {

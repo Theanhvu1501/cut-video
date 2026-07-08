@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseConfigRows, parseUrlRows } from "../sheet/sheets-service.js";
+import { parseConfigRows, parseUrlRows, testSheetConnection } from "../sheet/sheets-service.js";
 import { pickDownloadedFile } from "../sheet/channel-download.js";
 
 const HEADER = ["sheetName","enabled","videosPerDay","renderMode","opacity","chromaColor","chromaSimilarity","keepColors","cropHeight","cropYOffset","proxy"];
@@ -115,6 +115,27 @@ test("parseUrlRows keeps 1-based index, skips blanks and header", () => {
 test("parseUrlRows treats first row as data if it is a URL", () => {
   const out = parseUrlRows([["https://youtu.be/x",""]]);
   assert.deepEqual(out, [{ rowIndex: 1, url: "https://youtu.be/x", status: "" }]);
+});
+
+test("testSheetConnection summarizes tabs and channels", async () => {
+  const fakeSheets = {
+    spreadsheets: {
+      get: async () => ({ data: { sheets: [
+        { properties: { title: "⚙config" } },
+        { properties: { title: "Kenh_A" } },
+      ] } }),
+      values: { get: async () => ({ data: { values: [
+        ["Tên kênh","Bật","Video mỗi ngày","Kiểu render"],
+        ["Kenh_A","true","3","chromaKey"],
+        ["Kenh_B","false","3","crop"],
+      ] } }) },
+    },
+  };
+  const info = await testSheetConnection(fakeSheets, "SID");
+  assert.deepEqual(info.tabs, ["⚙config", "Kenh_A"]);
+  assert.equal(info.channelCount, 2);
+  assert.equal(info.enabledCount, 1);
+  assert.equal(info.hasConfigTab, true);
 });
 
 test("pickDownloadedFile returns the new mp4", () => {

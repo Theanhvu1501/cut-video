@@ -4115,3 +4115,80 @@ async function runConcat() {
     showOutput("concat", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
   }
 }
+
+// ===== Tab Theo dõi Sheet =====
+(function initSheetWatch() {
+  const api = window.electronAPI?.sheet;
+  if (!api) return;
+  const $ = (id) => document.getElementById(id);
+  const logEl = $("sw-log");
+  const statusBody = $("sw-status-table")?.querySelector("tbody");
+  const rows = new Map(); // channel -> {statusEl, todayEl, errEl}
+  const rendered = new Map(); // channel -> count rendered this session
+
+  function log(msg) {
+    if (!logEl) return;
+    logEl.textContent += `${new Date().toLocaleTimeString()}  ${msg}\n`;
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  function ensureRow(channel) {
+    if (!statusBody) return null;
+    if (rows.has(channel)) return rows.get(channel);
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td style="padding:8px 12px;">${channel}</td><td class="st" style="padding:8px 12px;"></td><td class="td" style="padding:8px 12px;"></td><td class="er" style="padding:8px 12px;color:#c00"></td>`;
+    statusBody.appendChild(tr);
+    const r = { statusEl: tr.querySelector(".st"), todayEl: tr.querySelector(".td"), errEl: tr.querySelector(".er") };
+    rows.set(channel, r);
+    return r;
+  }
+
+  async function loadSettings() {
+    const s = await api.loadSettings();
+    $("sw-spreadsheet-id").value = s.spreadsheetId || "";
+    $("sw-cred-path").value = s.credentialsPath || "";
+    $("sw-root").value = s.channelsRoot || "";
+    $("sw-poll").value = s.pollSec || 300;
+    $("sw-auto-open").checked = !!s.autoRunOnOpen;
+  }
+  function currentSettings() {
+    return {
+      spreadsheetId: $("sw-spreadsheet-id").value.trim(),
+      credentialsPath: $("sw-cred-path").value.trim(),
+      channelsRoot: $("sw-root").value.trim(),
+      pollSec: parseInt($("sw-poll").value, 10) || 300,
+      autoRunOnOpen: $("sw-auto-open").checked,
+    };
+  }
+
+  $("sw-pick-cred")?.addEventListener("click", async () => {
+    const p = await api.selectCredentials(); if (p) $("sw-cred-path").value = p;
+  });
+  $("sw-pick-root")?.addEventListener("click", async () => {
+    const p = await api.selectRoot(); if (p) $("sw-root").value = p;
+  });
+  $("sw-save")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); log("Đã lưu cấu hình."); });
+  $("sw-start")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); await api.start(); log("▶ Bắt đầu theo dõi."); });
+  $("sw-stop")?.addEventListener("click", async () => { await api.stop(); log("⏹ Đã dừng."); });
+  $("sw-run-now")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); log("Chạy tất cả ngay…"); await api.runNow(); });
+
+  api.onEvent((evt) => {
+    if (evt.type === "channel-status") {
+      const r = ensureRow(evt.channel); r.statusEl.textContent = evt.status;
+      log(`[${evt.channel}] ${evt.status}${evt.url ? " — " + evt.url : ""}`);
+    } else if (evt.type === "video-rendered") {
+      const r = ensureRow(evt.channel); r.statusEl.textContent = "xong";
+      const n = (rendered.get(evt.channel) || 0) + 1;
+      rendered.set(evt.channel, n);
+      r.todayEl.textContent = String(n);
+      log(`[${evt.channel}] ✅ ${evt.title}`);
+    } else if (evt.type === "error") {
+      const r = evt.channel ? ensureRow(evt.channel) : null;
+      if (r) r.errEl.textContent = evt.message;
+      log(`❌ ${evt.channel ? "[" + evt.channel + "] " : ""}${evt.message}`);
+    } else if (evt.type === "done") {
+      log("— Hoàn tất lượt chạy —");
+    }
+  });
+
+  loadSettings();
+})();

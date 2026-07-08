@@ -6,6 +6,12 @@ import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
 import { checkLicense } from "./license-check.js";
+import pLimit from "p-limit";
+import { createSheetRunner } from "./sheet/sheet-runner.js";
+import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus } from "./sheet/sheets-service.js";
+import { renderOne } from "./sheet/render-core.js";
+import { downloadOne } from "./sheet/channel-download.js";
+import { loadState, saveState } from "./sheet/runner-state.js";
 
 const require = createRequire(import.meta.url);
 const { autoUpdater } = require("electron-updater");
@@ -490,6 +496,20 @@ function createWindow() {
   });
 
   mainWindow.loadFile("renderer.html");
+
+  // Auto-run sheet-watch khi mở app nếu người dùng đã bật "Tự chạy khi mở app"
+  // Delay 4 s để renderer kịp gắn listener 'sheet:event' trước khi runner bắt đầu emit
+  try {
+    const sw = loadSheetSettings();
+    if (sw.autoRunOnOpen && sw.spreadsheetId && sw.credentialsPath && sw.channelsRoot) {
+      setTimeout(() => {
+        try {
+          sheetRunner = buildSheetRunner(mainWindow);
+          sheetRunner.start((sw.pollSec || 300) * 1000);
+        } catch (err) { console.error("Auto-run sheet-watch lỗi:", err); }
+      }, 4000);
+    }
+  } catch (err) { console.error(err); }
 
   // Đợi window load xong rồi mới check update
   // Đảm bảo renderer.js đã load và setup listeners
@@ -1304,6 +1324,77 @@ ipcMain.handle("detect-gpu-codec", async () => {
       resolve({ success: false, codec: null, error: error.message });
     }
   });
+});
+
+// ===== Sheet-watch feature =====
+function sheetSettingsPath() {
+  return path.join(getConfigDir(), "sheet-settings.json");
+}
+function loadSheetSettings() {
+  try { return JSON.parse(fs.readFileSync(sheetSettingsPath(), "utf-8")); }
+  catch { return { spreadsheetId: "", credentialsPath: "", channelsRoot: "", pollSec: 300, autoRunOnOpen: false }; }
+}
+function saveSheetSettings(s) { fs.writeFileSync(sheetSettingsPath(), JSON.stringify(s, null, 2), "utf-8"); }
+
+const YTDLP_PATH = path.join(getAppPath(), "bin", "yt-dlp.exe");
+let sheetRunner = null;
+
+function buildSheetRunner(win) {
+  const s = loadSheetSettings();
+  const sheets = createSheetsClient(s.credentialsPath);
+  const statePath = path.join(s.channelsRoot, "runner-state.json");
+  return createSheetRunner({
+    config: { spreadsheetId: s.spreadsheetId, channelsRoot: s.channelsRoot, statePath, renderConcurrency: 2 },
+    sheetsApi: {
+      readConfigSheet: () => readConfigSheet(sheets, s.spreadsheetId),
+      readChannelUrls: (name) => readChannelUrls(sheets, s.spreadsheetId, name),
+      setUrlStatus: (name, row, status) => setUrlStatus(sheets, s.spreadsheetId, name, row, status),
+    },
+    downloader: (url, dir, opts) => downloadOne(url, dir, { ...opts, ytdlpPath: YTDLP_PATH }),
+    renderer: (opts) => renderOne(opts),
+    listBackgrounds: (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".mp4")) : []),
+    ensureDirs: (root) => {
+      const dirs = {
+        backgroundsDir: path.join(root, "backgrounds"),
+        overlaysDir: path.join(root, "overlays"),
+        outputDir: path.join(root, "output"),
+      };
+      for (const d of [dirs.overlaysDir, dirs.outputDir]) if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+      return dirs;
+    },
+    stateStore: { load: () => loadState(statePath), save: (st) => saveState(statePath, st) },
+    emit: (evt) => { if (win && !win.isDestroyed()) win.webContents.send("sheet:event", evt); },
+    now: () => new Date(),
+    pLimitFn: (n) => pLimit(n),
+    rand: () => Math.random(),
+    unlink: (p) => { try { fs.unlinkSync(p); } catch { /* ignore */ } },
+  });
+}
+
+ipcMain.handle("sheet:load-settings", async () => loadSheetSettings());
+ipcMain.handle("sheet:save-settings", async (e, s) => { saveSheetSettings(s); return { success: true }; });
+ipcMain.handle("sheet:select-credentials", async () => {
+  const r = await dialog.showOpenDialog({ properties: ["openFile"], filters: [{ name: "JSON", extensions: ["json"] }] });
+  return r.canceled ? null : r.filePaths[0];
+});
+ipcMain.handle("sheet:select-root", async () => {
+  const r = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+  return r.canceled ? null : r.filePaths[0];
+});
+ipcMain.handle("sheet:start", async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const s = loadSheetSettings();
+  if (sheetRunner) sheetRunner.stop();
+  sheetRunner = buildSheetRunner(win);
+  sheetRunner.start((s.pollSec || 300) * 1000);
+  return { success: true };
+});
+ipcMain.handle("sheet:stop", async () => { if (sheetRunner) sheetRunner.stop(); return { success: true }; });
+ipcMain.handle("sheet:run-now", async (e, sheetName) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const runner = sheetRunner || buildSheetRunner(win);
+  await runner.runNow(sheetName || undefined);
+  return { success: true };
 });
 
 // IPC Handlers

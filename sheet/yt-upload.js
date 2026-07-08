@@ -10,25 +10,26 @@
 // SELECTOR — sửa ở đây khi UI YouTube đổi
 // ─────────────────────────────────────────────────────────────
 export const SEL = {
-  createIcon: "#create-icon",                 // nút "Tạo" ở góc phải Studio
-  uploadMenuItem: "#text-item-0",             // menu "Tải video lên"
-  selectFilesButton: "#select-files-button",  // nút chọn file video (mở file chooser)
+  createIcon: "ytcp-button.ytcpAppHeaderCreateIcon", // nút "Tạo" ở góc phải Studio (class, không phụ thuộc ngôn ngữ)
+  uploadMenuItem: "#text-item-0", // menu "Tải video lên"
+  selectFilesButton: "#select-files-button", // nút chọn file video (mở file chooser)
 
-  title: "#title-textarea #child-input #textbox",           // ô tiêu đề (contenteditable)
-  description: "#description-textarea #child-input #textbox",// ô mô tả (contenteditable)
-  addThumbnail: "#add-photo-icon",            // nút tải thumbnail tuỳ chỉnh (mở file chooser)
+  title: "#title-textarea #child-input #textbox", // ô tiêu đề (contenteditable)
+  description: "#description-textarea #child-input #textbox", // ô mô tả (contenteditable)
+  addThumbnail: "#add-photo-icon", // nút tải thumbnail tuỳ chỉnh (mở file chooser)
 
-  uploadProgressLabel: ".progress-label",     // nhãn tiến trình upload, text chứa "...%"
+  uploadProgressLabel: ".progress-label", // nhãn tiến trình upload, text chứa "...%"
 
-  stepReview: '[test-id="REVIEW"]',           // bước "Hiển thị" (Visibility)
-  scheduleRadio: "#schedule-radio-button",    // chọn "Lên lịch"
-  datepickerTrigger: "#datepicker-trigger",   // mở lịch chọn ngày
+  stepReview: '[test-id="REVIEW"]', // bước "Hiển thị" (Visibility)
+  scheduleRadio: "#second-container-expand-button", // mở/chọn khối "Lên lịch" (UI mới, thay #schedule-radio-button)
+  datepickerTrigger: "#datepicker-trigger", // mở lịch chọn ngày
   datePickerInput: ".ytcp-date-picker .tp-yt-paper-input input", // ô nhập ngày
   timePickerInput: ".ytcp-datetime-picker .tp-yt-paper-input input", // ô nhập giờ
 
-  doneButton: "#done-button",                 // nút "Xong"
-  prechecksWarningPrimary: "ytcp-prechecks-warning-dialog #primary-action-button", // dialog cảnh báo (nếu có)
-  stillProcessingClose: ".ytcp-uploads-still-processing-dialog #close-button",      // dialog "đang xử lý" → đóng
+  doneButton: "#done-button", // nút "Xong"
+  prechecksWarningPrimary:
+    "ytcp-prechecks-warning-dialog #primary-action-button", // dialog cảnh báo (nếu có)
+  stillProcessingClose: ".ytcp-uploads-still-processing-dialog #close-button", // dialog "đang xử lý" → đóng
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -61,7 +62,11 @@ async function humanMouseTo(page, el) {
 }
 
 // Chờ 1 selector xuất hiện rồi click (poll). Trả false nếu quá số lần thử.
-async function existClick(page, selector, { intervalMs = 500, maxTries = Infinity } = {}) {
+async function existClick(
+  page,
+  selector,
+  { intervalMs = 500, maxTries = Infinity } = {},
+) {
   let tries = 0;
   while (tries < maxTries) {
     const el = await page.$(selector);
@@ -86,16 +91,27 @@ async function humanType(page, selector, text, { intervalMs = 500 } = {}) {
 }
 
 // Mở file chooser bằng cách click trigger rồi set file.
-async function fileChoose(page, triggerSelector, filePath, { intervalMs = 500 } = {}) {
+async function fileChoose(
+  page,
+  triggerSelector,
+  filePath,
+  { intervalMs = 500 } = {},
+) {
   const chooserPromise = page.waitForEvent("filechooser");
-  const clicked = await existClick(page, triggerSelector, { intervalMs, maxTries: 60 });
+  const clicked = await existClick(page, triggerSelector, {
+    intervalMs,
+    maxTries: 60,
+  });
   if (!clicked) throw new Error(`Không thấy nút mở file: ${triggerSelector}`);
   const chooser = await chooserPromise;
   await chooser.setFiles(filePath);
 }
 
 // b2: đợi upload đạt 100% (hoặc chuyển sang trạng thái xử lý → coi như xong upload).
-async function waitUploadComplete(page, { timeoutMs = 20 * 60 * 1000, intervalMs = 2000 } = {}) {
+async function waitUploadComplete(
+  page,
+  { timeoutMs = 20 * 60 * 1000, intervalMs = 2000 } = {},
+) {
   const start = Date.now();
   let sawProgress = false;
   while (Date.now() - start < timeoutMs) {
@@ -117,12 +133,18 @@ async function waitUploadComplete(page, { timeoutMs = 20 * 60 * 1000, intervalMs
 
 // Định dạng ngày/giờ theo locale để điền vào picker (text phải khớp ngôn ngữ UI).
 function formatScheduleForPicker(scheduleISO, locale) {
-  const m = String(scheduleISO).match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  const m = String(scheduleISO).match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/,
+  );
   if (!m) throw new Error(`scheduleISO không hợp lệ: ${scheduleISO}`);
   const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], 0, 0);
   if (d <= new Date()) throw new Error("Giờ lịch phải ở tương lai.");
-  const dateStr = new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(d);
-  const timeStr = new Intl.DateTimeFormat(locale, { timeStyle: "short" }).format(d);
+  const dateStr = new Intl.DateTimeFormat(locale, {
+    dateStyle: "medium",
+  }).format(d);
+  const timeStr = new Intl.DateTimeFormat(locale, {
+    timeStyle: "short",
+  }).format(d);
   return { dateStr, timeStr };
 }
 
@@ -158,10 +180,14 @@ export async function uploadAndSchedule({
   // ══════════════════════════════════════════════════════════
   log("b1: mở Studio và bắt đầu upload…");
   // Mở trang YouTube Studio (dùng phiên đã login sẵn của profile GPM).
-  await page.goto("https://studio.youtube.com", { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await page.goto("https://studio.youtube.com", {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
   await humanPause(800, 1600);
   // Bấm nút "Tạo" (góc trên phải). Nếu không thấy → sai selector hoặc chưa login.
-  if (!(await existClick(page, SEL.createIcon, { maxTries: 60 }))) throw new Error("Không thấy nút Tạo (#create-icon).");
+  if (!(await existClick(page, SEL.createIcon, { maxTries: 60 })))
+    throw new Error("Không thấy nút Tạo (#create-icon).");
   await humanPause();
   // Trong menu vừa mở, chọn "Tải video lên".
   await existClick(page, SEL.uploadMenuItem, { maxTries: 30 });
@@ -179,12 +205,12 @@ export async function uploadAndSchedule({
 
   // Điền tiêu đề (gõ kiểu người). YouTube tự điền tiêu đề = tên file,
   // nên nếu muốn giữ nguyên tên file thì có thể bỏ dòng này.
-  await humanType(page, SEL.title, title);
+  // await humanType(page, SEL.title, title);
   // Điền mô tả nếu có.
-  if (description) {
-    await humanPause();
-    await humanType(page, SEL.description, description);
-  }
+  // if (description) {
+  //   await humanPause();
+  //   await humanType(page, SEL.description, description);
+  // }
 
   // ══════════════════════════════════════════════════════════
   // b3: THAY THUMBNAIL
@@ -203,7 +229,8 @@ export async function uploadAndSchedule({
   log(`b4: lên lịch ${scheduleISO}…`);
   await humanPause();
   // Nhảy tới bước "Hiển thị" (Visibility) — nơi có tuỳ chọn lên lịch.
-  if (!(await existClick(page, SEL.stepReview, { maxTries: 60 }))) throw new Error("Không tới được bước Hiển thị (REVIEW).");
+  if (!(await existClick(page, SEL.stepReview, { maxTries: 60 })))
+    throw new Error("Không tới được bước Hiển thị (REVIEW).");
   await humanPause();
   // Đổi giờ lịch ISO → chuỗi ngày & giờ theo ngôn ngữ UI (để điền đúng vào picker).
   const { dateStr, timeStr } = formatScheduleForPicker(scheduleISO, locale);
@@ -227,9 +254,15 @@ export async function uploadAndSchedule({
   // Bấm "Xong" để lưu.
   await existClick(page, SEL.doneButton, { maxTries: 60 });
   // Nếu hiện hộp thoại cảnh báo tiền-kiểm → bấm nút xác nhận (không phải lúc nào cũng có).
-  await existClick(page, SEL.prechecksWarningPrimary, { intervalMs: 1000, maxTries: 10 });
+  await existClick(page, SEL.prechecksWarningPrimary, {
+    intervalMs: 1000,
+    maxTries: 10,
+  });
   // Nếu hiện hộp thoại "video vẫn đang xử lý" → đóng (chờ tối đa ~60s).
-  await existClick(page, SEL.stillProcessingClose, { intervalMs: 1000, maxTries: 60 });
+  await existClick(page, SEL.stillProcessingClose, {
+    intervalMs: 1000,
+    maxTries: 60,
+  });
   log("✅ Xong video này.");
   return { ok: true };
 }

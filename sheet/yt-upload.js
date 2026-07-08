@@ -41,12 +41,32 @@ async function humanPause(min = 400, max = 1200) {
   await sleep(rand(min, max));
 }
 
+// Di chuột kiểu người tới element trước khi click (đường đi nhiều bước như GPM).
+async function humanMouseTo(page, el) {
+  try {
+    // Cuộn element vào tầm nhìn nếu cần.
+    await el.scrollIntoViewIfNeeded();
+    const box = await el.boundingBox();
+    if (box) {
+      // Nhắm 1 điểm ngẫu nhiên trong element (tránh mép, giống người).
+      const x = box.x + box.width * (0.3 + Math.random() * 0.4);
+      const y = box.y + box.height * (0.3 + Math.random() * 0.4);
+      // Di chuột qua nhiều bước (interpolate) thay vì nhảy thẳng.
+      await page.mouse.move(x, y, { steps: rand(10, 25) });
+      await humanPause(80, 220);
+    }
+  } catch {
+    // Không lấy được toạ độ (element ẩn…) → bỏ qua, click thường vẫn chạy.
+  }
+}
+
 // Chờ 1 selector xuất hiện rồi click (poll). Trả false nếu quá số lần thử.
 async function existClick(page, selector, { intervalMs = 500, maxTries = Infinity } = {}) {
   let tries = 0;
   while (tries < maxTries) {
     const el = await page.$(selector);
     if (el) {
+      await humanMouseTo(page, el); // di chuột kiểu người trước
       await el.click();
       return true;
     }

@@ -4149,6 +4149,8 @@ async function runConcat() {
     $("sw-root").value = s.channelsRoot || "";
     $("sw-poll").value = s.pollSec || 300;
     $("sw-auto-open").checked = !!s.autoRunOnOpen;
+    $("sw-video-speed").value = (typeof s.videoSpeed === "number" && s.videoSpeed > 0) ? s.videoSpeed : 0.95;
+    $("sw-use-gpu").checked = !!s.useGPU;
   }
   function currentSettings() {
     return {
@@ -4157,6 +4159,8 @@ async function runConcat() {
       channelsRoot: $("sw-root").value.trim(),
       pollSec: parseInt($("sw-poll").value, 10) || 300,
       autoRunOnOpen: $("sw-auto-open").checked,
+      videoSpeed: parseFloat($("sw-video-speed").value) > 0 ? parseFloat($("sw-video-speed").value) : 0.95,
+      useGPU: $("sw-use-gpu").checked,
     };
   }
 

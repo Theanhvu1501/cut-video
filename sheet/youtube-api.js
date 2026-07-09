@@ -66,3 +66,65 @@ export function parseDuration(duration) {
 export function createYoutubeClient(apiKey) {
   return google.youtube({ version: "v3", auth: apiKey });
 }
+
+const MAX_IDS_PER_CALL = 50; // giới hạn của channels.list khi truyền `id`
+
+function toStats(ref, item) {
+  const st = item.statistics || {};
+  const hidden = !!st.hiddenSubscriberCount;
+  return {
+    ref,
+    channelId: item.id,
+    title: item.snippet?.title || "",
+    subscribers: hidden ? null : Number(st.subscriberCount || 0),
+    views: Number(st.viewCount || 0),
+    videoCount: Number(st.videoCount || 0),
+    hidden,
+  };
+}
+
+// Trả mảng cùng thứ tự và cùng độ dài với `refs`. Ref hỏng trả { ref, error }
+// thay vì ném, để một kênh hỏng không làm hỏng cả bảng.
+export async function fetchChannelStats(yt, refs) {
+  const list = (refs || []).map((ref) => ({ ref, parsed: parseChannelRef(ref) }));
+  const results = new Map();
+
+  for (const { ref, parsed } of list) {
+    if (!parsed) results.set(ref, { ref, error: "Link kênh không hợp lệ" });
+  }
+
+  const ids = list.filter((x) => x.parsed?.type === "id");
+  const handles = list.filter((x) => x.parsed?.type === "handle");
+
+  for (let i = 0; i < ids.length; i += MAX_IDS_PER_CALL) {
+    const batch = ids.slice(i, i + MAX_IDS_PER_CALL);
+    try {
+      const res = await yt.channels.list({
+        part: ["snippet", "statistics"],
+        id: batch.map((b) => b.parsed.value),
+        maxResults: MAX_IDS_PER_CALL,
+      });
+      const byId = new Map((res.data.items || []).map((it) => [it.id, it]));
+      for (const b of batch) {
+        const item = byId.get(b.parsed.value);
+        results.set(b.ref, item ? toStats(b.ref, item) : { ref: b.ref, error: "Không tìm thấy kênh" });
+      }
+    } catch (err) {
+      const msg = String(err?.message || err);
+      for (const b of batch) results.set(b.ref, { ref: b.ref, error: msg });
+    }
+  }
+
+  // forHandle chỉ nhận một handle mỗi lần gọi — không gộp lô được.
+  for (const h of handles) {
+    try {
+      const res = await yt.channels.list({ part: ["snippet", "statistics"], forHandle: h.parsed.value });
+      const item = (res.data.items || [])[0];
+      results.set(h.ref, item ? toStats(h.ref, item) : { ref: h.ref, error: "Không tìm thấy kênh" });
+    } catch (err) {
+      results.set(h.ref, { ref: h.ref, error: String(err?.message || err) });
+    }
+  }
+
+  return (refs || []).map((ref) => results.get(ref));
+}

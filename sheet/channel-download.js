@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { create as createYoutubeDl } from "youtube-dl-exec";
+import { normalizeProxy } from "./proxy.js";
 
 export function pickDownloadedFile(dirBefore, dirAfter) {
   const beforeSet = new Set(dirBefore);
@@ -9,15 +10,15 @@ export function pickDownloadedFile(dirBefore, dirAfter) {
   return mp4 || null;
 }
 
-function isValidProxy(p) {
-  return typeof p === "string" && /^(http|https|socks5):\/\//i.test(p.trim());
-}
+export async function downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPath, ytdlFactory = createYoutubeDl } = {}) {
+  // Proxy rỗng = cố ý tải thẳng. Proxy có giá trị mà hỏng -> ném lỗi trước khi
+  // chạm mạng, không tải bằng IP thật (kết cục tệ nhất cho người né bot-check).
+  const proxyUrl = String(proxy ?? "").trim() ? normalizeProxy(proxy) : null;
 
-export async function downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPath } = {}) {
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
   const before = fs.readdirSync(outputDir);
 
-  const ytdl = createYoutubeDl(ytdlpPath);
+  const ytdl = ytdlFactory(ytdlpPath);
   const options = {
     output: path.join(outputDir, "%(title)s.%(ext)s"),
     format: "bestvideo[height=720][ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[height=720][ext=mp4][vcodec^=avc]",
@@ -33,7 +34,7 @@ export async function downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPat
     extractorArgs: ["youtube:player_client=default,-android_sdkless"],
   };
   if (cookiesFile && fs.existsSync(cookiesFile)) options.cookies = cookiesFile;
-  if (isValidProxy(proxy)) options.proxy = proxy.trim();
+  if (proxyUrl) options.proxy = proxyUrl;
 
   await ytdl(url, options);
 

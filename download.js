@@ -6,6 +6,7 @@ import path from "path";
 import sharp from "sharp";
 import { fileURLToPath } from "url";
 import { create as createYoutubeDl } from "youtube-dl-exec";
+import { normalizeProxy } from "./sheet/proxy.js";
 
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
@@ -107,49 +108,6 @@ const getDriveFilenameLimit = (language) => {
   return limits[language] || limits.default;
 };
 
-function normalizeProxy(raw) {
-  if (!raw) return null;
-
-  raw = raw.trim();
-
-  let scheme = "http";
-
-  // 1️⃣ Tách scheme nếu có
-  const schemeMatch = raw.match(/^(\w+):\/\//);
-  if (schemeMatch) {
-    scheme = schemeMatch[1];
-    raw = raw.replace(/^\w+:\/\//, "");
-  }
-
-  // 2️⃣ Nếu đã có dạng user:pass@host:port → DONE
-  if (raw.includes("@")) {
-    const [auth, hostPort] = raw.split("@");
-    const [host, port] = hostPort.split(":");
-    if (!port || isNaN(port)) throw new Error("Invalid port");
-    return `${scheme}://${auth}@${host}:${port}`;
-  }
-
-  // 3️⃣ Split theo :
-  const parts = raw.split(":");
-
-  // host:port
-  if (parts.length === 2) {
-    const [host, port] = parts;
-    if (isNaN(port)) throw new Error("Invalid port");
-    return `${scheme}://${host}:${port}`;
-  }
-
-  // host:port:user:pass
-  if (parts.length === 4) {
-    const [host, port, user, pass] = parts;
-    if (isNaN(port)) throw new Error("Invalid port");
-    return `${scheme}://${user}:${pass}@${host}:${port}`;
-  }
-  console.error(`🔴 Lỗi định dạng proxy`);
-  return null;
-}
-
-
 function getNodeExecutable() {
   // Vì process được chạy độc lập, chúng ta kiểm tra đường dẫn thư mục hiện tại để biết đang chạy trong production hay không
   const isPackaged = __dirname.includes('app.asar') || __dirname.includes('resources');
@@ -210,19 +168,11 @@ const downloadVideo = async (url, outputPath) => {
     options.writeDescription = true;
   }
 
-  // Thêm proxy nếu có (validate và trim)
+  // Thêm proxy nếu có (chuẩn hoá; hỏng thì dừng chứ không tải bằng IP thật)
   if (PROXY && typeof PROXY === "string" && PROXY.trim()) {
-    const trimmedProxy = PROXY.trim();
-    // Validate proxy format (phải có protocol: http://, https://, hoặc socks5://)
-    if (/^(http|https|socks5):\/\//i.test(trimmedProxy)) {
-      const proxy = normalizeProxy(trimmedProxy);
-      options.proxy = proxy;
-      console.log(`🔒 Sử dụng proxy: ${proxy}`);
-    } else {
-      console.warn(
-        `⚠️ Proxy format không hợp lệ: ${trimmedProxy}. Proxy phải bắt đầu với http://, https://, hoặc socks5://`,
-      );
-    }
+    const proxy = normalizeProxy(PROXY.trim());
+    options.proxy = proxy;
+    console.log(`🔒 Sử dụng proxy: ${proxy}`);
   }
 
   // Sử dụng getYoutubeDl() để đảm bảo luôn dùng yt-dlp mới nhất (sau khi update)

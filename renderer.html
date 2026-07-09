@@ -3755,6 +3755,10 @@
               <input id="sw-video-speed" type="number" step="0.01" min="0.1" value="0.95" style="width:100px">
             </div>
           </div>
+          <div class="form-group">
+            <label>YouTube API key (để trống = dùng key mặc định)</label>
+            <input id="sw-yt-api-key" type="text" placeholder="AIza…" style="width:100%">
+          </div>
           <div class="form-group" style="display:flex;gap:24px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin:0;">
               <input id="sw-use-gpu" type="checkbox"> Dùng GPU (NVENC)
@@ -3811,6 +3815,24 @@
             <button class="btn btn-secondary" id="sw-stop">Stop</button>
             <button class="btn btn-secondary" id="sw-run-now">Chạy tất cả ngay</button>
           </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:20px;">
+            <h3 style="margin:0;font-size:15px;">Số liệu kênh</h3>
+            <button class="btn btn-secondary" id="sw-stats-refresh">🔄 Làm mới</button>
+          </div>
+          <div id="sw-stats-banner" style="display:none;margin-top:8px;padding:8px 12px;border-radius:6px;font-size:13px;"></div>
+          <table id="sw-stats-table" style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">
+            <thead>
+              <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                <th style="text-align:left;padding:10px 12px;">Kênh</th>
+                <th style="text-align:right;padding:10px 12px;">Sub</th>
+                <th style="text-align:right;padding:10px 12px;">Tổng view</th>
+                <th style="text-align:right;padding:10px 12px;">Số video</th>
+                <th style="text-align:left;padding:10px 12px;">Cập nhật lúc</th>
+                <th style="text-align:left;padding:10px 12px;"></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
           <table id="sw-status-table" style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px">
             <thead>
               <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">

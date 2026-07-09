@@ -4172,6 +4172,7 @@ async function runConcat() {
     $("sw-gpm-tg-chat").value = s.gpmTelegramChatId || "";
     $("sw-gpm-tg-fields").style.display = s.gpmTelegramEnabled ? "" : "none";
     $("sw-gpm-panel").style.display = s.gpmEnabled ? "" : "none";
+    $("sw-yt-api-key").value = s.ytApiKey || "";
   }
   function currentSettings() {
     return {
@@ -4187,6 +4188,7 @@ async function runConcat() {
       gpmTelegramEnabled: $("sw-gpm-tg-enabled").checked,
       gpmTelegramToken: $("sw-gpm-tg-token").value.trim(),
       gpmTelegramChatId: $("sw-gpm-tg-chat").value.trim(),
+      ytApiKey: $("sw-yt-api-key").value.trim(),
     };
   }
 
@@ -4194,7 +4196,7 @@ async function runConcat() {
   let saveTimer = null;
   async function saveNow() { await api.saveSettings(currentSettings()); }
   function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
-  ["sw-spreadsheet-id", "sw-poll", "sw-video-speed"].forEach((id) =>
+  ["sw-spreadsheet-id", "sw-poll", "sw-video-speed", "sw-yt-api-key"].forEach((id) =>
     $(id)?.addEventListener("input", saveDebounced));
   ["sw-auto-open", "sw-use-gpu", "sw-gpm-enabled"].forEach((id) =>
     $(id)?.addEventListener("change", saveNow));
@@ -4243,6 +4245,84 @@ async function runConcat() {
   $("sw-stop")?.addEventListener("click", async () => { await api.stop(); log("⏹ Đã dừng."); });
   $("sw-run-now")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); log("Chạy tất cả ngay…"); await api.runNow(); });
 
+  // ===== Số liệu kênh =====
+  const nf = new Intl.NumberFormat("vi-VN");
+
+  function setStatsBanner(text, kind) {
+    const el = $("sw-stats-banner");
+    if (!el) return;
+    if (!text) { el.style.display = "none"; return; }
+    el.style.display = "";
+    el.textContent = text;
+    const red = kind === "error";
+    el.style.background = red ? "#fdecea" : "#fff8e1";
+    el.style.color = red ? "#c00" : "#7a5c00";
+  }
+
+  const MISSING_LABEL = {
+    subscribers: "Sub", totalViews: "Tổng view",
+    videoCount: "Số video", statsUpdatedAt: "Cập nhật lúc",
+  };
+
+  function renderStats(res) {
+    const body = $("sw-stats-table")?.querySelector("tbody");
+    if (!body) return;
+    if (!res?.ok) { setStatsBanner(`❌ ${res?.error || "Làm mới số liệu thất bại"}`, "error"); return; }
+
+    const allFailed = res.rows.length > 0 && res.rows.every((r) => r.error);
+    if (allFailed) setStatsBanner(`❌ Mọi kênh đều lỗi: ${res.rows[0].error}`, "error");
+    else if (res.missing?.length) setStatsBanner(`⚠️ Thiếu cột trong ⚙config: ${res.missing.map((k) => MISSING_LABEL[k]).join(", ")}`, "warn");
+    else setStatsBanner("", null);
+
+    body.innerHTML = "";
+    for (const r of res.rows) {
+      const tr = document.createElement("tr");
+      tr.style.borderBottom = "1px solid #eee";
+      const num = (v) => (v === null || v === undefined ? "—" : nf.format(v));
+      // Text từ Sheet và từ thông báo lỗi Google API luôn đặt bằng textContent,
+      // không nội suy vào innerHTML.
+      const cells = r.error
+        ? `<td class="msg" colspan="4" style="padding:8px 12px;color:#c00;"></td>`
+        : r.updatedAt
+          ? `<td style="padding:8px 12px;text-align:right;">${num(r.subscribers)}</td>
+             <td style="padding:8px 12px;text-align:right;">${num(r.views)}</td>
+             <td style="padding:8px 12px;text-align:right;">${num(r.videoCount)}</td>
+             <td class="msg" style="padding:8px 12px;"></td>`
+          : `<td class="msg" colspan="4" style="padding:8px 12px;color:#888;"></td>`;
+      tr.innerHTML = `<td class="ch" style="padding:8px 12px;"></td>${cells}<td style="padding:8px 12px;"></td>`;
+      tr.querySelector(".ch").textContent = r.sheetName;
+      tr.querySelector(".msg").textContent = r.error
+        ? `⚠ ${r.error}`
+        : r.updatedAt || "chưa điền cột Link kênh";
+
+      const btn = document.createElement("button");
+      btn.className = "btn btn-secondary";
+      btn.textContent = "Lấy URL nguồn";
+      btn.disabled = !r.sourceHandle;
+      btn.title = r.sourceHandle ? `Lấy video từ ${r.sourceHandle}` : "Kênh chưa điền cột @handle nguồn";
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        const old = btn.textContent;
+        btn.textContent = "⏳ đang lấy…";
+        const out = await api.fetchSourceUrls(r.sheetName);
+        btn.textContent = old;
+        btn.disabled = false;
+        if (out?.ok) log(`[${r.sheetName}] ✅ Đã thêm ${out.added} URL, bỏ qua ${out.skipped} trùng.`);
+        else log(`[${r.sheetName}] ❌ ${out?.error || "lấy URL thất bại"}`);
+      });
+      tr.lastElementChild.appendChild(btn);
+      body.appendChild(tr);
+    }
+  }
+
+  $("sw-stats-refresh")?.addEventListener("click", async () => {
+    const btn = $("sw-stats-refresh");
+    btn.disabled = true;
+    setStatsBanner("⏳ đang lấy số liệu…", "warn");
+    try { renderStats(await api.refreshStats()); }
+    finally { btn.disabled = false; }
+  });
+
   api.onEvent((evt) => {
     if (evt.type === "channel-status") {
       // Có url → cập nhật dòng của video đó; không có url = thông báo cấp kênh → chỉ ghi log.
@@ -4259,6 +4339,8 @@ async function runConcat() {
         r.uploadEl.style.color = evt.status.startsWith("❌") ? "#c00" : evt.status.startsWith("✅") ? "#1a7f37" : "#666";
       }
       log(`[${evt.channel}] ${evt.status}${evt.title ? " — " + evt.title : ""}`);
+    } else if (evt.type === "stats") {
+      renderStats(evt);
     } else if (evt.type === "error") {
       const r = evt.url ? ensureRow(evt.url, evt.channel) : null;
       if (r) r.errEl.textContent = evt.message;

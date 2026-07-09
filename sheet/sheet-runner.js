@@ -1,5 +1,8 @@
 import path from "path";
 import { todayStr, computeRemaining, recordRendered } from "./runner-state.js";
+import { decideAction, skipText, ST, MAX_ATTEMPTS } from "./resume-plan.js";
+import { getEntry, setEntry } from "./resume-state.js";
+import { normalizeProxy } from "./proxy.js";
 
 export function pickRandomBackground(files, rand = Math.random) {
   if (!files.length) return null;
@@ -20,14 +23,63 @@ export function createSheetRunner(deps) {
   const {
     config, sheetsApi, downloader, renderer, listBackgrounds,
     ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma, sleep,
-    uploadQueue, refreshStats,
+    uploadQueue, refreshStats, resumeStore, fileExists,
   } = deps;
   let timer = null;
   let running = false;
 
+  function enqueueUpload(ch, item, info, overlaysDir) {
+    if (!(uploadQueue && config.gpmEnabled && ch.gpmProfileId && ch.postTimes)) return;
+    uploadQueue.enqueue({
+      sheetName: ch.sheetName,
+      gpmHost: config.gpmHost,
+      profileId: ch.gpmProfileId,
+      videoPath: info.outputPath,
+      overlaysDir,
+      title: info.title,
+      postTimes: ch.postTimes,
+      locale: config.gpmLocale,
+      rowIndex: item.rowIndex,
+      sourceUrl: item.url,
+    });
+  }
+
+  // yt-dlp lưu thumb cùng basename với video: <title>.mp4 -> <title>.jpg
+  function thumbOf(videoPath) {
+    return String(videoPath).replace(/\.[^.]+$/, ".jpg");
+  }
+
+  // Tăng biến đếm rồi lưu. load/save đồng bộ, KHÔNG await ở giữa: pLimit chạy
+  // song song, await ở giữa sẽ mất lượt tăng.
+  function bumpAttempts(sheetName, url, field) {
+    const rs = resumeStore.load();
+    const prev = getEntry(rs, sheetName, url);
+    const next = setEntry(rs, sheetName, url, { [field]: (prev?.[field] ?? 0) + 1 });
+    resumeStore.save(rs);
+    return next[field];
+  }
+
+  function patchEntry(sheetName, url, patch) {
+    const rs = resumeStore.load();
+    setEntry(rs, sheetName, url, patch);
+    resumeStore.save(rs);
+  }
+
   async function runChannel(ch, today) {
     if (!ch.enabled) return;
     try {
+      // Proxy hỏng -> dừng kênh. Tải thẳng bằng IP thật là kết cục tệ nhất cho
+      // người dùng đang dựa vào proxy để né bot-check.
+      let proxy = "";
+      if (String(ch.proxy ?? "").trim()) {
+        try {
+          proxy = normalizeProxy(ch.proxy);
+        } catch (err) {
+          emit({ type: "error", channel: ch.sheetName, message: String(err?.message || err) });
+          return;
+        }
+      }
+
       const channelRoot = path.join(config.channelsRoot, ch.sheetName);
       const { backgroundsDir, overlaysDir, outputDir } = ensureDirs(channelRoot);
       const backgrounds = listBackgrounds(backgroundsDir);
@@ -35,32 +87,63 @@ export function createSheetRunner(deps) {
         emit({ type: "error", channel: ch.sheetName, message: "Chưa có background (.mp4) trong folder kênh." });
         return;
       }
+
       const state = stateStore.load();
       const remaining = computeRemaining(state[ch.sheetName], ch.videosPerDay, today);
-      if (remaining <= 0) { emit({ type: "channel-status", channel: ch.sheetName, status: "đủ hôm nay" }); return; }
 
       const urls = await sheetsApi.readChannelUrls(ch.sheetName);
-      const pending = urls.filter((u) => u.status === "").slice(0, remaining);
-      if (!pending.length) { emit({ type: "channel-status", channel: ch.sheetName, status: "hết URL mới" }); return; }
+      const rs = resumeStore.load();
+      const planned = urls.map((item) => {
+        const entry = getEntry(rs, ch.sheetName, item.url);
+        const action = decideAction({
+          statusB: item.status,
+          statusC: item.uploadStatus,
+          attempts: entry?.attempts ?? 0,
+          uploadAttempts: entry?.uploadAttempts ?? 0,
+          overlayExists: !!(entry?.filePath && fileExists(entry.filePath)),
+          outputExists: !!(entry?.outputPath && fileExists(entry.outputPath)),
+        });
+        return { item, entry, action };
+      });
+
+      // Việc render bị quota cắt; việc upload-only thì không (Task 7 dùng tiếp).
+      const renderWork = planned
+        .filter((p) => p.action === "full" || p.action === "render-only")
+        .slice(0, remaining);
+
+      if (!renderWork.length) {
+        emit({ type: "channel-status", channel: ch.sheetName, status: remaining <= 0 ? "đủ hôm nay" : "hết URL mới" });
+        return;
+      }
 
       const limit = pLimitFn(config.renderConcurrency || 2);
       const downloadLimit = pLimitFn(1);
       let firstDownload = true;
-      await Promise.all(pending.map((item) => limit(async () => {
+
+      await Promise.all(renderWork.map(({ item, entry, action }) => limit(async () => {
+        let stage = "download";
+        let dl = null;
         try {
-          emit({ type: "channel-status", channel: ch.sheetName, status: "đang tải", url: item.url });
-          // Tải nối tiếp 1-cái-một; giãn cách trước mỗi lần tải (trừ lần đầu) để tránh bị nghi là bot.
-          const dl = await downloadLimit(async () => {
-            if (!firstDownload) {
-              const delay = pickDownloadDelay(config, rand);
-              if (delay > 0 && sleep) {
-                emit({ type: "channel-status", channel: ch.sheetName, status: `chờ ${Math.round(delay / 1000)}s trước khi tải`, url: item.url });
-                await sleep(delay);
+          if (action === "render-only") {
+            dl = { filePath: entry.filePath, title: entry.title };
+          } else {
+            emit({ type: "channel-status", channel: ch.sheetName, status: "đang tải", url: item.url });
+            dl = await downloadLimit(async () => {
+              if (!firstDownload) {
+                const delay = pickDownloadDelay(config, rand);
+                if (delay > 0 && sleep) {
+                  emit({ type: "channel-status", channel: ch.sheetName, status: `chờ ${Math.round(delay / 1000)}s trước khi tải`, url: item.url });
+                  await sleep(delay);
+                }
               }
-            }
-            firstDownload = false;
-            return downloader(item.url, overlaysDir, { proxy: ch.proxy });
-          });
+              firstDownload = false;
+              return downloader(item.url, overlaysDir, { proxy });
+            });
+            patchEntry(ch.sheetName, item.url, { stage: "downloaded", filePath: dl.filePath, title: dl.title });
+            await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, ST.DOWNLOADED);
+          }
+
+          stage = "render";
           const bg = pickRandomBackground(backgrounds, rand);
           const outputPath = path.join(outputDir, `${dl.title}.mp4`);
           const cfg = { ...ch.cfg };
@@ -78,32 +161,36 @@ export function createSheetRunner(deps) {
             outputPath, renderMode: ch.renderMode, cfg,
             useGPU: config.useGPU, gpuVideoCodec: config.gpuVideoCodec,
           });
-          await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, "done");
+
+          await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, ST.DONE);
           // stateStore.load/save are synchronous — no await between them, so concurrent
           // pLimit tasks cannot interleave this load-modify-save (no lost increments).
           const s = stateStore.load();
           recordRendered(s, ch.sheetName, today);
           stateStore.save(s);
+          patchEntry(ch.sheetName, item.url, { stage: "rendered", outputPath, title: dl.title });
           try { unlink(dl.filePath); } catch { /* ignore */ }
           emit({ type: "video-rendered", channel: ch.sheetName, outputPath, sourceUrl: item.url, title: dl.title });
-          // Nếu bật GPM và kênh có profile + giờ đăng → xếp hàng upload (serial theo kênh).
-          if (uploadQueue && config.gpmEnabled && ch.gpmProfileId && ch.postTimes) {
-            uploadQueue.enqueue({
-              sheetName: ch.sheetName,
-              gpmHost: config.gpmHost,
-              profileId: ch.gpmProfileId,
-              videoPath: outputPath,
-              overlaysDir,
-              title: dl.title,
-              postTimes: ch.postTimes,
-              locale: config.gpmLocale,
-              rowIndex: item.rowIndex,
-              sourceUrl: item.url,
-            });
-          }
+          enqueueUpload(ch, item, { outputPath, title: dl.title }, overlaysDir);
         } catch (e) {
           const msg = String(e?.message || e).slice(0, 200);
-          try { await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, `error: ${msg}`); } catch { /* ignore */ }
+          const attempts = bumpAttempts(ch.sheetName, item.url, "attempts");
+          if (stage === "download") {
+            // Tải hỏng: bỏ mọi dấu vết file (mp4 lẫn thumb) để lượt sau tải lại sạch.
+            // (.part dở dang do yt-dlp tự nối tiếp, không đụng tới.)
+            const rs2 = resumeStore.load();
+            const e2 = getEntry(rs2, ch.sheetName, item.url);
+            if (e2?.filePath) {
+              for (const p of [e2.filePath, thumbOf(e2.filePath)]) {
+                try { unlink(p); } catch { /* ignore */ }
+              }
+            }
+            setEntry(rs2, ch.sheetName, item.url, { stage: null, filePath: null });
+            resumeStore.save(rs2);
+          }
+          const prefix = stage === "download" ? ST.ERR_DL : ST.ERR_RENDER;
+          const text = attempts >= MAX_ATTEMPTS ? skipText(msg) : `${prefix} ${msg}`;
+          try { await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, text); } catch { /* ignore */ }
           emit({ type: "error", channel: ch.sheetName, url: item.url, message: msg });
         }
       })));

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import pLimit from "p-limit";
 import { createSheetRunner, pickRandomBackground, pickDownloadDelay } from "../sheet/sheet-runner.js";
+import { ST, skipText, MAX_ATTEMPTS } from "../sheet/resume-plan.js";
 
 test("pickRandomBackground picks by rand", () => {
   const files = ["a.mp4", "b.mp4", "c.mp4"];
@@ -37,8 +38,10 @@ test("second download is delayed but first is immediate", async () => {
 });
 
 function makeDeps(overrides = {}) {
-  const calls = { status: [], rendered: [], errors: [], downloaded: [] };
+  const calls = { status: [], rendered: [], errors: [], downloaded: [], unlinked: [] };
   let savedState = {};
+  let savedResume = {};
+  const files = new Set(overrides.existingFiles || []);
   const deps = {
     config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2 },
     sheetsApi: {
@@ -46,27 +49,31 @@ function makeDeps(overrides = {}) {
         { sheetName: "Kênh A", enabled: true, videosPerDay: 2, renderMode: "topTransparent", cfg: {}, proxy: "" },
       ],
       readChannelUrls: async () => [
-        { rowIndex: 2, url: "u1", status: "" },
-        { rowIndex: 3, url: "u2", status: "" },
-        { rowIndex: 4, url: "u3", status: "" },
-        { rowIndex: 5, url: "u4", status: "done" },
+        { rowIndex: 2, url: "u1", status: "", uploadStatus: "" },
+        { rowIndex: 3, url: "u2", status: "", uploadStatus: "" },
+        { rowIndex: 4, url: "u3", status: "", uploadStatus: "" },
+        { rowIndex: 5, url: "u4", status: "done", uploadStatus: "" },
       ],
       setUrlStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status }),
+      setUploadStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status, col: "C" }),
     },
     downloader: async (url) => { calls.downloaded.push(url); return { filePath: `/ov/${url}.mp4`, title: url }; },
     renderer: async ({ outputPath }) => { calls.rendered.push(outputPath); return { outputPath }; },
     listBackgrounds: () => ["bg1.mp4"],
     ensureDirs: () => ({ backgroundsDir: "/bg", overlaysDir: "/ov", outputDir: "/out" }),
     stateStore: { load: () => savedState, save: (s) => { savedState = JSON.parse(JSON.stringify(s)); } },
+    resumeStore: { load: () => savedResume, save: (s) => { savedResume = JSON.parse(JSON.stringify(s)); } },
+    fileExists: (p) => files.has(p),
     emit: (e) => { if (e.type === "error") calls.errors.push(e); },
     now: () => new Date(2026, 6, 7, 10, 0),
     pLimitFn: () => (fn) => fn(),
     rand: () => 0,
-    unlink: () => {},
+    unlink: (p) => { calls.unlinked.push(p); },
     detectChroma: async () => "000000",
     sleep: async () => {},
   };
-  return { deps: { ...deps, ...overrides }, calls, getState: () => savedState };
+  delete overrides.existingFiles;
+  return { deps: { ...deps, ...overrides }, calls, getState: () => savedState, getResume: () => savedResume, files };
 }
 
 test("chromaKeyAuto: detectChroma sets cfg.chromaColor and gpu/speed pass through", async () => {
@@ -121,7 +128,9 @@ test("runNow respects videosPerDay quota (2 of 3 pending)", async () => {
   await runner.runNow();
   assert.equal(calls.downloaded.length, 2);
   assert.equal(calls.rendered.length, 2);
-  assert.deepEqual(calls.status.map((s) => s.status), ["done", "done"]);
+  // Mỗi item giờ ghi 2 lần: "đã tải" (sau khi tải xong) rồi "done" (sau khi render xong).
+  assert.equal(calls.status.filter((s) => s.status === ST.DOWNLOADED).length, 2);
+  assert.equal(calls.status.filter((s) => s.status === ST.DONE).length, 2);
   assert.equal(getState()["Kênh A"].countToday, 2);
 });
 
@@ -138,7 +147,8 @@ test("runNow records error and skips count when render throws", async () => {
     renderer: async () => { throw new Error("ffmpeg boom"); },
   });
   await createSheetRunner(deps).runNow();
-  assert.equal(calls.status.filter((s) => s.status.startsWith("error:")).length, 2);
+  // Render lỗi (không phải tải lỗi) -> prefix "lỗi render:", không phải "error:".
+  assert.equal(calls.status.filter((s) => s.status.startsWith(ST.ERR_RENDER)).length, 2);
   assert.equal(getState()["Kênh A"], undefined); // không render thành công nào
 });
 
@@ -289,4 +299,127 @@ test("refreshStats ném lỗi: ghi log, lượt chạy vẫn done, runNow không
   assert.ok(events.some((e) => e.type === "done"));
   assert.ok(events.some((e) => e.type === "log" && /quotaExceeded/.test(e.message)));
   assert.equal(events.filter((e) => e.type === "error").length, 0);
+});
+
+test("render-only: bỏ qua bước tải khi file overlay còn trên đĩa", async () => {
+  const { deps, calls } = makeDeps({
+    existingFiles: ["/ov/u1.mp4"],
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: ST.DOWNLOADED, uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "downloaded", filePath: "/ov/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(calls.downloaded, []);
+  assert.deepEqual(calls.rendered, ["/out/u1.mp4"]);
+});
+
+test("đã tải nhưng file bị xoá tay -> tải lại từ đầu", async () => {
+  const { deps, calls } = makeDeps({
+    existingFiles: [],
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: ST.DOWNLOADED, uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "downloaded", filePath: "/ov/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(calls.downloaded, ["u1"]);
+});
+
+test("render lỗi: giữ file overlay, ghi 'lỗi render:', tăng attempts", async () => {
+  const { deps, calls, getResume } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async (s, r, status) => calls.status.push({ rowIndex: r, status }),
+      setUploadStatus: async () => {},
+    },
+    renderer: async () => { throw new Error("ffmpeg chết"); },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(calls.unlinked, []); // KHÔNG xoá file khi render lỗi
+  const last = calls.status.at(-1);
+  assert.ok(last.status.startsWith(ST.ERR_RENDER), last.status);
+  assert.equal(getResume()["Kênh A"].u1.attempts, 1);
+});
+
+test("render xong: xoá overlay, ghi done, lưu outputPath", async () => {
+  const { deps, calls, getResume } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(calls.unlinked, ["/ov/u1.mp4"]);
+  const e = getResume()["Kênh A"].u1;
+  assert.equal(e.stage, "rendered");
+  assert.equal(e.outputPath, "/out/u1.mp4");
+});
+
+test("chạm trần 3 lần -> ghi 'bỏ qua:' vào cột B", async () => {
+  const { deps, calls } = makeDeps({
+    existingFiles: ["/ov/u1.mp4"],
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: `${ST.ERR_RENDER} x`, uploadStatus: "" }],
+      setUrlStatus: async (s, r, status) => calls.status.push({ rowIndex: r, status }),
+      setUploadStatus: async () => {},
+    },
+    renderer: async () => { throw new Error("ffmpeg chết"); },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: MAX_ATTEMPTS - 1, uploadAttempts: 0, stage: "downloaded", filePath: "/ov/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.equal(calls.status.at(-1).status, skipText("ffmpeg chết"));
+});
+
+test("proxy hỏng -> bỏ qua cả kênh, không tải gì", async () => {
+  const { deps, calls } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "rác" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(calls.downloaded, []);
+  assert.match(calls.errors.at(-1).message, /Proxy không hợp lệ/);
+});
+
+test("proxy thiếu scheme được chuẩn hoá rồi truyền xuống downloader", async () => {
+  const seen = [];
+  const { deps } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "1.2.3.4:8080" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    downloader: async (url, dir, opts) => { seen.push(opts.proxy); return { filePath: `/ov/${url}.mp4`, title: url }; },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(seen, ["http://1.2.3.4:8080"]);
 });

@@ -128,3 +128,41 @@ export async function fetchChannelStats(yt, refs) {
 
   return (refs || []).map((ref) => results.get(ref));
 }
+
+// Lấy mọi video của kênh nguồn qua playlist uploads, lọc theo thời lượng.
+// minSeconds = 600 -> chỉ giữ video dài hơn 10 phút (giống hành vi get-url.js cũ).
+export async function fetchSourceVideos(yt, handle, { minSeconds = 600 } = {}) {
+  const ref = parseChannelRef(handle);
+  if (!ref) throw new Error("@handle nguồn không hợp lệ");
+
+  const chRes = await yt.channels.list(
+    ref.type === "handle"
+      ? { part: ["contentDetails"], forHandle: ref.value }
+      : { part: ["contentDetails"], id: [ref.value] },
+  );
+  const ch = (chRes.data.items || [])[0];
+  if (!ch) throw new Error("Không tìm thấy kênh nguồn");
+  const playlistId = ch.contentDetails?.relatedPlaylists?.uploads;
+  if (!playlistId) throw new Error("Kênh nguồn không có playlist uploads");
+
+  const out = [];
+  let pageToken;
+  do {
+    const pl = await yt.playlistItems.list({ part: ["snippet"], playlistId, maxResults: 50, pageToken });
+    const ids = (pl.data.items || []).map((it) => it.snippet?.resourceId?.videoId).filter(Boolean);
+    if (ids.length) {
+      const vres = await yt.videos.list({ part: ["contentDetails", "statistics", "snippet"], id: ids });
+      for (const v of vres.data.items || []) {
+        if (parseDuration(v.contentDetails?.duration) <= minSeconds) continue;
+        out.push({
+          url: `https://www.youtube.com/watch?v=${v.id}`,
+          title: v.snippet?.title || "",
+          viewCount: Number(v.statistics?.viewCount || 0),
+          publishedAt: v.snippet?.publishedAt || "",
+        });
+      }
+    }
+    pageToken = pl.data.nextPageToken;
+  } while (pageToken);
+  return out;
+}

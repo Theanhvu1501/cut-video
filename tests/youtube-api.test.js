@@ -132,3 +132,63 @@ test("fetchChannelStats: API ném lỗi thì mọi ref trong lô đó nhận err
   assert.match(out[0].error, /quotaExceeded/);
   assert.match(out[1].error, /quotaExceeded/);
 });
+
+import { fetchSourceVideos } from "../sheet/youtube-api.js";
+
+// Client giả có đủ channels/playlistItems/videos, hỗ trợ 2 trang.
+function fakeSourceYt() {
+  return {
+    channels: {
+      list: async () => ({ data: { items: [{ contentDetails: { relatedPlaylists: { uploads: "UUxxx" } } }] } }),
+    },
+    playlistItems: {
+      list: async ({ pageToken }) =>
+        pageToken === "p2"
+          ? { data: { items: [{ snippet: { resourceId: { videoId: "ccccccccccc" } } }] } }
+          : {
+              data: {
+                items: [
+                  { snippet: { resourceId: { videoId: "aaaaaaaaaaa" } } },
+                  { snippet: { resourceId: { videoId: "bbbbbbbbbbb" } } },
+                ],
+                nextPageToken: "p2",
+              },
+            },
+    },
+    videos: {
+      list: async ({ id }) => ({
+        data: {
+          items: id.map((vid) => ({
+            id: vid,
+            // "bbbbbbbbbbb" ngắn hơn 10 phút -> phải bị lọc bỏ
+            contentDetails: { duration: vid === "bbbbbbbbbbb" ? "PT5M0S" : "PT12M0S" },
+            statistics: { viewCount: "1234" },
+            snippet: { title: `Video ${vid}`, publishedAt: "2026-07-01T00:00:00Z" },
+          })),
+        },
+      }),
+    },
+  };
+}
+
+test("fetchSourceVideos duyệt hết trang và lọc video <= 10 phút", async () => {
+  const out = await fetchSourceVideos(fakeSourceYt(), "@line4091");
+  assert.deepEqual(out.map((v) => v.url), [
+    "https://www.youtube.com/watch?v=aaaaaaaaaaa",
+    "https://www.youtube.com/watch?v=ccccccccccc",
+  ]);
+  assert.equal(out[0].title, "Video aaaaaaaaaaa");
+  assert.equal(out[0].viewCount, 1234);
+  assert.equal(out[0].publishedAt, "2026-07-01T00:00:00Z");
+});
+
+test("fetchSourceVideos tôn trọng minSeconds", async () => {
+  const out = await fetchSourceVideos(fakeSourceYt(), "@line4091", { minSeconds: 0 });
+  assert.equal(out.length, 3);
+});
+
+test("fetchSourceVideos ném lỗi khi handle hỏng hoặc kênh không tồn tại", async () => {
+  await assert.rejects(() => fetchSourceVideos(fakeSourceYt(), "kênh của tôi"), /không hợp lệ/);
+  const empty = { channels: { list: async () => ({ data: { items: [] } }) } };
+  await assert.rejects(() => fetchSourceVideos(empty, "@line4091"), /Không tìm thấy kênh nguồn/);
+});

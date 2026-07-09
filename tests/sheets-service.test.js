@@ -279,3 +279,19 @@ test("appendUrls không gọi API khi danh sách rỗng", async () => {
   assert.equal(await appendUrls(sheets, "SID", "Kênh A", undefined), 0);
   assert.equal(sheets.calls.append.length, 0);
 });
+
+test("writeChannelStats không ghi ô khi giá trị undefined, nhưng ghi 0", async () => {
+  const sheets = fakeSheets();
+  const cols = { subscribers: 2, totalViews: 5, videoCount: 6 };
+  // subscribers undefined, totalViews is 0 (should write), videoCount is 10 (should write)
+  const n = await writeChannelStats(sheets, "SID", "⚙config", 3, cols, {
+    subscribers: undefined, views: 0, videoCount: 10, hidden: false, updatedAt: "09/07/2026 14:32",
+  });
+  // Should write only totalViews (0) and videoCount (10), not subscribers (undefined)
+  assert.equal(n, 2, "chỉ ghi 2 ô (totalViews + videoCount), không ghi subscribers undefined");
+  const { data } = sheets.calls.batchUpdate[0].requestBody;
+  assert.equal(data.length, 2);
+  assert.deepEqual(data.map((d) => d.range), ["⚙config!F3", "⚙config!G3"]);
+  assert.equal(data[0].values[0][0], 0, "totalViews: 0 IS written");
+  assert.equal(data[1].values[0][0], 10, "videoCount: 10 IS written");
+});

@@ -257,6 +257,8 @@ export async function writeChannelStats(sheets, spreadsheetId, configTab, rowInd
   const data = [];
   const push = (key, value) => {
     if (cols[key] === undefined) return;
+    // Nếu giá trị undefined, bỏ qua để tránh ghi đè ô cũ với null
+    if (value === undefined) return;
     data.push({ range: `${configTab}!${colLetter(cols[key])}${rowIndex}`, values: [[value]] });
   };
   push("subscribers", stats.hidden ? "—" : stats.subscribers);

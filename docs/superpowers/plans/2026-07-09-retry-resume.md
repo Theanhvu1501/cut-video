@@ -155,38 +155,77 @@ git commit -m "feat(proxy): module chuẩn hoá proxy, ném lỗi thay vì im l�
 
 **Interfaces:**
 - Consumes: `normalizeProxy` từ Task 1.
-- Produces: `downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPath })` — ném `Error` nếu `proxy` khác rỗng và không parse được.
+- Produces: `downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPath, ytdlFactory })` — ném `Error` nếu `proxy` khác rỗng và không parse được. `ytdlFactory` là điểm tiêm để test (mặc định `createYoutubeDl` của `youtube-dl-exec`); không dùng ở production.
 
 - [ ] **Step 1: Write the failing test**
 
-Tạo `tests/channel-download.test.js`:
+Tạo `tests/channel-download.test.js`. Các test này gọi `downloadOne` thật, với
+`ytdlFactory` giả nên không chạm mạng, và với `outputDir` là thư mục tạm thật.
 
 ```js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pickDownloadedFile } from "../sheet/channel-download.js";
-import { normalizeProxy } from "../sheet/proxy.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { pickDownloadedFile, downloadOne } from "../sheet/channel-download.js";
+
+function tmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "dl-"));
+}
+
+// ytdl giả: ghi ra đúng file mp4 mà downloadOne mong đợi, và ghi lại options.
+function fakeYtdlFactory(seen) {
+  return () => async (url, options) => {
+    seen.push(options);
+    const dir = path.dirname(options.output);
+    fs.writeFileSync(path.join(dir, "Tiêu đề.mp4"), "x");
+  };
+}
 
 test("pickDownloadedFile chỉ nhận mp4 mới xuất hiện", () => {
   assert.equal(pickDownloadedFile(["a.mp4"], ["a.mp4", "b.mp4", "b.jpg"]), "b.mp4");
   assert.equal(pickDownloadedFile(["a.mp4"], ["a.mp4"]), null);
 });
 
-// downloadOne gọi yt-dlp thật nên không test end-to-end ở đây; ta chốt hợp đồng
-// rằng proxy hỏng phải ném lỗi trước khi chạm mạng, qua chính normalizeProxy.
-test("proxy hỏng ném lỗi thay vì bị bỏ qua", () => {
-  assert.throws(() => normalizeProxy("1.2.3.4"), /không hợp lệ/);
+test("downloadOne chuẩn hoá proxy thiếu scheme trước khi gọi yt-dlp", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  const out = await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, {
+    proxy: "1.2.3.4:8080",
+    ytdlFactory: fakeYtdlFactory(seen),
+  });
+  assert.equal(seen[0].proxy, "http://1.2.3.4:8080");
+  assert.equal(out.title, "Tiêu đề");
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test("proxy thiếu scheme vẫn dùng được sau chuẩn hoá", () => {
-  assert.equal(normalizeProxy("1.2.3.4:8080"), "http://1.2.3.4:8080");
+test("downloadOne ném lỗi với proxy hỏng và KHÔNG gọi yt-dlp", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await assert.rejects(
+    () => downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, { proxy: "rác", ytdlFactory: fakeYtdlFactory(seen) }),
+    /Proxy không hợp lệ/,
+  );
+  assert.deepEqual(seen, []); // chưa hề chạm mạng
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("downloadOne không set proxy khi để trống (cố ý tải thẳng)", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, { proxy: "  ", ytdlFactory: fakeYtdlFactory(seen) });
+  assert.equal("proxy" in seen[0], false);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `node --test tests/channel-download.test.js`
-Expected: FAIL — `pickDownloadedFile` chưa được export? Nó đã export sẵn, nên test này PASS ngay. Nếu PASS, tiếp tục Step 3 (đây là test hồi quy, không phải test dẫn đường).
+Expected: FAIL — `downloadOne` chưa nhận `ytdlFactory` nên nó gọi yt-dlp thật và
+test treo hoặc lỗi mạng; test proxy hỏng cũng FAIL vì hiện tại proxy `rác` bị bỏ
+qua lặng lẽ chứ không ném.
 
 - [ ] **Step 3: Sửa `sheet/channel-download.js`**
 
@@ -196,18 +235,24 @@ Xoá hàm `isValidProxy` (dòng 12-14). Thêm import ở đầu file, sau các i
 import { normalizeProxy } from "./proxy.js";
 ```
 
-Thay dòng 36:
+Sửa chữ ký (dòng 16) để nhận điểm tiêm, và chuẩn hoá proxy **trước** khi tạo client:
 
 ```js
-  if (isValidProxy(proxy)) options.proxy = proxy.trim();
+export async function downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPath, ytdlFactory = createYoutubeDl } = {}) {
+  // Proxy rỗng = cố ý tải thẳng. Proxy có giá trị mà hỏng -> ném lỗi trước khi
+  // chạm mạng, không tải bằng IP thật (kết cục tệ nhất cho người né bot-check).
+  const proxyUrl = String(proxy ?? "").trim() ? normalizeProxy(proxy) : null;
+
+  if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
+  const before = fs.readdirSync(outputDir);
+
+  const ytdl = ytdlFactory(ytdlpPath);
 ```
 
-bằng:
+Xoá dòng 36 cũ (`if (isValidProxy(proxy)) options.proxy = proxy.trim();`) và thay bằng:
 
 ```js
-  // Proxy rỗng = cố ý tải thẳng. Proxy có giá trị mà hỏng -> ném lỗi, không tải
-  // bằng IP thật (đó là kết cục tệ nhất cho người dùng đang né bot-check).
-  if (String(proxy ?? "").trim()) options.proxy = normalizeProxy(proxy);
+  if (proxyUrl) options.proxy = proxyUrl;
 ```
 
 - [ ] **Step 4: Sửa `download.js` để dùng chung một bản**

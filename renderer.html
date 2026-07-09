@@ -3815,24 +3815,28 @@
             <button class="btn btn-secondary" id="sw-stop">Stop</button>
             <button class="btn btn-secondary" id="sw-run-now">Chạy tất cả ngay</button>
           </div>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:20px;">
-            <h3 style="margin:0;font-size:15px;">Số liệu kênh</h3>
-            <button class="btn btn-secondary" id="sw-stats-refresh">🔄 Làm mới</button>
-          </div>
-          <div id="sw-stats-banner" style="display:none;margin-top:8px;padding:8px 12px;border-radius:6px;font-size:13px;"></div>
-          <table id="sw-stats-table" style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">
-            <thead>
-              <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
-                <th style="text-align:left;padding:10px 12px;">Kênh</th>
-                <th style="text-align:right;padding:10px 12px;">Sub</th>
-                <th style="text-align:right;padding:10px 12px;">Tổng view</th>
-                <th style="text-align:right;padding:10px 12px;">Số video</th>
-                <th style="text-align:left;padding:10px 12px;">Cập nhật lúc</th>
-                <th style="text-align:left;padding:10px 12px;"></th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+          <details id="sw-stats-details" style="margin-top:16px;">
+            <summary style="cursor:pointer;font-weight:600;padding:10px 14px;color:#2d3748;user-select:none;background:#f8f9fa;border:1px solid #e2e8f0;border-radius:8px;list-style:none;">📊 Số liệu kênh — bấm để thu gọn/mở</summary>
+            <div style="padding:14px 4px 4px;">
+              <div style="display:flex;align-items:center;gap:10px;">
+                <button class="btn btn-secondary" id="sw-stats-refresh">🔄 Làm mới</button>
+              </div>
+              <div id="sw-stats-banner" style="display:none;margin-top:8px;padding:8px 12px;border-radius:6px;font-size:13px;"></div>
+              <table id="sw-stats-table" style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">
+                <thead>
+                  <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                    <th style="text-align:left;padding:10px 12px;">Kênh</th>
+                    <th style="text-align:right;padding:10px 12px;">Sub</th>
+                    <th style="text-align:right;padding:10px 12px;">Tổng view</th>
+                    <th style="text-align:right;padding:10px 12px;">Số video</th>
+                    <th style="text-align:left;padding:10px 12px;">Cập nhật lúc</th>
+                    <th style="text-align:left;padding:10px 12px;"></th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </details>
           <table id="sw-status-table" style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px">
             <thead>
               <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">

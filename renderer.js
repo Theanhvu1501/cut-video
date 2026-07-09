@@ -4247,6 +4247,9 @@ async function runConcat() {
 
   // ===== Số liệu kênh =====
   const nf = new Intl.NumberFormat("vi-VN");
+  // Bảng đã có dữ liệu chưa (danh sách kênh hoặc số liệu thật).
+  let statsLoaded = false;
+  let statsLoading = false;
 
   function setStatsBanner(text, kind) {
     const el = $("sw-stats-banner");
@@ -4268,6 +4271,8 @@ async function runConcat() {
     const body = $("sw-stats-table")?.querySelector("tbody");
     if (!body) return;
     if (!res?.ok) { setStatsBanner(`❌ ${res?.error || "Làm mới số liệu thất bại"}`, "error"); return; }
+    // Bảng đã có dữ liệu → lần mở collapse sau không nạp đè bằng danh sách kênh trống.
+    statsLoaded = true;
 
     const allFailed = res.rows.length > 0 && res.rows.every((r) => r.error);
     if (allFailed) setStatsBanner(`❌ Mọi kênh đều lỗi: ${res.rows[0].error}`, "error");
@@ -4293,7 +4298,7 @@ async function runConcat() {
       tr.querySelector(".ch").textContent = r.sheetName;
       tr.querySelector(".msg").textContent = r.error
         ? `⚠ ${r.error}`
-        : r.updatedAt || "chưa điền cột Link kênh";
+        : r.updatedAt || (r.channelUrl ? "chưa làm mới" : "chưa điền cột Link kênh");
 
       const btn = document.createElement("button");
       btn.className = "btn btn-secondary";
@@ -4327,6 +4332,21 @@ async function runConcat() {
     try { renderStats(await api.refreshStats()); }
     catch (err) { renderStats({ ok: false, error: `Lỗi khi làm mới: ${err.message}` }); }
     finally { btn.disabled = false; }
+  });
+
+  // Mở collapse lần đầu → chỉ đọc Sheet lấy tên kênh + @handle nguồn, KHÔNG gọi
+  // YouTube API. Nhờ vậy nút "Lấy URL nguồn" dùng được ngay, không tốn quota.
+  // Thất bại thì không đặt statsLoaded, để lần mở sau thử lại.
+  async function loadStatsChannelsOnce() {
+    if (statsLoaded || statsLoading) return;
+    statsLoading = true;
+    setStatsBanner("⏳ đang tải danh sách kênh…", "warn");
+    try { renderStats(await api.listStatsChannels()); }
+    catch (err) { renderStats({ ok: false, error: `Lỗi khi tải danh sách kênh: ${err.message}` }); }
+    finally { statsLoading = false; }
+  }
+  $("sw-stats-details")?.addEventListener("toggle", () => {
+    if ($("sw-stats-details").open) loadStatsChannelsOnce();
   });
 
   api.onEvent((evt) => {

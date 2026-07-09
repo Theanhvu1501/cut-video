@@ -1458,7 +1458,7 @@ async function refreshChannelStats() {
 
   const rows = [];
   for (const ch of channels) {
-    const base = { sheetName: ch.sheetName, sourceHandle: ch.sourceHandle || "" };
+    const base = { sheetName: ch.sheetName, sourceHandle: ch.sourceHandle || "", channelUrl: ch.channelUrl || "" };
     const s = statByName.get(ch.sheetName);
     if (!s) { rows.push({ ...base }); continue; } // kênh không khai Link kênh
     if (s.error) { rows.push({ ...base, error: s.error }); continue; }
@@ -1471,6 +1471,26 @@ async function refreshChannelStats() {
     rows.push({ ...base, subscribers: s.subscribers, views: s.views, videoCount: s.videoCount, hidden: s.hidden, updatedAt });
   }
   return { ok: true, rows, missing };
+}
+
+// Danh sách kênh cho bảng số liệu, chỉ đọc Sheet — KHÔNG gọi YouTube API.
+// Nhờ vậy nút "Lấy URL nguồn" có ngay mà không tốn quota và không cần API key.
+async function listStatsChannels() {
+  const st = loadSheetSettings();
+  const bad = requireSheetSettings(st);
+  if (bad) return { ok: false, error: bad };
+
+  const sheets = createSheetsClient(st.credentialsPath);
+  const channels = await readConfigSheet(sheets, st.spreadsheetId);
+  return {
+    ok: true,
+    rows: channels.map((c) => ({
+      sheetName: c.sheetName,
+      sourceHandle: c.sourceHandle || "",
+      channelUrl: c.channelUrl || "",
+    })),
+    missing: [],
+  };
 }
 
 async function fetchSourceUrlsFor(sheetName) {
@@ -1527,6 +1547,11 @@ ipcMain.handle("sheet:run-now", async (e, sheetName) => {
   const runner = sheetRunner || buildSheetRunner(win);
   await runner.runNow(sheetName || undefined);
   return { success: true };
+});
+
+ipcMain.handle("yt:list-channels", async () => {
+  try { return await listStatsChannels(); }
+  catch (err) { return { ok: false, error: String(err?.message || err) }; }
 });
 
 ipcMain.handle("yt:refresh-stats", async () => {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseConfigRows, parseUrlRows, testSheetConnection } from "../sheet/sheets-service.js";
+import { parseConfigRows, parseUrlRows, testSheetConnection, findStatsColumns, STATS_KEYS } from "../sheet/sheets-service.js";
 import { pickDownloadedFile } from "../sheet/channel-download.js";
 
 const HEADER = ["sheetName","enabled","videosPerDay","renderMode","opacity","chromaColor","chromaSimilarity","keepColors","cropHeight","cropYOffset","proxy"];
@@ -16,6 +16,7 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
   assert.deepEqual(out[0], {
     sheetName: "Kênh A", enabled: true, videosPerDay: 3, renderMode: "topTransparent",
     cfg: { opacity: 0.7 }, proxy: "", gpmProfileId: "", postTimes: "",
+    rowIndex: 2, channelUrl: "", sourceHandle: "",
   });
   assert.equal(out[1].enabled, true);
   assert.equal(out[1].proxy, "socks5://1.2.3.4:1080");
@@ -167,4 +168,42 @@ test("parseConfigRows gpmProfileId rỗng khi không có cột", () => {
   ];
   const out = parseConfigRows(rows);
   assert.equal(out[0].gpmProfileId, "");
+});
+
+// Header có dòng nhóm-mode phía trên, đúng như Sheet thật.
+const CONFIG_VALUES = [
+  ["", "", "", "Nhóm render", "", ""],
+  ["Tên kênh", "Bật", "Link kênh", "@handle nguồn", "Sub", "Tổng view", "Số video", "Cập nhật lúc"],
+  ["Kênh A", "true", "https://www.youtube.com/@kenha", "@nguona", "1230", "45678", "120", "09/07/2026 14:32"],
+  ["Kênh B", "true", "", "", "", "", "", ""],
+];
+
+test("parseConfigRows trả rowIndex, channelUrl, sourceHandle", () => {
+  const rows = parseConfigRows(CONFIG_VALUES);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].rowIndex, 3, "dòng 'Kênh A' là dòng thứ 3 trong Sheet (1-based)");
+  assert.equal(rows[0].channelUrl, "https://www.youtube.com/@kenha");
+  assert.equal(rows[0].sourceHandle, "@nguona");
+  assert.equal(rows[1].rowIndex, 4);
+  assert.equal(rows[1].channelUrl, "");
+  assert.equal(rows[1].sourceHandle, "");
+});
+
+test("findStatsColumns tìm đủ 4 cột", () => {
+  const { headerRowIndex, cols } = findStatsColumns(CONFIG_VALUES);
+  assert.equal(headerRowIndex, 1);
+  assert.deepEqual(cols, { subscribers: 4, totalViews: 5, videoCount: 6, statsUpdatedAt: 7 });
+  assert.deepEqual(STATS_KEYS, ["subscribers", "totalViews", "videoCount", "statsUpdatedAt"]);
+});
+
+test("findStatsColumns bỏ qua cột thiếu", () => {
+  const values = [["Tên kênh", "Bật", "Sub", "Số video"]];
+  const { cols } = findStatsColumns(values);
+  assert.deepEqual(cols, { subscribers: 2, videoCount: 3 });
+});
+
+test("findStatsColumns khi không có cột stats nào và khi không có header", () => {
+  assert.deepEqual(findStatsColumns([["Tên kênh", "Bật"]]).cols, {});
+  assert.deepEqual(findStatsColumns([["Linh tinh"]]), { headerRowIndex: -1, cols: {} });
+  assert.deepEqual(findStatsColumns([]), { headerRowIndex: -1, cols: {} });
 });

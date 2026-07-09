@@ -54,6 +54,12 @@ const HEADER_ALIASES = {
   proxy: ["proxy tải", "proxy"],
   gpmProfileId: ["gpm profile id", "gpm", "profile gpm"],
   postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
+  channelUrl: ["link kênh", "url kênh"],
+  sourceHandle: ["@handle nguồn", "handle nguồn", "kênh nguồn"],
+  subscribers: ["sub", "subs", "người đăng ký"],
+  totalViews: ["tổng view", "tổng lượt xem"],
+  videoCount: ["số video"],
+  statsUpdatedAt: ["cập nhật lúc"],
 };
 
 function acceptedNorms(canonical) {
@@ -118,11 +124,34 @@ export function parseConfigRows(values) {
       proxy: col(row, "proxy"),
       gpmProfileId: col(row, "gpmProfileId"),
       postTimes: col(row, "postTimes"),
+      rowIndex: r + 1, // 1-based, dùng thẳng trong A1 notation
+      channelUrl: col(row, "channelUrl"),
+      sourceHandle: col(row, "sourceHandle"),
     };
     if (chromaPalette.length) channel.chromaPalette = chromaPalette;
     out.push(channel);
   }
   return out;
+}
+
+export const STATS_KEYS = ["subscribers", "totalViews", "videoCount", "statsUpdatedAt"];
+
+// Tìm chỉ số cột (0-based) của 4 cột stats. Cột không có trong Sheet thì vắng
+// mặt trong `cols` — app không bao giờ tự tạo cột.
+export function findStatsColumns(values) {
+  if (!Array.isArray(values) || !values.length) return { headerRowIndex: -1, cols: {} };
+  const snNorms = acceptedNorms("sheetName");
+  const hIdx = values.findIndex((row) =>
+    Array.isArray(row) && row.some((c) => snNorms.includes(norm(c))));
+  if (hIdx < 0) return { headerRowIndex: -1, cols: {} };
+  const headerRow = values[hIdx] || [];
+  const cols = {};
+  for (const name of STATS_KEYS) {
+    const accepted = acceptedNorms(name);
+    const i = headerRow.findIndex((c) => accepted.includes(norm(c)));
+    if (i >= 0) cols[name] = i;
+  }
+  return { headerRowIndex: hIdx, cols };
 }
 
 export function parseUrlRows(values) {
@@ -151,9 +180,14 @@ export async function listSheetTabs(sheets, spreadsheetId) {
   return (res.data.sheets || []).map((s) => s.properties.title);
 }
 
+// Đọc thô tab ⚙config. Range A:AZ (không phải A:Z) vì bảng cấu hình đã có 24 cột.
+export async function readConfigValues(sheets, spreadsheetId, configTab = "⚙config") {
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${configTab}!A:AZ` });
+  return res.data.values || [];
+}
+
 export async function readConfigSheet(sheets, spreadsheetId, configTab = "⚙config") {
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${configTab}!A:Z` });
-  return parseConfigRows(res.data.values || []);
+  return parseConfigRows(await readConfigValues(sheets, spreadsheetId, configTab));
 }
 
 // Kiểm tra kết nối: đọc danh sách tab + tab ⚙config, trả về tóm tắt.

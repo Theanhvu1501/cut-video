@@ -1,5 +1,3 @@
-import { formatSchedule } from "./schedule-slots.js";
-
 // Gửi thông báo Telegram (chỉ sendMessage, không cần bot polling).
 
 export async function sendTelegram(token, chatId, text, deps = {}) {
@@ -32,13 +30,8 @@ export function buildDigest(results) {
   for (const [ch, c] of byChannel) {
     lines.push(`• ${ch}: ✅ ${c.ok} | ❌ ${c.err}`);
   }
-  const oks = results.filter((r) => r.ok);
-  if (oks.length) {
-    lines.push("", "✅ Đã lên lịch:");
-    for (const o of oks) {
-      lines.push(`— ${o.sheetName} · ${o.title}: ${formatSchedule(o.scheduleISO)}`);
-    }
-  }
+  // Không liệt kê chi tiết video đã lên lịch — số đếm theo kênh ở trên là đủ,
+  // và giờ lịch của từng video đã có ở cột C của tab kênh.
   const errors = results.filter((r) => !r.ok);
   if (errors.length) {
     lines.push("", "❌ Chi tiết lỗi:");

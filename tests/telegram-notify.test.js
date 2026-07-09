@@ -14,6 +14,21 @@ test("buildDigest gộp theo kênh + liệt kê lỗi", () => {
   assert.match(out, /line · B: b4 không thấy ô giờ/);
 });
 
+test("buildDigest không liệt kê chi tiết các video đã lên lịch", () => {
+  const out = buildDigest([
+    { sheetName: "line", title: "Video A", ok: true, scheduleISO: "2026-07-09T08:00:00" },
+    { sheetName: "line", title: "Video B", ok: false, error: "b4 không thấy ô giờ" },
+  ]);
+  assert.doesNotMatch(out, /Đã lên lịch:/);
+  assert.doesNotMatch(out, /Video A/, "tiêu đề video thành công không được liệt kê");
+  assert.doesNotMatch(out, /09\/07\/2026/, "giờ lịch không được liệt kê");
+  // Phần tổng kết và phần lỗi vẫn giữ nguyên.
+  assert.match(out, /✅ 1 lên lịch, ❌ 1 lỗi/);
+  assert.match(out, /line: ✅ 1 \| ❌ 1/);
+  assert.match(out, /❌ Chi tiết lỗi:/);
+  assert.match(out, /line · Video B: b4 không thấy ô giờ/);
+});
+
 test("buildDigest rỗng khi không có kết quả", () => {
   assert.equal(buildDigest([]), "");
 });

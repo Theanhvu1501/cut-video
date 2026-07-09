@@ -31,3 +31,14 @@ test("normalizeProxy ném lỗi với đầu vào hỏng", () => {
   assert.throws(() => normalizeProxy("1.2.3.4:70000"), /không hợp lệ/);
   assert.throws(() => normalizeProxy("ftp://1.2.3.4:21"), /không hỗ trợ/);
 });
+
+test("normalizeProxy ném lỗi khi user:pass@host:port có phần thừa sau port", () => {
+  assert.throws(
+    () => normalizeProxy("http://user:pass@1.2.3.4:8080:9090"),
+    /không hợp lệ/
+  );
+  assert.throws(
+    () => normalizeProxy("http://user:pass@1.2.3.4:8080:"),
+    /không hợp lệ/
+  );
+});

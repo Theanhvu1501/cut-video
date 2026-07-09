@@ -28,7 +28,9 @@ export function normalizeProxy(raw) {
   const at = rest.lastIndexOf("@");
   if (at !== -1) {
     const auth = rest.slice(0, at);
-    const [host, port] = rest.slice(at + 1).split(":");
+    const hostPortParts = rest.slice(at + 1).split(":");
+    if (hostPortParts.length !== 2) throw new Error(`Proxy không hợp lệ: ${input}`);
+    const [host, port] = hostPortParts;
     if (!auth || !host || !validPort(port)) throw new Error(`Proxy không hợp lệ: ${input}`);
     return `${scheme}://${auth}@${host}:${port}`;
   }

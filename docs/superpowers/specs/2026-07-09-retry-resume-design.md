@@ -66,21 +66,27 @@ Hàm thuần, không I/O, dễ test độc lập:
 
 ```js
 decideAction({ statusB, statusC, attempts, uploadAttempts, overlayExists, outputExists })
-  -> "full" | "render-only" | "upload-only" | "skip"
+  -> "full" | "render-only" | "upload-only" | "upload-exhausted" | "skip"
 ```
 
 Luật, xét theo thứ tự:
 
 1. `statusB` bắt đầu bằng `bỏ qua:` → `skip`.
 2. `statusB === "done"`:
-   - `statusC` bắt đầu bằng `❌` và `uploadAttempts < 3` và `outputExists` → `upload-only`
-   - ngược lại → `skip`
+   - `statusC` không bắt đầu bằng `❌` → `skip`
+   - `outputExists` sai → `skip`
+   - `uploadAttempts >= 3` → `upload-exhausted` (runner ghi `bỏ qua:` vào cột C)
+   - ngược lại → `upload-only`
 3. `statusB === ""` → `full` (và reset `attempts` về 0).
 4. `statusB === "đã tải"` hoặc bắt đầu bằng `lỗi render:`:
    - `overlayExists` → `render-only`
    - ngược lại → `full` (người dùng đã xoá file tay)
 5. `statusB` bắt đầu bằng `lỗi tải:` → `full`.
 6. Mọi giá trị lạ → `skip` (an toàn: không đoán).
+
+Cần `upload-exhausted` vì kết quả upload do `upload-queue` ghi vào cột C ở lượt
+trước, nên "hết lượt thử upload" chỉ phát hiện được ở lượt sau. Ngược lại, "hết
+lượt thử render" phát hiện ngay tại chỗ lỗi nên ghi `bỏ qua:` được luôn.
 
 `overlayExists` và `outputExists` được suy ra từ `filePath`/`outputPath` trong entry JSON.
 Nếu entry không tồn tại (file JSON bị xoá, hoặc máy khác chạy), cả hai là `false` —

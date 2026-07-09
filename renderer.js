@@ -4304,11 +4304,16 @@ async function runConcat() {
         btn.disabled = true;
         const old = btn.textContent;
         btn.textContent = "⏳ đang lấy…";
-        const out = await api.fetchSourceUrls(r.sheetName);
-        btn.textContent = old;
-        btn.disabled = false;
-        if (out?.ok) log(`[${r.sheetName}] ✅ Đã thêm ${out.added} URL, bỏ qua ${out.skipped} trùng.`);
-        else log(`[${r.sheetName}] ❌ ${out?.error || "lấy URL thất bại"}`);
+        try {
+          const out = await api.fetchSourceUrls(r.sheetName);
+          if (out?.ok) log(`[${r.sheetName}] ✅ Đã thêm ${out.added} URL, bỏ qua ${out.skipped} trùng.`);
+          else log(`[${r.sheetName}] ❌ ${out?.error || "lấy URL thất bại"}`);
+        } catch (err) {
+          log(`[${r.sheetName}] ❌ Lỗi khi lấy URL: ${err.message}`);
+        } finally {
+          btn.textContent = old;
+          btn.disabled = false;
+        }
       });
       tr.lastElementChild.appendChild(btn);
       body.appendChild(tr);
@@ -4320,6 +4325,7 @@ async function runConcat() {
     btn.disabled = true;
     setStatsBanner("⏳ đang lấy số liệu…", "warn");
     try { renderStats(await api.refreshStats()); }
+    catch (err) { renderStats({ ok: false, error: `Lỗi khi làm mới: ${err.message}` }); }
     finally { btn.disabled = false; }
   });
 

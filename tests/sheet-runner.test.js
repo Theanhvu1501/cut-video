@@ -252,3 +252,41 @@ test("runNow skips overlapping poll if already running", async () => {
 
   assert.ok(logs.some((m) => /bỏ qua/i.test(m)), "second runNow should emit a skip log message");
 });
+
+test("refreshStats chạy một lần, sau khi đã emit done", async () => {
+  const order = [];
+  const { deps } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [],
+      readChannelUrls: async () => [],
+      setUrlStatus: async () => {},
+    },
+    emit: (e) => order.push(e.type),
+    refreshStats: async () => { order.push("refresh"); },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(order, ["done", "refresh"]);
+});
+
+test("không có refreshStats thì runNow vẫn chạy bình thường", async () => {
+  const { deps, calls } = makeDeps();
+  await createSheetRunner(deps).runNow();
+  assert.equal(calls.downloaded.length, 2);
+});
+
+test("refreshStats ném lỗi: ghi log, lượt chạy vẫn done, runNow không reject", async () => {
+  const events = [];
+  const { deps } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [],
+      readChannelUrls: async () => [],
+      setUrlStatus: async () => {},
+    },
+    emit: (e) => events.push(e),
+    refreshStats: async () => { throw new Error("quotaExceeded"); },
+  });
+  await createSheetRunner(deps).runNow(); // không được reject
+  assert.ok(events.some((e) => e.type === "done"));
+  assert.ok(events.some((e) => e.type === "log" && /quotaExceeded/.test(e.message)));
+  assert.equal(events.filter((e) => e.type === "error").length, 0);
+});

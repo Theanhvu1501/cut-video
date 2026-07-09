@@ -20,7 +20,7 @@ export function createSheetRunner(deps) {
   const {
     config, sheetsApi, downloader, renderer, listBackgrounds,
     ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma, sleep,
-    uploadQueue,
+    uploadQueue, refreshStats,
   } = deps;
   let timer = null;
   let running = false;
@@ -125,6 +125,15 @@ export function createSheetRunner(deps) {
       if (sheetName) channels = channels.filter((c) => c.sheetName === sheetName);
       for (const ch of channels) await runChannel(ch, today);
       emit({ type: "done" });
+      // Làm mới số liệu kênh SAU khi lượt render đã tính là xong. Lỗi ở đây chỉ
+      // ghi log — không được làm lượt chạy trông như thất bại.
+      if (refreshStats) {
+        try {
+          await refreshStats();
+        } catch (e) {
+          emit({ type: "log", message: `Làm mới số liệu kênh thất bại: ${String(e?.message || e).slice(0, 200)}` });
+        }
+      }
     } finally {
       running = false;
       // Lượt chạy xong → digest sẽ gửi 1 lần khi hàng đợi upload cũng rỗng.

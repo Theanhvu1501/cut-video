@@ -295,3 +295,37 @@ test("writeChannelStats không ghi ô khi giá trị undefined, nhưng ghi 0", a
   assert.equal(data[0].values[0][0], 0, "totalViews: 0 IS written");
   assert.equal(data[1].values[0][0], 10, "videoCount: 10 IS written");
 });
+
+// Bố cục thật của Sheet người dùng: ô header bị GỘP DỌC với dòng nhóm-mode phía
+// trên, nên Sheets API chỉ trả chữ ở dòng trên, dòng header để rỗng.
+// "Giờ đăng" nằm ở dòng header; "Link kênh"/"Nguồn kênh chính"/"Sub" ở dòng trên.
+const MERGED_HEADER_VALUES = [
+  ["THÔNG TIN KÊNH", "", "", "GPM (auto đăng)", "Lên lịch", "Link kênh", "Nguồn kênh chính", "Sub", "Tổng view", "Số video", "Cập nhật lúc"],
+  ["Tên kênh", "Bật", "Video mỗi ngày", "GPM Profile ID", "Giờ đăng", "", "", "", "", "", ""],
+  ["Kênh A", "true", "3", "prof1", "8:00, 18:00", "https://www.youtube.com/channel/UCrcxVj7t8qukW-RwervyR2g", "@line4091", "", "", "", ""],
+];
+
+test("parseConfigRows đọc được header gộp dọc nằm ở dòng nhóm-mode", () => {
+  const rows = parseConfigRows(MERGED_HEADER_VALUES);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].sheetName, "Kênh A");
+  assert.equal(rows[0].rowIndex, 3);
+  assert.equal(rows[0].postTimes, "8:00, 18:00", "cột ở dòng header vẫn đọc bình thường");
+  assert.equal(rows[0].channelUrl, "https://www.youtube.com/channel/UCrcxVj7t8qukW-RwervyR2g");
+  assert.equal(rows[0].sourceHandle, "@line4091", 'alias "Nguồn kênh chính"');
+});
+
+test("findStatsColumns tìm được cột stats gộp dọc ở dòng nhóm-mode", () => {
+  const { headerRowIndex, cols } = findStatsColumns(MERGED_HEADER_VALUES);
+  assert.equal(headerRowIndex, 1);
+  assert.deepEqual(cols, { subscribers: 7, totalViews: 8, videoCount: 9, statsUpdatedAt: 10 });
+});
+
+test("cột ở dòng header vẫn thắng cột trùng tên ở dòng nhóm phía trên", () => {
+  const values = [
+    ["Link kênh", "", ""],
+    ["Tên kênh", "Link kênh", "Bật"],
+    ["Kênh A", "https://www.youtube.com/@x", "true"],
+  ];
+  assert.equal(parseConfigRows(values)[0].channelUrl, "https://www.youtube.com/@x");
+});

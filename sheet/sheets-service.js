@@ -55,7 +55,7 @@ const HEADER_ALIASES = {
   gpmProfileId: ["gpm profile id", "gpm", "profile gpm"],
   postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
   channelUrl: ["link kênh", "url kênh"],
-  sourceHandle: ["@handle nguồn", "handle nguồn", "kênh nguồn"],
+  sourceHandle: ["@handle nguồn", "handle nguồn", "kênh nguồn", "nguồn kênh chính", "nguồn kênh"],
   subscribers: ["sub", "subs", "người đăng ký"],
   totalViews: ["tổng view", "tổng lượt xem"],
   videoCount: ["số video"],
@@ -74,17 +74,25 @@ function findHeaderRowIndex(values) {
     Array.isArray(row) && row.some((c) => snNorms.includes(norm(c))));
 }
 
+// Tìm chỉ số cột theo tên. Ô header có thể bị GỘP DỌC với dòng nhóm-mode phía
+// trên; Sheets API chỉ trả chữ ở ô trên cùng, để dòng header rỗng. Nên tìm ở
+// dòng header trước (nó luôn thắng), không thấy mới ngó lên dòng nhóm.
+function findColIndex(values, hIdx, name) {
+  const accepted = acceptedNorms(name);
+  const inRow = (row) =>
+    Array.isArray(row) ? row.findIndex((c) => accepted.includes(norm(c))) : -1;
+  const i = inRow(values[hIdx]);
+  if (i >= 0) return i;
+  return hIdx > 0 ? inRow(values[hIdx - 1]) : -1;
+}
+
 export function parseConfigRows(values) {
   if (!Array.isArray(values) || !values.length) return [];
   // Tìm dòng header: dòng đầu tiên có ô khớp tên "sheetName" (Anh hoặc Việt),
   // bỏ qua dòng nhóm-mode phía trên nếu có.
   let hIdx = findHeaderRowIndex(values);
   if (hIdx < 0) hIdx = 0;
-  const headerRow = values[hIdx] || [];
-  const idx = (name) => {
-    const accepted = acceptedNorms(name);
-    return headerRow.findIndex((c) => accepted.includes(norm(c)));
-  };
+  const idx = (name) => findColIndex(values, hIdx, name);
   const col = (row, name) => {
     const i = idx(name);
     return i >= 0 ? String(row[i] ?? "").trim() : "";
@@ -148,11 +156,9 @@ export function findStatsColumns(values) {
   if (!Array.isArray(values) || !values.length) return { headerRowIndex: -1, cols: {} };
   const hIdx = findHeaderRowIndex(values);
   if (hIdx < 0) return { headerRowIndex: -1, cols: {} };
-  const headerRow = values[hIdx] || [];
   const cols = {};
   for (const name of STATS_KEYS) {
-    const accepted = acceptedNorms(name);
-    const i = headerRow.findIndex((c) => accepted.includes(norm(c)));
+    const i = findColIndex(values, hIdx, name);
     if (i >= 0) cols[name] = i;
   }
   return { headerRowIndex: hIdx, cols };

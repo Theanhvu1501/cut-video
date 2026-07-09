@@ -66,13 +66,19 @@ function acceptedNorms(canonical) {
   return [norm(canonical), ...(HEADER_ALIASES[canonical] || []).map(norm)];
 }
 
+// Dòng header là dòng đầu tiên có ô khớp tên cột "sheetName" — bỏ qua dòng
+// nhóm-mode phía trên nếu có. Trả -1 nếu không tìm thấy.
+function findHeaderRowIndex(values) {
+  const snNorms = acceptedNorms("sheetName");
+  return values.findIndex((row) =>
+    Array.isArray(row) && row.some((c) => snNorms.includes(norm(c))));
+}
+
 export function parseConfigRows(values) {
   if (!Array.isArray(values) || !values.length) return [];
   // Tìm dòng header: dòng đầu tiên có ô khớp tên "sheetName" (Anh hoặc Việt),
   // bỏ qua dòng nhóm-mode phía trên nếu có.
-  const snNorms = acceptedNorms("sheetName");
-  let hIdx = values.findIndex((row) =>
-    Array.isArray(row) && row.some((c) => snNorms.includes(norm(c))));
+  let hIdx = findHeaderRowIndex(values);
   if (hIdx < 0) hIdx = 0;
   const headerRow = values[hIdx] || [];
   const idx = (name) => {
@@ -140,9 +146,7 @@ export const STATS_KEYS = ["subscribers", "totalViews", "videoCount", "statsUpda
 // mặt trong `cols` — app không bao giờ tự tạo cột.
 export function findStatsColumns(values) {
   if (!Array.isArray(values) || !values.length) return { headerRowIndex: -1, cols: {} };
-  const snNorms = acceptedNorms("sheetName");
-  const hIdx = values.findIndex((row) =>
-    Array.isArray(row) && row.some((c) => snNorms.includes(norm(c))));
+  const hIdx = findHeaderRowIndex(values);
   if (hIdx < 0) return { headerRowIndex: -1, cols: {} };
   const headerRow = values[hIdx] || [];
   const cols = {};

@@ -172,7 +172,12 @@ export function parseUrlRows(values) {
     const url = String(row[0] ?? "").trim();
     if (r === 0 && !/https?:\/\//i.test(url)) continue; // dòng header
     if (!url) continue;
-    out.push({ rowIndex: r + 1, url, status: String(row[1] ?? "").trim() });
+    out.push({
+      rowIndex: r + 1,
+      url,
+      status: String(row[1] ?? "").trim(),
+      uploadStatus: String(row[2] ?? "").trim(),
+    });
   }
   return out;
 }
@@ -213,7 +218,7 @@ export async function testSheetConnection(sheets, spreadsheetId) {
 }
 
 export async function readChannelUrls(sheets, spreadsheetId, sheetName) {
-  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A:B` });
+  const res = await sheets.spreadsheets.values.get({ spreadsheetId, range: `${sheetName}!A:C` });
   return parseUrlRows(res.data.values || []);
 }
 

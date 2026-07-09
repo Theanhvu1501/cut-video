@@ -101,21 +101,21 @@ test("parseConfigRows skips rows without sheetName", () => {
 
 test("parseUrlRows keeps 1-based index, skips blanks and header", () => {
   const rows = [
-    ["URL","status"],
-    ["https://youtu.be/a",""],
+    ["URL","status","upload"],
+    ["https://youtu.be/a","",""],
     ["",""],
-    ["https://youtu.be/b","done"],
+    ["https://youtu.be/b","done","✅ lên lịch 10/07 07:00"],
   ];
   const out = parseUrlRows(rows);
   assert.deepEqual(out, [
-    { rowIndex: 2, url: "https://youtu.be/a", status: "" },
-    { rowIndex: 4, url: "https://youtu.be/b", status: "done" },
+    { rowIndex: 2, url: "https://youtu.be/a", status: "", uploadStatus: "" },
+    { rowIndex: 4, url: "https://youtu.be/b", status: "done", uploadStatus: "✅ lên lịch 10/07 07:00" },
   ]);
 });
 
 test("parseUrlRows treats first row as data if it is a URL", () => {
   const out = parseUrlRows([["https://youtu.be/x",""]]);
-  assert.deepEqual(out, [{ rowIndex: 1, url: "https://youtu.be/x", status: "" }]);
+  assert.deepEqual(out, [{ rowIndex: 1, url: "https://youtu.be/x", status: "", uploadStatus: "" }]);
 });
 
 test("testSheetConnection summarizes tabs and channels", async () => {

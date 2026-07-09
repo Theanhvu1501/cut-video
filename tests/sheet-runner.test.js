@@ -489,3 +489,95 @@ test("proxy thiếu scheme được chuẩn hoá rồi truyền xuống download
   await createSheetRunner(deps).runNow();
   assert.deepEqual(seen, ["http://1.2.3.4:8080"]);
 });
+
+test("upload-only: không tải, không render, chỉ đưa vào hàng đợi upload", async () => {
+  const enqueued = [];
+  const { deps, calls } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: GPM chết" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(calls.downloaded, []);
+  assert.deepEqual(calls.rendered, []);
+  assert.equal(enqueued.length, 1);
+  assert.equal(enqueued[0].videoPath, "/out/u1.mp4");
+  assert.equal(enqueued[0].sourceUrl, "u1");
+});
+
+test("upload-only tăng uploadAttempts mỗi lượt", async () => {
+  const { deps, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: x" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    uploadQueue: { enqueue: () => {}, beginRun: () => {}, endRun: () => {} },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 1, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.equal(getResume()["Kênh A"].u1.uploadAttempts, 2);
+});
+
+test("upload-only không bị quota cắt kể cả khi đã đủ video hôm nay", async () => {
+  const enqueued = [];
+  const { deps, calls } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 1, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [
+        { rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: x" },
+        { rowIndex: 3, url: "u2", status: "", uploadStatus: "" },
+      ],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  // Đã render 1 video hôm nay -> remaining = 0.
+  deps.stateStore.save({ "Kênh A": { lastRunDate: "2026-07-07", countToday: 1 } });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(calls.rendered, []);            // quota chặn u2
+  assert.equal(enqueued.length, 1);                // nhưng u1 vẫn được upload lại
+  assert.equal(enqueued[0].sourceUrl, "u1");
+});
+
+test("upload hết lượt thử -> ghi 'bỏ qua:' vào cột C, không enqueue", async () => {
+  const enqueued = [];
+  const upStatus = [];
+  const { deps } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: GPM chết" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async (s, r, status) => upStatus.push(status),
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: MAX_ATTEMPTS, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(enqueued, []);
+  assert.equal(upStatus.at(-1), skipText("GPM chết"));
+});

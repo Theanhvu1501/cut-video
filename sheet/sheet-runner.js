@@ -133,6 +133,20 @@ export function createSheetRunner(deps) {
         }
       }
 
+      // upload-only KHÔNG tốn quota render: chạy hết, không qua slice(0, remaining).
+      for (const { item, entry, action } of planned) {
+        if (action === "upload-exhausted") {
+          const reason = String(item.uploadStatus).replace(/^❌\s*lỗi:\s*/i, "").trim();
+          try { await sheetsApi.setUploadStatus(ch.sheetName, item.rowIndex, skipText(reason)); } catch { /* ignore */ }
+          emit({ type: "log", message: `[${ch.sheetName}] bỏ upload sau ${MAX_ATTEMPTS} lần: ${entry?.title ?? item.url}` });
+          continue;
+        }
+        if (action !== "upload-only") continue;
+        bumpAttempts(ch.sheetName, item.url, "uploadAttempts");
+        emit({ type: "channel-status", channel: ch.sheetName, status: "thử lại upload", url: item.url });
+        enqueueUpload(ch, item, { outputPath: entry.outputPath, title: entry.title }, overlaysDir);
+      }
+
       // Việc render bị quota cắt; việc upload-only thì không (Task 7 dùng tiếp).
       const renderWork = planned
         .filter((p) => p.action === "full" || p.action === "render-only")

@@ -57,7 +57,15 @@ function makeDeps(overrides = {}) {
       setUrlStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status }),
       setUploadStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status, col: "C" }),
     },
-    downloader: async (url) => { calls.downloaded.push(url); return { filePath: `/ov/${url}.mp4`, title: url }; },
+    downloader: async (url) => {
+      const filePath = `/ov/${url}.mp4`;
+      // Mô phỏng yt-dlp noOverwrites: nếu file đích đã tồn tại, yt-dlp bỏ qua và
+      // không tạo file mới -> pickDownloadedFile không thấy gì mới -> ném lỗi này.
+      if (files.has(filePath)) throw new Error(`Không tìm thấy file tải về cho URL: ${url}`);
+      calls.downloaded.push(url);
+      files.add(filePath);
+      return { filePath, title: url };
+    },
     renderer: async ({ outputPath }) => { calls.rendered.push(outputPath); return { outputPath }; },
     listBackgrounds: () => ["bg1.mp4"],
     ensureDirs: () => ({ backgroundsDir: "/bg", overlaysDir: "/ov", outputDir: "/out" }),
@@ -68,7 +76,7 @@ function makeDeps(overrides = {}) {
     now: () => new Date(2026, 6, 7, 10, 0),
     pLimitFn: () => (fn) => fn(),
     rand: () => 0,
-    unlink: (p) => { calls.unlinked.push(p); },
+    unlink: (p) => { calls.unlinked.push(p); files.delete(p); },
     detectChroma: async () => "000000",
     sleep: async () => {},
   };

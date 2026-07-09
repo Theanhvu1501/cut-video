@@ -131,6 +131,7 @@ export async function fetchChannelStats(yt, refs) {
 
 // Lấy mọi video của kênh nguồn qua playlist uploads, lọc theo thời lượng.
 // minSeconds = 600 -> chỉ giữ video dài hơn 10 phút (giống hành vi get-url.js cũ).
+// Kết quả sắp xếp view giảm dần; video cùng view giữ thứ tự playlist (mới nhất trước).
 export async function fetchSourceVideos(yt, handle, { minSeconds = 600 } = {}) {
   const ref = parseChannelRef(handle);
   if (!ref) throw new Error("@handle nguồn không hợp lệ");
@@ -164,5 +165,6 @@ export async function fetchSourceVideos(yt, handle, { minSeconds = 600 } = {}) {
     }
     pageToken = pl.data.nextPageToken;
   } while (pageToken);
+  out.sort((a, b) => b.viewCount - a.viewCount);
   return out;
 }

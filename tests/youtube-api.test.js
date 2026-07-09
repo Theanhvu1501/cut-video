@@ -136,7 +136,7 @@ test("fetchChannelStats: API ném lỗi thì mọi ref trong lô đó nhận err
 import { fetchSourceVideos } from "../sheet/youtube-api.js";
 
 // Client giả có đủ channels/playlistItems/videos, hỗ trợ 2 trang.
-function fakeSourceYt() {
+function fakeSourceYt(views = {}) {
   return {
     channels: {
       list: async () => ({ data: { items: [{ contentDetails: { relatedPlaylists: { uploads: "UUxxx" } } }] } }),
@@ -162,7 +162,7 @@ function fakeSourceYt() {
             id: vid,
             // "bbbbbbbbbbb" ngắn hơn 10 phút -> phải bị lọc bỏ
             contentDetails: { duration: vid === "bbbbbbbbbbb" ? "PT5M0S" : "PT12M0S" },
-            statistics: { viewCount: "1234" },
+            statistics: { viewCount: String(views[vid] ?? 1234) },
             snippet: { title: `Video ${vid}`, publishedAt: "2026-07-01T00:00:00Z" },
           })),
         },
@@ -180,6 +180,12 @@ test("fetchSourceVideos duyệt hết trang và lọc video <= 10 phút", async 
   assert.equal(out[0].title, "Video aaaaaaaaaaa");
   assert.equal(out[0].viewCount, 1234);
   assert.equal(out[0].publishedAt, "2026-07-01T00:00:00Z");
+});
+
+test("fetchSourceVideos sắp xếp view giảm dần", async () => {
+  const out = await fetchSourceVideos(fakeSourceYt({ aaaaaaaaaaa: 10, ccccccccccc: 9999 }), "@line4091");
+  assert.deepEqual(out.map((v) => v.viewCount), [9999, 10]);
+  assert.equal(out[0].url, "https://www.youtube.com/watch?v=ccccccccccc");
 });
 
 test("fetchSourceVideos tôn trọng minSeconds", async () => {

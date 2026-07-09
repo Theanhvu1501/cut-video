@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parsePostTimes, assignTomorrowSlots, formatSchedule, parseScheduledISO } from "../sheet/schedule-slots.js";
+import { parsePostTimes, assignTomorrowSlots, formatSchedule, parseScheduledISO, formatStamp } from "../sheet/schedule-slots.js";
 
 test("formatSchedule đổi ISO -> dd/mm/yyyy hh:mm", () => {
   assert.equal(formatSchedule("2026-07-09T08:00:00"), "09/07/2026 08:00");
@@ -53,4 +53,9 @@ test("không có postTimes -> rỗng", () => {
 
 test("wantCount <= 0 -> rỗng", () => {
   assert.deepEqual(assignTomorrowSlots(["08:00"], [], NOW, 0), []);
+});
+
+test("formatStamp: Date -> dd/mm/yyyy hh:mm", () => {
+  assert.equal(formatStamp(new Date(2026, 6, 9, 14, 32)), "09/07/2026 14:32");
+  assert.equal(formatStamp(new Date(2026, 11, 1, 8, 5)), "01/12/2026 08:05");
 });

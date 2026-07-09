@@ -25,6 +25,11 @@ export function formatSchedule(iso) {
   return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
 }
 
+// Date -> "09/07/2026 14:32" (dấu thời gian cho cột "Cập nhật lúc").
+export function formatStamp(d) {
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 // Trích giờ lịch ISO từ chuỗi trạng thái cột C ("✅ lên lịch 09/07/2026 08:00" -> "2026-07-09T08:00:00").
 export function parseScheduledISO(statusText) {
   const m = String(statusText ?? "").match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2})/);

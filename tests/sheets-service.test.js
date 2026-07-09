@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseConfigRows, parseUrlRows, testSheetConnection, findStatsColumns, STATS_KEYS } from "../sheet/sheets-service.js";
+import { parseConfigRows, parseUrlRows, testSheetConnection, findStatsColumns, STATS_KEYS, writeChannelStats, appendUrls, colLetter } from "../sheet/sheets-service.js";
 import { pickDownloadedFile } from "../sheet/channel-download.js";
 
 const HEADER = ["sheetName","enabled","videosPerDay","renderMode","opacity","chromaColor","chromaSimilarity","keepColors","cropHeight","cropYOffset","proxy"];
@@ -206,4 +206,76 @@ test("findStatsColumns khi không có cột stats nào và khi không có header
   assert.deepEqual(findStatsColumns([["Tên kênh", "Bật"]]).cols, {});
   assert.deepEqual(findStatsColumns([["Linh tinh"]]), { headerRowIndex: -1, cols: {} });
   assert.deepEqual(findStatsColumns([]), { headerRowIndex: -1, cols: {} });
+});
+
+// Client Sheets giả: ghi lại mọi tham số của batchUpdate/append.
+function fakeSheets() {
+  const calls = { batchUpdate: [], append: [] };
+  return {
+    calls,
+    spreadsheets: {
+      values: {
+        batchUpdate: async (p) => { calls.batchUpdate.push(p); return { data: {} }; },
+        append: async (p) => { calls.append.push(p); return { data: {} }; },
+      },
+    },
+  };
+}
+
+test("colLetter: 0->A, 25->Z, 26->AA, 51->AZ", () => {
+  assert.equal(colLetter(0), "A");
+  assert.equal(colLetter(25), "Z");
+  assert.equal(colLetter(26), "AA");
+  assert.equal(colLetter(51), "AZ");
+});
+
+test("writeChannelStats ghi đúng 4 ô vào đúng dòng", async () => {
+  const sheets = fakeSheets();
+  const cols = { subscribers: 4, totalViews: 5, videoCount: 6, statsUpdatedAt: 7 };
+  const n = await writeChannelStats(sheets, "SID", "⚙config", 3, cols, {
+    subscribers: 1230, views: 45678, videoCount: 120, hidden: false, updatedAt: "09/07/2026 14:32",
+  });
+  assert.equal(n, 4);
+  const { data, valueInputOption } = sheets.calls.batchUpdate[0].requestBody;
+  assert.equal(valueInputOption, "RAW");
+  assert.deepEqual(data.map((d) => d.range), [
+    "⚙config!E3", "⚙config!F3", "⚙config!G3", "⚙config!H3",
+  ]);
+  assert.deepEqual(data.map((d) => d.values[0][0]), [1230, 45678, 120, "09/07/2026 14:32"]);
+});
+
+test("writeChannelStats chỉ ghi các cột có thật, kênh ẩn sub ghi dấu gạch", async () => {
+  const sheets = fakeSheets();
+  const n = await writeChannelStats(sheets, "SID", "⚙config", 5, { subscribers: 2, videoCount: 9 }, {
+    subscribers: null, views: 100, videoCount: 8, hidden: true, updatedAt: "09/07/2026 14:32",
+  });
+  assert.equal(n, 2);
+  const { data } = sheets.calls.batchUpdate[0].requestBody;
+  assert.deepEqual(data.map((d) => d.range), ["⚙config!C5", "⚙config!J5"]);
+  assert.equal(data[0].values[0][0], "—");
+  assert.equal(data[1].values[0][0], 8);
+});
+
+test("writeChannelStats không gọi API khi Sheet thiếu cả 4 cột", async () => {
+  const sheets = fakeSheets();
+  assert.equal(await writeChannelStats(sheets, "SID", "⚙config", 3, {}, { updatedAt: "x" }), 0);
+  assert.equal(sheets.calls.batchUpdate.length, 0);
+});
+
+test("appendUrls nối vào cột A, không đụng cột B/C", async () => {
+  const sheets = fakeSheets();
+  const n = await appendUrls(sheets, "SID", "Kênh A", ["u1", "u2"]);
+  assert.equal(n, 2);
+  const p = sheets.calls.append[0];
+  assert.equal(p.range, "Kênh A!A:A");
+  assert.equal(p.insertDataOption, "INSERT_ROWS");
+  assert.equal(p.valueInputOption, "RAW");
+  assert.deepEqual(p.requestBody.values, [["u1"], ["u2"]]);
+});
+
+test("appendUrls không gọi API khi danh sách rỗng", async () => {
+  const sheets = fakeSheets();
+  assert.equal(await appendUrls(sheets, "SID", "Kênh A", []), 0);
+  assert.equal(await appendUrls(sheets, "SID", "Kênh A", undefined), 0);
+  assert.equal(sheets.calls.append.length, 0);
 });

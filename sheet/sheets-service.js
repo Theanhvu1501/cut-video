@@ -243,3 +243,44 @@ export async function setUploadStatus(sheets, spreadsheetId, sheetName, rowIndex
     requestBody: { values: [[status]] },
   });
 }
+
+// Chỉ số cột 0-based -> chữ cái cột A1 notation. 0->"A", 26->"AA".
+export function colLetter(i) {
+  let s = "";
+  for (let n = i; n >= 0; n = Math.floor(n / 26) - 1) s = String.fromCharCode(65 + (n % 26)) + s;
+  return s;
+}
+
+// Ghi 4 ô stats vào dòng `rowIndex` của tab ⚙config. Chỉ chạm các cột có trong
+// `cols` — app không tạo cột mới. Trả số ô đã ghi.
+export async function writeChannelStats(sheets, spreadsheetId, configTab, rowIndex, cols, stats) {
+  const data = [];
+  const push = (key, value) => {
+    if (cols[key] === undefined) return;
+    data.push({ range: `${configTab}!${colLetter(cols[key])}${rowIndex}`, values: [[value]] });
+  };
+  push("subscribers", stats.hidden ? "—" : stats.subscribers);
+  push("totalViews", stats.views);
+  push("videoCount", stats.videoCount);
+  push("statsUpdatedAt", stats.updatedAt);
+  if (!data.length) return 0;
+  await sheets.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption: "RAW", data },
+  });
+  return data.length;
+}
+
+// Nối URL vào cuối cột A của tab kênh. Cột B (trạng thái render) và C (trạng
+// thái upload) không bị đụng, nên chạy lại nhiều lần là an toàn.
+export async function appendUrls(sheets, spreadsheetId, sheetName, urls) {
+  if (!urls?.length) return 0;
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `${sheetName}!A:A`,
+    valueInputOption: "RAW",
+    insertDataOption: "INSERT_ROWS",
+    requestBody: { values: urls.map((u) => [u]) },
+  });
+  return urls.length;
+}

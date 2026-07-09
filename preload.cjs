@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     start: () => ipcRenderer.invoke("sheet:start"),
     stop: () => ipcRenderer.invoke("sheet:stop"),
     runNow: (sheetName) => ipcRenderer.invoke("sheet:run-now", sheetName),
+    refreshStats: () => ipcRenderer.invoke("yt:refresh-stats"),
+    fetchSourceUrls: (sheetName) => ipcRenderer.invoke("yt:fetch-source-urls", { sheetName }),
     onEvent: (cb) => ipcRenderer.on("sheet:event", (e, data) => cb(data)),
     removeEventListener: () => ipcRenderer.removeAllListeners("sheet:event"),
     gpmTest: (gpmHost) => ipcRenderer.invoke("gpm:test", { gpmHost }),

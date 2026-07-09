@@ -9,8 +9,9 @@ import { checkLicense } from "./license-check.js";
 import pLimit from "p-limit";
 import sharp from "sharp";
 import { createSheetRunner } from "./sheet/sheet-runner.js";
-import { createSheetsClient, readConfigSheet, readChannelUrls, setUrlStatus, setUploadStatus, readUploadStatuses, testSheetConnection } from "./sheet/sheets-service.js";
-import { parseScheduledISO } from "./sheet/schedule-slots.js";
+import { createSheetsClient, readConfigSheet, readConfigValues, parseConfigRows, findStatsColumns, STATS_KEYS, writeChannelStats, appendUrls, readChannelUrls, setUrlStatus, setUploadStatus, readUploadStatuses, testSheetConnection } from "./sheet/sheets-service.js";
+import { createYoutubeClient, fetchChannelStats, fetchSourceVideos, pickNewUrls, DEFAULT_YT_API_KEY } from "./sheet/youtube-api.js";
+import { parseScheduledISO, formatStamp } from "./sheet/schedule-slots.js";
 import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
 import { sendTelegram, buildDigest } from "./sheet/telegram-notify.js";
@@ -1338,7 +1339,7 @@ function sheetSettingsPath() {
 }
 function loadSheetSettings() {
   try { return JSON.parse(fs.readFileSync(sheetSettingsPath(), "utf-8")); }
-  catch { return { spreadsheetId: "", credentialsPath: "", channelsRoot: "", pollSec: 300, autoRunOnOpen: false, useGPU: false, videoSpeed: 0.95, gpuVideoCodec: "h264_nvenc" }; }
+  catch { return { spreadsheetId: "", credentialsPath: "", channelsRoot: "", pollSec: 300, autoRunOnOpen: false, useGPU: false, videoSpeed: 0.95, gpuVideoCodec: "h264_nvenc", ytApiKey: "" }; }
 }
 function saveSheetSettings(s) { fs.writeFileSync(sheetSettingsPath(), JSON.stringify(s, null, 2), "utf-8"); }
 
@@ -1381,6 +1382,11 @@ function buildSheetRunner(win) {
   });
   return createSheetRunner({
     uploadQueue,
+    refreshStats: async () => {
+      const r = await refreshChannelStats();
+      emitEvent({ type: "stats", ...r });
+      if (!r.ok) throw new Error(r.error);
+    },
     config: {
       spreadsheetId: s.spreadsheetId, channelsRoot: s.channelsRoot, statePath, renderConcurrency: 2,
       useGPU: !!s.useGPU,
@@ -1419,6 +1425,72 @@ function buildSheetRunner(win) {
   });
 }
 
+// ===== Theo dõi kênh YouTube =====
+function ytClientFrom(st) {
+  return createYoutubeClient((st.ytApiKey || "").trim() || DEFAULT_YT_API_KEY);
+}
+
+function requireSheetSettings(st) {
+  if (!st.spreadsheetId) return "Chưa nhập Spreadsheet ID.";
+  if (!st.credentialsPath) return "Chưa chọn file service account JSON.";
+  return null;
+}
+
+// Đọc ⚙config một lần, gọi API, ghi ngược từng dòng, trả bảng cho UI.
+// Một kênh hỏng chỉ làm hỏng dòng của nó.
+async function refreshChannelStats() {
+  const st = loadSheetSettings();
+  const bad = requireSheetSettings(st);
+  if (bad) return { ok: false, error: bad };
+
+  const sheets = createSheetsClient(st.credentialsPath);
+  const values = await readConfigValues(sheets, st.spreadsheetId);
+  const channels = parseConfigRows(values);
+  const { cols } = findStatsColumns(values);
+  const missing = STATS_KEYS.filter((k) => cols[k] === undefined);
+
+  const targets = channels.filter((c) => c.channelUrl);
+  const stats = targets.length
+    ? await fetchChannelStats(ytClientFrom(st), targets.map((c) => c.channelUrl))
+    : [];
+  const statByName = new Map(targets.map((c, i) => [c.sheetName, stats[i]]));
+  const updatedAt = formatStamp(new Date());
+
+  const rows = [];
+  for (const ch of channels) {
+    const base = { sheetName: ch.sheetName, sourceHandle: ch.sourceHandle || "" };
+    const s = statByName.get(ch.sheetName);
+    if (!s) { rows.push({ ...base }); continue; } // kênh không khai Link kênh
+    if (s.error) { rows.push({ ...base, error: s.error }); continue; }
+    try {
+      await writeChannelStats(sheets, st.spreadsheetId, "⚙config", ch.rowIndex, cols, { ...s, updatedAt });
+    } catch (err) {
+      rows.push({ ...base, error: String(err?.message || err) });
+      continue;
+    }
+    rows.push({ ...base, subscribers: s.subscribers, views: s.views, videoCount: s.videoCount, hidden: s.hidden, updatedAt });
+  }
+  return { ok: true, rows, missing };
+}
+
+async function fetchSourceUrlsFor(sheetName) {
+  const st = loadSheetSettings();
+  const bad = requireSheetSettings(st);
+  if (bad) return { ok: false, error: bad };
+
+  const sheets = createSheetsClient(st.credentialsPath);
+  const channels = await readConfigSheet(sheets, st.spreadsheetId);
+  const ch = channels.find((c) => c.sheetName === sheetName);
+  if (!ch) return { ok: false, error: `Không thấy kênh "${sheetName}" trong ⚙config.` };
+  if (!ch.sourceHandle) return { ok: false, error: "Kênh chưa điền cột @handle nguồn." };
+
+  const videos = await fetchSourceVideos(ytClientFrom(st), ch.sourceHandle);
+  const existing = (await readChannelUrls(sheets, st.spreadsheetId, sheetName)).map((r) => r.url);
+  const fresh = pickNewUrls(existing, videos.map((v) => v.url));
+  await appendUrls(sheets, st.spreadsheetId, sheetName, fresh);
+  return { ok: true, added: fresh.length, skipped: videos.length - fresh.length };
+}
+
 ipcMain.handle("sheet:test-connection", async (e, s) => {
   try {
     const st = s || loadSheetSettings();
@@ -1455,6 +1527,16 @@ ipcMain.handle("sheet:run-now", async (e, sheetName) => {
   const runner = sheetRunner || buildSheetRunner(win);
   await runner.runNow(sheetName || undefined);
   return { success: true };
+});
+
+ipcMain.handle("yt:refresh-stats", async () => {
+  try { return await refreshChannelStats(); }
+  catch (err) { return { ok: false, error: String(err?.message || err) }; }
+});
+
+ipcMain.handle("yt:fetch-source-urls", async (e, { sheetName } = {}) => {
+  try { return await fetchSourceUrlsFor((sheetName || "").trim()); }
+  catch (err) { return { ok: false, error: String(err?.message || err) }; }
 });
 
 ipcMain.handle("gpm:test", async (e, { gpmHost } = {}) => {

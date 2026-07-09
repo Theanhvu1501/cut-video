@@ -391,6 +391,64 @@ test("chạm trần 3 lần -> ghi 'bỏ qua:' vào cột B", async () => {
   assert.equal(calls.status.at(-1).status, skipText("ffmpeg chết"));
 });
 
+test("ô B rỗng nhưng overlay cũ còn: xoá file cũ rồi mới tải lại", async () => {
+  const { deps, calls, getResume } = makeDeps({
+    existingFiles: ["/ov/u1.mp4"],
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 2, uploadAttempts: 0, stage: "downloaded", filePath: "/ov/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.equal(calls.unlinked[0], "/ov/u1.mp4"); // xoá overlay cũ TRƯỚC khi tải
+  assert.deepEqual(calls.downloaded, ["u1"]);
+  assert.equal(getResume()["Kênh A"].u1.attempts, 0); // reset vì ô B rỗng
+});
+
+test("render-only không xoá overlay đang cần dùng", async () => {
+  const { deps, calls } = makeDeps({
+    existingFiles: ["/ov/u1.mp4"],
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: ST.DOWNLOADED, uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "downloaded", filePath: "/ov/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(calls.downloaded, []);
+  // Overlay chỉ bị xoá đúng 1 lần, SAU khi render thành công — không bị dọn trước.
+  assert.equal(calls.unlinked.length, 1);
+  assert.equal(calls.unlinked[0], "/ov/u1.mp4");
+});
+
+test("lỗi render: giữ nguyên attempts, không reset", async () => {
+  const { deps, calls, getResume } = makeDeps({
+    existingFiles: ["/ov/u1.mp4"],
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: `${ST.ERR_RENDER} x`, uploadStatus: "" }],
+      setUrlStatus: async (s, r, status) => calls.status.push({ rowIndex: r, status }),
+      setUploadStatus: async () => {},
+    },
+    renderer: async () => { throw new Error("ffmpeg chết"); },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 2, uploadAttempts: 0, stage: "downloaded", filePath: "/ov/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.equal(getResume()["Kênh A"].u1.attempts, 3);
+  assert.equal(calls.status.at(-1).status, skipText("ffmpeg chết"));
+});
+
 test("proxy hỏng -> bỏ qua cả kênh, không tải gì", async () => {
   const { deps, calls } = makeDeps({
     sheetsApi: {

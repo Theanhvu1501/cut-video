@@ -1,7 +1,7 @@
 import path from "path";
 import { todayStr, computeRemaining, recordRendered } from "./runner-state.js";
 import { decideAction, skipText, ST, MAX_ATTEMPTS } from "./resume-plan.js";
-import { getEntry, setEntry } from "./resume-state.js";
+import { getEntry, setEntry, clearEntry } from "./resume-state.js";
 import { normalizeProxy } from "./proxy.js";
 
 export function pickRandomBackground(files, rand = Math.random) {
@@ -105,6 +105,33 @@ export function createSheetRunner(deps) {
         });
         return { item, entry, action };
       });
+
+      // Dọn dẹp TRƯỚC khi lập renderWork.
+      // 1) Ô B bị xoá tay (statusB === "") -> người dùng muốn làm lại từ đầu: xoá overlay
+      //    cũ (nếu còn) + xoá hẳn entry resume (reset attempts). Không làm bước này thì
+      //    action "full" sau đó tải đè lên file đã tồn tại -> yt-dlp (noOverwrites) bỏ
+      //    qua, không tạo file mới -> downloadOne không tìm thấy file vừa tải -> kẹt mãi.
+      //    KHÔNG áp dụng cho "render-only": nó cần chính overlay đó để render.
+      // 2) Phòng thủ thêm: mọi action "full" khác mà overlay cũ vẫn còn trên đĩa cũng bị
+      //    xoá trước khi tải lại — idempotent (lỗi tải: filePath đã null; đã tải + file
+      //    mất thì unlink là no-op).
+      for (const { item, entry, action } of planned) {
+        if (action === "render-only") continue;
+        if (item.status === "" && entry) {
+          if (entry.filePath) {
+            for (const f of [entry.filePath, thumbOf(entry.filePath)]) {
+              if (fileExists(f)) { try { unlink(f); } catch { /* ignore */ } }
+            }
+          }
+          const rsClear = resumeStore.load();
+          clearEntry(rsClear, ch.sheetName, item.url);
+          resumeStore.save(rsClear);
+        } else if (action === "full" && entry?.filePath && fileExists(entry.filePath)) {
+          for (const f of [entry.filePath, thumbOf(entry.filePath)]) {
+            if (fileExists(f)) { try { unlink(f); } catch { /* ignore */ } }
+          }
+        }
+      }
 
       // Việc render bị quota cắt; việc upload-only thì không (Task 7 dùng tiếp).
       const renderWork = planned

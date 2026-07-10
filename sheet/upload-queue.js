@@ -5,7 +5,7 @@
 
 import path from "path";
 import fs from "fs";
-import { connectProfile } from "./gpm-client.js";
+import { connectProfile, closeProfile } from "./gpm-client.js";
 import { findThumbnailForVideo } from "./thumb-match.js";
 import { assignTomorrowSlots, formatSchedule } from "./schedule-slots.js";
 import { uploadAndSchedule } from "./yt-upload.js";
@@ -31,6 +31,7 @@ export function prepareJob({ videoPath, overlaysDir, postTimes, usedSlots, now, 
 export function createUploadQueue({
   readChannelUploads = async () => ({ scheduledUrls: new Set(), usedSlots: [] }),
   connect = connectProfile,
+  closeConn = closeProfile,
   runUpload = uploadAndSchedule,
   now = () => new Date(),
   listFiles = (dir) => { try { return fs.readdirSync(dir); } catch { return []; } },
@@ -41,14 +42,17 @@ export function createUploadQueue({
   retries = 3,                         // số lần thử lại khi lỗi (chỉ khi CHƯA bắt đầu upload)
   retryDelayMs = 3000,
   flushMs = 3000,                      // chờ rảnh bao lâu trước khi gửi digest
+  idleCloseMs = 600_000,               // rảnh bao lâu thì đóng trình duyệt GPM (0 = không đóng)
   sleepFn = (ms) => new Promise((r) => setTimeout(r, ms)),
 } = {}) {
   const chains = new Map();       // sheetName -> Promise (chuỗi serial theo kênh)
-  const conns = new Map();        // profileId -> { browser, page } (tái dùng kết nối)
+  const conns = new Map();        // profileId -> { browser, page, gpmHost } (tái dùng kết nối)
   const channelCache = new Map(); // sheetName -> { scheduledUrls, usedSlots } (đọc từ Sheet 1 lần/lượt)
   const results = [];             // kết quả từ lượt bận hiện tại (để gộp digest)
   let pending = 0;                // số job đang chờ/chạy
   let flushTimer = null;
+  let idleTimer = null;           // hẹn giờ đóng trình duyệt khi rảnh
+  let closing = null;             // Promise đang-đóng (chặn getConn mở lại giữa chừng)
   let runActive = false;          // lượt chạy (tải+render) còn đang diễn ra → chưa gửi digest
 
   // Đọc trạng thái upload của kênh từ Sheet (cache trong lượt); lần sau tái dùng.
@@ -63,11 +67,44 @@ export function createUploadQueue({
     return cache;
   }
 
+  // Chờ lượt đóng đang diễn ra kết thúc rồi mới mở lại. Không có dòng `await closing`
+  // thì một job tới đúng lúc closeIdleConns() đang await sẽ mở lại profile, và lời gọi
+  // close đang bay dở hạ luôn tiến trình Chrome vừa mở.
   async function getConn(gpmHost, profileId) {
+    if (closing) await closing;
     if (conns.has(profileId)) return conns.get(profileId);
     const c = await connect(gpmHost, profileId);
-    conns.set(profileId, c);
-    return c;
+    conns.set(profileId, { ...c, gpmHost });
+    return conns.get(profileId);
+  }
+
+  function cancelClose() { if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; } }
+
+  async function closeIdleConns() {
+    if (runActive || pending > 0) return; // hẹn giờ dài, lượt chạy mới có thể đã bắt đầu
+    const entries = [...conns.entries()];
+    conns.clear();                        // xoá TRƯỚC vòng await: không job nào đọc trúng browser sắp bị giết
+    for (const [profileId, c] of entries) {
+      try {
+        await closeConn(c.gpmHost, profileId, c);
+        log(`Đã đóng trình duyệt GPM (profile ${profileId})`);
+      } catch (e) {
+        log(`Đóng profile ${profileId} thất bại: ${e?.message || e}`);
+      }
+    }
+  }
+
+  // Rảnh → hẹn giờ đóng. Huỷ hẹn nếu có job mới trước khi hết giờ.
+  function scheduleClose() {
+    if (!idleCloseMs || !conns.size) return;
+    cancelClose();
+    idleTimer = setTimeout(() => {
+      idleTimer = null;
+      closing = closeIdleConns().finally(() => { closing = null; });
+    }, idleCloseMs);
+    // unref: hẹn giờ 10 phút này KHÔNG được giữ tiến trình sống. Electron chạy sẵn nên
+    // hẹn giờ vẫn nổ đúng lúc; còn tiến trình nào chỉ còn mỗi nó thì được phép thoát.
+    idleTimer.unref?.();
   }
 
   async function writeStatus(sheetName, rowIndex, status) {
@@ -162,6 +199,7 @@ export function createUploadQueue({
 
   // Enqueue 1 video; các video cùng kênh chạy TUẦN TỰ.
   function enqueue(job) {
+    cancelClose(); // đồng bộ, trước mọi await: có việc mới thì đừng đóng trình duyệt
     pending++;
     const prev = chains.get(job.sheetName) || Promise.resolve();
     const next = prev
@@ -169,7 +207,7 @@ export function createUploadQueue({
       .catch((e) => log(`❌ [${job.sheetName}] ${e?.message || e}`))
       .finally(() => {
         pending--;
-        if (pending === 0) scheduleFlush(); // hàng đợi rảnh → gửi digest
+        if (pending === 0) { scheduleFlush(); scheduleClose(); } // rảnh → gửi digest + hẹn đóng
       });
     chains.set(job.sheetName, next);
     return next;
@@ -181,9 +219,9 @@ export function createUploadQueue({
   }
 
   // Runner báo: bắt đầu 1 lượt chạy (tải+render) → tạm ngưng gửi digest + đọc lại Sheet mới.
-  function beginRun() { runActive = true; channelCache.clear(); }
+  function beginRun() { cancelClose(); runActive = true; channelCache.clear(); }
   // Runner báo: lượt chạy xong → cho phép gửi digest khi upload cũng rỗng.
-  function endRun() { runActive = false; if (pending === 0) scheduleFlush(); }
+  function endRun() { runActive = false; if (pending === 0) { scheduleFlush(); scheduleClose(); } }
 
   return { enqueue, drain, prepareJob, beginRun, endRun };
 }

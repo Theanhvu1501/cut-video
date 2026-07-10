@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { testGpmConnection, startProfile } from "../sheet/gpm-client.js";
+import { testGpmConnection, startProfile, closeProfile } from "../sheet/gpm-client.js";
 
 function fakeFetch(status, body) {
   return async (url) => ({
@@ -37,5 +37,31 @@ test("startProfile ném lỗi khi success=false", async () => {
   await assert.rejects(
     () => startProfile("h", "p1", { fetch: fakeFetch(200, { success: false, message: "x" }) }),
     /GPM error/,
+  );
+});
+
+test("closeProfile: ngắt CDP TRƯỚC rồi mới gọi API close", async () => {
+  const events = [];
+  const browser = { close: async () => { events.push("browser.close"); } };
+  const fetch = async (url) => { events.push(`fetch ${url}`); return { ok: true, status: 200 }; };
+  await closeProfile("127.0.0.1:19995", "p1", { browser }, { fetch });
+  assert.deepEqual(events, [
+    "browser.close",
+    "fetch http://127.0.0.1:19995/api/v3/profiles/close/p1",
+  ]);
+});
+
+test("closeProfile: browser.close() ném (CDP đã chết) vẫn phải gọi API close", async () => {
+  let called = null;
+  const browser = { close: async () => { throw new Error("CDP đã đóng"); } };
+  const fetch = async (url) => { called = url; return { ok: true, status: 200 }; };
+  await closeProfile("h", "p1", { browser }, { fetch });
+  assert.equal(called, "http://h/api/v3/profiles/close/p1");
+});
+
+test("closeProfile: HTTP không ok -> ném lỗi", async () => {
+  await assert.rejects(
+    () => closeProfile("h", "p1", {}, { fetch: fakeFetch(500, {}) }),
+    /GPM HTTP 500/,
   );
 });

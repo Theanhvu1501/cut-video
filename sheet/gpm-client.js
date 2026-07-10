@@ -20,6 +20,17 @@ export async function startProfile(gpmHost, profileId, deps = {}) {
   return data.data.remote_debugging_address; // "127.0.0.1:port"
 }
 
+// Tắt hẳn profile: ngắt CDP rồi bảo GPM đóng tiến trình Chrome.
+// browser.close() trên kết nối connectOverCDP chỉ NGẮT KẾT NỐI — Chrome vẫn sống,
+// nên phải gọi API close của GPM thì mới giải phóng RAM và cho GPM sync profile.
+export async function closeProfile(gpmHost, profileId, conn = {}, deps = {}) {
+  const fetchFn = deps.fetch || globalThis.fetch;
+  try { await conn.browser?.close(); } catch { /* CDP đã chết — kệ */ }
+  openedBrowsers.delete(profileId);
+  const res = await fetchFn(`http://${gpmHost}/api/v3/profiles/close/${profileId}`);
+  if (!res.ok) throw new Error(`GPM HTTP ${res.status}`);
+}
+
 async function connectOverCDPWithRetry(address, retries = 10, intervalMs = 1000) {
   let lastErr;
   for (let i = 0; i < retries; i++) {

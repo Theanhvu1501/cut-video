@@ -19,6 +19,7 @@ import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne } from "./sheet/channel-download.js";
 import { loadState, saveState } from "./sheet/runner-state.js";
+import { loadResume, saveResume } from "./sheet/resume-state.js";
 
 const require = createRequire(import.meta.url);
 const { autoUpdater } = require("electron-updater");
@@ -1350,6 +1351,7 @@ function buildSheetRunner(win) {
   const s = loadSheetSettings();
   const sheets = createSheetsClient(s.credentialsPath);
   const statePath = path.join(s.channelsRoot, "runner-state.json");
+  const resumePath = path.join(s.channelsRoot, "resume-state.json");
   const emitEvent = (evt) => { if (win && !win.isDestroyed()) win.webContents.send("sheet:event", evt); };
   // Hàng đợi upload GPM (state riêng, log ra cùng luồng sự kiện Sheet).
   const uploadQueue = createUploadQueue({
@@ -1400,6 +1402,7 @@ function buildSheetRunner(win) {
       readConfigSheet: () => readConfigSheet(sheets, s.spreadsheetId),
       readChannelUrls: (name) => readChannelUrls(sheets, s.spreadsheetId, name),
       setUrlStatus: (name, row, status) => setUrlStatus(sheets, s.spreadsheetId, name, row, status),
+      setUploadStatus: (name, row, status) => setUploadStatus(sheets, s.spreadsheetId, name, row, status),
     },
     downloader: (url, dir, opts) => downloadOne(url, dir, { ...opts, ytdlpPath: YTDLP_PATH }),
     renderer: (opts) => renderOne(opts),
@@ -1416,6 +1419,8 @@ function buildSheetRunner(win) {
       return dirs;
     },
     stateStore: { load: () => loadState(statePath), save: (st) => saveState(statePath, st) },
+    resumeStore: { load: () => loadResume(resumePath), save: (st) => saveResume(resumePath, st) },
+    fileExists: (p) => { try { return fs.existsSync(p); } catch { return false; } },
     emit: emitEvent,
     now: () => new Date(),
     pLimitFn: (n) => pLimit(n),

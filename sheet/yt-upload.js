@@ -212,9 +212,10 @@ async function setFile(page, { inputSelector, triggerSelector, filePath, label, 
 }
 
 // b2: đợi upload đạt 100% (hoặc chuyển sang trạng thái xử lý → coi như xong upload).
+// Quá timeoutMs thì ném lỗi: bản nháp đã tồn tại trên YouTube nên queue sẽ không retry.
 async function waitUploadComplete(
   page,
-  { timeoutMs = 20 * 60 * 1000, intervalMs = 2000 } = {},
+  { timeoutMs = 60 * 60 * 1000, intervalMs = 2000 } = {},
 ) {
   const start = Date.now();
   let sawProgress = false;
@@ -232,7 +233,9 @@ async function waitUploadComplete(
     }
     await sleep(intervalMs);
   }
-  // Hết timeout: không chặn cứng, tiếp tục (nút thumbnail có thể đã sẵn sàng).
+  throw new Error(
+    `Upload chưa xong sau ${Math.round(timeoutMs / 60000)} phút — dừng để không thay thumb/lịch lên bản nháp dở dang.`,
+  );
 }
 
 // Định dạng ngày/giờ theo locale để điền vào picker (text phải khớp ngôn ngữ UI).

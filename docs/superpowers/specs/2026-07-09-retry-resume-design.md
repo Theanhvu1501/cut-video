@@ -176,7 +176,14 @@ theo `remaining`.
 
 ## Proxy — `sheet/proxy.js`
 
-Chuyển `normalizeProxy` từ `download.js:110-150` sang module dùng chung, xoá bản sao cũ.
+`normalizeProxy` được viết lại thành module riêng cho luồng Sheet.
+
+**`download.js` KHÔNG dùng module này.** Bản đầu có import nó và làm hỏng bản đóng gói:
+`download.js` nằm trong `asarUnpack`, bị spawn thành tiến trình node riêng chạy từ
+`app.asar.unpacked/`, nên `import "./sheet/proxy.js"` ném `ERR_MODULE_NOT_FOUND`.
+`download.js` giữ nguyên bản `normalizeProxy` cục bộ và hành vi cũ (proxy sai định dạng
+thì cảnh báo rồi tải thẳng). Đường tải thủ công không nằm trong phạm vi plan này.
+Xem `tests/packaging.test.js` — nó chặn lớp lỗi đó tái diễn.
 
 ```js
 normalizeProxy(raw) -> string   // ném Error nếu không parse được

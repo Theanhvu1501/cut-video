@@ -80,6 +80,7 @@
       "concat-video.js",
       "get-video-chroma.js",
       "stockDownloader.js",
+      "sheet/**",
       "bin/**",
       "node_modules/**"
     ],

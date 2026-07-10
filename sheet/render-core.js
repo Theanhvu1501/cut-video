@@ -124,12 +124,21 @@ export function buildComplexFilter(renderMode, cfgIn = {}) {
   }
 }
 
+// Không spawn được file .exe nằm trong app.asar: fs của Electron đọc xuyên asar
+// nên existsSync trả true, còn spawn thì ném ENOENT. electron-builder bung bin/**
+// ra app.asar.unpacked/, nên đổi thành phần thư mục app.asar -> app.asar.unpacked.
+export function toUnpackedPath(p) {
+  return String(p).replace(/([\\/])app\.asar([\\/])/, "$1app.asar.unpacked$2");
+}
+
 export function resolveFfmpegPaths() {
-  const binFfmpeg = path.join(REPO_ROOT, "bin", "ffmpeg.exe");
-  const binFfprobe = path.join(REPO_ROOT, "bin", "ffprobe.exe");
+  const binFfmpeg = toUnpackedPath(path.join(REPO_ROOT, "bin", "ffmpeg.exe"));
+  const binFfprobe = toUnpackedPath(path.join(REPO_ROOT, "bin", "ffprobe.exe"));
+  // Bản dự phòng nằm trong node_modules, cũng bị gói vào asar -> phải đổi luôn.
+  const fallbackFfmpeg = toUnpackedPath(installerFfmpeg);
   return {
-    ffmpegPath: fs.existsSync(binFfmpeg) ? binFfmpeg : installerFfmpeg,
-    ffprobePath: fs.existsSync(binFfprobe) ? binFfprobe : installerFfmpeg.replace(/ffmpeg(\.exe)?$/, "ffprobe$1"),
+    ffmpegPath: fs.existsSync(binFfmpeg) ? binFfmpeg : fallbackFfmpeg,
+    ffprobePath: fs.existsSync(binFfprobe) ? binFfprobe : fallbackFfmpeg.replace(/ffmpeg(\.exe)?$/, "ffprobe$1"),
   };
 }
 

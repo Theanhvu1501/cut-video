@@ -4172,13 +4172,15 @@ async function runConcat() {
 
     const stats = document.createElement("div");
     stats.className = "sw-stats";
+    const updated = document.createElement("div");
+    updated.className = "sw-updated";
     const activity = document.createElement("div");
     activity.className = "sw-activity";
     const body = document.createElement("div");
     body.className = "sw-card-body";
     body.style.display = "none";
 
-    card.append(top, stats, activity, body);
+    card.append(top, stats, updated, activity, body);
 
     plug.addEventListener("click", () => connectOne(c));
     caret.addEventListener("click", () => {
@@ -4187,7 +4189,7 @@ async function runConcat() {
       renderCard(c);
     });
 
-    c.el = { card, dot, name, plug, quota, stats, activity, body };
+    c.el = { card, dot, name, plug, quota, stats, updated, activity, body };
     return card;
   }
 
@@ -4296,20 +4298,28 @@ async function runConcat() {
 
   function renderCard(c) {
     if (!c.el) return;
-    const { card, dot, plug, quota, stats, activity } = c.el;
+    const { card, dot, plug, quota, stats, updated, activity } = c.el;
     const act = activityText(c);
+    const full = c.videosPerDay > 0 && c.countToday >= c.videosPerDay;
 
     card.classList.toggle("disabled", !c.enabled);
     card.classList.toggle("busy", act.busy);
+    // Dải màu bên trái: đang chạy > có lỗi > đủ hôm nay. Chỉ một trạng thái thắng.
+    card.classList.toggle("err", !act.busy && act.err);
+    card.classList.toggle("full", !act.busy && !act.err && full);
 
-    dot.className = "sw-dot" + (act.busy ? " busy" : c.gpm.state === "ok" ? " ok" : c.gpm.state === "err" ? " err" : "");
+    const spin = act.busy || c.gpm.state === "busy";
+    dot.className = "sw-dot" + (spin ? " busy"
+      : c.gpm.state === "ok" ? " ok"
+        : c.gpm.state === "ready" ? " ready"
+          : c.gpm.state === "err" ? " err" : "");
     dot.title = c.gpm.msg || (act.busy ? "đang chạy" : "chưa kết nối GPM");
 
     plug.disabled = !c.profileId || c.gpm.state === "busy";
     plug.title = c.profileId ? "Mở YouTube Studio bằng profile GPM" : "Kênh chưa có GPM Profile ID trong ⚙config";
 
     quota.textContent = c.videosPerDay > 0 ? `${c.countToday}/${c.videosPerDay}` : "—";
-    quota.classList.toggle("full", c.videosPerDay > 0 && c.countToday >= c.videosPerDay);
+    quota.classList.toggle("full", full);
     quota.title = "Số video đã render hôm nay / hạn mức mỗi ngày";
 
     const s = c.stats;
@@ -4317,6 +4327,9 @@ async function runConcat() {
       : s.error ? `⚠ ${s.error}`
         : s.updatedAt ? `${num(s.subscribers)} sub · ${num(s.views)} view · ${num(s.videoCount)} video`
           : (s.channelUrl ? "chưa làm mới số liệu" : "chưa điền cột Link kênh");
+    stats.classList.toggle("warn", !!s?.error);
+    // Số liệu đọc từ ⚙config có thể đã cũ — nói rõ nó cũ tới đâu.
+    updated.textContent = s?.updatedAt && !s.error ? `cập nhật lúc ${s.updatedAt}` : "";
 
     activity.textContent = act.text;
     activity.classList.toggle("err", act.err);
@@ -4366,7 +4379,8 @@ async function runConcat() {
       grid.querySelector(".sw-empty")?.remove();
       for (const ch of r.channels) {
         const c = ensureChannel(ch.sheetName);
-        c.profileId = ch.gpmProfileId || "";
+        // Trim: ô Sheet hay dính khoảng trắng, mà probeGpm so id bằng khớp chuỗi tuyệt đối.
+        c.profileId = (ch.gpmProfileId || "").trim();
         c.videosPerDay = ch.videosPerDay || 0;
         // runner-state đã tính cả video render trong phiên này, nhưng một video có thể
         // render xong giữa lúc đọc IPC và lúc này — lấy max để không bao giờ lùi số.
@@ -4379,6 +4393,7 @@ async function runConcat() {
       setBanner("", null);
       // Tên kênh + @handle nguồn: đọc thẳng từ Sheet, KHÔNG gọi YouTube API (không tốn quota).
       applyStats(await api.listStatsChannels());
+      probeGpm(); // ngầm, không chặn: card hiện số liệu trước, chấm GPM sáng sau.
     } catch (err) {
       setEmpty("Chưa tải được danh sách kênh.");
       setBanner(`❌ Lỗi khi tải danh sách kênh: ${err.message}`, "error");
@@ -4408,6 +4423,42 @@ async function runConcat() {
   }
 
   // ===== GPM =====
+
+  // Hỏi GPM ngầm: profile nào ghi trong ⚙config thật sự tồn tại bên GPM. Chỉ ĐỌC danh
+  // sách profile — không start trình duyệt nào. Chạy lúc mở app nên phải im lặng: hỏng
+  // thì chấm xám + một dòng log, không banner đỏ.
+  async function probeGpm() {
+    if (!$("sw-gpm-enabled")?.checked || !channels.size) return;
+    const host = $("sw-gpm-host").value.trim() || "127.0.0.1:19995";
+
+    // Kênh đang kết nối / đã mở Studio thì giữ nguyên — probe không được hạ cấp nó.
+    const pending = [...channels.values()].filter((c) => c.gpm.state !== "busy" && c.gpm.state !== "ok");
+    if (!pending.length) return;
+
+    const r = await api.gpmTest(host).catch((err) => ({ ok: false, error: String(err?.message || err) }));
+    if (!r?.ok) {
+      const msg = r?.error || "không kết nối được";
+      for (const c of pending) c.gpm = { state: "idle", msg: `Chưa thấy GPM tại ${host} — ${msg}` };
+      log(`⚠ Chưa kết nối được GPM (${host}): ${msg}`);
+      renderAll();
+      return;
+    }
+
+    const byId = new Map(r.profiles.map((p) => [String(p.id), p.name]));
+    for (const c of pending) {
+      // Người dùng có thể đã bấm 🔌 trong lúc chờ HTTP — kiểm lại, đừng đè lên.
+      if (c.gpm.state === "busy" || c.gpm.state === "ok") continue;
+      if (!c.profileId) { c.gpm = { state: "idle", msg: "Kênh chưa có GPM Profile ID trong ⚙config" }; continue; }
+      const name = byId.get(c.profileId);
+      c.gpm = name
+        ? { state: "ready", msg: `GPM sẵn sàng — profile “${name}”` }
+        : { state: "err", msg: `GPM không có profile ${c.profileId}` };
+    }
+    const ok = [...channels.values()].filter((c) => c.gpm.state === "ready" || c.gpm.state === "ok").length;
+    log(`🔌 GPM (${host}): ${r.profiles.length} profile — ${ok}/${channels.size} kênh đã sẵn sàng.`);
+    renderAll();
+  }
+
   async function connectOne(c) {
     if (!c.profileId) return;
     c.gpm = { state: "busy", msg: "đang kết nối…" };
@@ -4534,6 +4585,7 @@ async function runConcat() {
     const r = await api.gpmTest($("sw-gpm-host").value.trim());
     if (r?.ok) { statusEl.textContent = `✅ ${r.profiles.length} profiles`; statusEl.style.color = "#1a7f37"; }
     else { statusEl.textContent = `❌ ${r?.error || "lỗi"}`; statusEl.style.color = "#c00"; }
+    probeGpm(); // đổi host xong bấm Test — soi lại chấm trạng thái trên card luôn.
   });
   $("sw-gpm-tg-test")?.addEventListener("click", async () => {
     const statusEl = $("sw-gpm-tg-status");
@@ -4595,9 +4647,15 @@ async function runConcat() {
     }
   });
 
-  // Nạp kênh lần đầu khi người dùng mở tab (không gọi Sheet lúc khởi động app).
+  // Bấm vào tab là một lần thử lại, phòng khi lượt nạp lúc khởi động thất bại
+  // (chưa cấu hình Sheet, mạng hỏng). `loaded` chặn nạp trùng.
   document.querySelector('.tab-button[data-tab="sheet-watch"]')
     ?.addEventListener("click", () => { loadChannelsOnce(); });
 
-  loadSettings();
+  // Nạp kênh + số liệu ngay khi mở app. Chỉ đọc Sheet (số liệu đã lưu sẵn trong
+  // ⚙config), không gọi YouTube API — không tốn quota. Chưa cấu hình thì bỏ qua,
+  // để tránh một banner lỗi đập vào mặt người dùng mới cài.
+  loadSettings().then(() => {
+    if ($("sw-spreadsheet-id").value && $("sw-cred-path").value) loadChannelsOnce();
+  });
 })();

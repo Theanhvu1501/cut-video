@@ -1362,22 +1362,36 @@
         border: 1px dashed #cbd5e0;
         border-radius: 12px;
       }
+      /* Dải màu bên trái + nền phớt màu, đọc lướt cả lưới là biết kênh nào cần chú ý.
+         Thứ tự thắng do renderCard quyết: busy > err > full. */
       .sw-card {
         background: #fff;
         border: 1px solid #e2e8f0;
+        border-left: 4px solid #cbd5e0;
         border-radius: 12px;
         padding: 14px 16px;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-        transition: box-shadow 0.15s, border-color 0.15s;
+        transition: box-shadow 0.15s, border-color 0.15s, background 0.2s;
       }
       .sw-card:hover {
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.09);
       }
       .sw-card.busy {
-        border-color: #90cdf4;
+        border-left-color: #3182ce;
+        background: linear-gradient(180deg, #eff6ff 0%, #fff 70%);
+      }
+      .sw-card.err {
+        border-left-color: #e53e3e;
+        background: linear-gradient(180deg, #fff5f5 0%, #fff 70%);
+      }
+      .sw-card.full {
+        border-left-color: #38a169;
+        background: linear-gradient(180deg, #f0fff4 0%, #fff 70%);
       }
       .sw-card.disabled {
-        opacity: 0.55;
+        opacity: 0.5;
+        background: #fafafa;
+        border-left-color: #e2e8f0;
       }
       .sw-card-top {
         display: flex;
@@ -1397,17 +1411,47 @@
       .sw-dot.err {
         background: #e53e3e;
       }
+      /* Vòng xanh rỗng ruột: profile có trong GPM nhưng chưa mở Studio.
+         Chấm xanh đặc (.ok) mới là đã mở. */
+      .sw-dot.ready {
+        background: #fff;
+        box-shadow: inset 0 0 0 2.5px #38a169;
+      }
       .sw-dot.busy {
         background: #3182ce;
         animation: sw-pulse 1.4s ease-in-out infinite;
       }
+      /* Tên kênh dạng tag: nhìn lướt là tách được khỏi phần số liệu bên dưới.
+         margin-right:auto đẩy quota + caret về sát mép phải. */
       .sw-name {
         font-weight: 600;
+        font-size: 13px;
         color: #2d3748;
-        flex: 1 1 auto;
+        background: #edf2f7;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        padding: 3px 9px;
+        flex: 0 1 auto;
+        min-width: 0;
+        margin-right: auto;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+      }
+      .sw-card.busy .sw-name {
+        background: #ebf4fd;
+        border-color: #bee3f8;
+        color: #2c5282;
+      }
+      .sw-card.err .sw-name {
+        background: #fff0f0;
+        border-color: #fed7d7;
+        color: #9b2c2c;
+      }
+      .sw-card.full .sw-name {
+        background: #e9f8ef;
+        border-color: #c6f6d5;
+        color: #22543d;
       }
       .sw-quota {
         font-size: 12px;
@@ -1435,6 +1479,17 @@
         margin-top: 6px;
         font-size: 12px;
         color: #718096;
+      }
+      .sw-stats.warn {
+        color: #c05621;
+      }
+      .sw-updated {
+        margin-top: 2px;
+        font-size: 11px;
+        color: #a0aec0;
+      }
+      .sw-updated:empty {
+        display: none;
       }
       .sw-activity {
         margin-top: 8px;

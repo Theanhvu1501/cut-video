@@ -1489,15 +1489,40 @@ async function listStatsChannels() {
   if (bad) return { ok: false, error: bad };
 
   const sheets = createSheetsClient(st.credentialsPath);
-  const channels = await readConfigSheet(sheets, st.spreadsheetId);
+  const values = await readConfigValues(sheets, st.spreadsheetId);
+  const channels = parseConfigRows(values);
+  const { cols } = findStatsColumns(values);
+  const missing = STATS_KEYS.filter((k) => cols[k] === undefined);
+
+  // Số liệu đã được writeChannelStats ghi vào ⚙config từ lần làm mới trước. Đọc lại
+  // chúng thay vì gọi YouTube API: card hiện số ngay khi mở app, không tốn quota.
+  const cell = (row, key) => (cols[key] === undefined ? undefined : row?.[cols[key]]);
+  // Sheets trả FORMATTED_VALUE nên số có thể kèm dấu phân cách ("1,200" / "1.200")
+  // tuỳ locale của bảng tính. Bỏ mọi ký tự không phải chữ số rồi mới parse.
+  const toNum = (v) => {
+    const s = String(v ?? "").trim();
+    if (!s || s === "—") return undefined; // ô trống, hoặc kênh ẩn số sub
+    const digits = s.replace(/\D/g, "");
+    return digits ? Number(digits) : undefined;
+  };
+
   return {
     ok: true,
-    rows: channels.map((c) => ({
-      sheetName: c.sheetName,
-      sourceHandle: c.sourceHandle || "",
-      channelUrl: c.channelUrl || "",
-    })),
-    missing: [],
+    missing,
+    rows: channels.map((c) => {
+      const row = values[c.rowIndex - 1]; // rowIndex là số dòng A1 (1-based)
+      const subs = cell(row, "subscribers");
+      return {
+        sheetName: c.sheetName,
+        sourceHandle: c.sourceHandle || "",
+        channelUrl: c.channelUrl || "",
+        subscribers: toNum(subs),
+        hidden: String(subs ?? "").trim() === "—",
+        views: toNum(cell(row, "totalViews")),
+        videoCount: toNum(cell(row, "videoCount")),
+        updatedAt: String(cell(row, "statsUpdatedAt") ?? "").trim() || undefined,
+      };
+    }),
   };
 }
 

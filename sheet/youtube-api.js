@@ -20,7 +20,7 @@ export function parseChannelRef(input) {
   const chan = rest.match(/^channel\/(UC[\w-]{22})(?:\/.*)?$/);
   if (chan) return { type: "id", value: chan[1] };
 
-  const at = rest.match(/^@([A-Za-z0-9._-]{3,30})(?:\/.*)?$/);
+  const at = rest.match(/^@([^/?#]+)(?:\/.*)?$/u);
   if (at) return { type: "handle", value: `@${at[1]}` };
 
   if (CHANNEL_ID_RE.test(rest)) return { type: "id", value: rest };

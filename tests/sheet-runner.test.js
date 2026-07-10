@@ -654,3 +654,61 @@ test("GPM bật đầy đủ: upload-only vẫn tăng uploadAttempts và enqueue
   assert.equal(enqueued.length, 1);
   assert.equal(getResume()["Kênh A"].u1.uploadAttempts, 1);
 });
+
+test("video hoàn tất (done + ✅) thì entry resume bị xoá", async () => {
+  const { deps, calls, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "✅ lên lịch 10/07 07:00" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 1, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.equal(getResume()["Kênh A"], undefined);
+  assert.deepEqual(calls.downloaded, []);
+  assert.deepEqual(calls.rendered, []);
+  assert.deepEqual(calls.unlinked, []); // KHÔNG xoá file nào, chỉ xoá entry JSON
+});
+
+test("video done nhưng chưa upload xong thì entry vẫn còn", async () => {
+  const { deps, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "⏳ đang upload" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 1, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.ok(getResume()["Kênh A"]?.u1, "entry u1 phải còn vì upload-only lượt sau cần outputPath/title");
+});
+
+test("video done + ❌ (upload lỗi) thì entry vẫn còn", async () => {
+  const enqueued = [];
+  const { deps, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: x" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.ok(getResume()["Kênh A"]?.u1, "entry u1 phải còn — nhánh upload-only không bị cướp mất");
+  assert.equal(getResume()["Kênh A"].u1.uploadAttempts, 1);
+});

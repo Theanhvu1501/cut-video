@@ -66,6 +66,12 @@ export function createSheetRunner(deps) {
     resumeStore.save(rs);
   }
 
+  function dropEntry(sheetName, url) {
+    const rs = resumeStore.load();
+    clearEntry(rs, sheetName, url);
+    resumeStore.save(rs);
+  }
+
   async function runChannel(ch, today) {
     if (!ch.enabled) return;
     try {
@@ -116,6 +122,8 @@ export function createSheetRunner(deps) {
       // 2) Phòng thủ thêm: mọi action "full" khác mà overlay cũ vẫn còn trên đĩa cũng bị
       //    xoá trước khi tải lại — idempotent (lỗi tải: filePath đã null; đã tải + file
       //    mất thì unlink là no-op).
+      // 3) Video hoàn tất trọn vẹn (B=done, C bắt đầu "✅") -> entry resume không còn tác
+      //    dụng gì nữa: xoá entry (KHÔNG xoá file — output/overlay do người dùng tự dọn).
       for (const { item, entry, action } of planned) {
         if (action === "render-only") continue;
         if (item.status === "" && entry) {
@@ -131,6 +139,8 @@ export function createSheetRunner(deps) {
           for (const f of [entry.filePath, thumbOf(entry.filePath)]) {
             if (fileExists(f)) { try { unlink(f); } catch { /* ignore */ } }
           }
+        } else if (item.status === ST.DONE && String(item.uploadStatus ?? "").trim().startsWith("✅") && entry) {
+          dropEntry(ch.sheetName, item.url);
         }
       }
 

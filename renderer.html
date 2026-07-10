@@ -1297,6 +1297,210 @@
         }
       }
 
+      /* ===== Tab Theo dõi Sheet: toolbar + lưới card kênh ===== */
+      /* Keyframe riêng: tên `pulse` đã bị định nghĩa hai lần ở trên và bản thắng
+         hạ opacity về 0.3 lúc nghỉ — quá mờ cho một chấm trạng thái. */
+      @keyframes sw-pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+      .sw-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .sw-toolbar h2 {
+        margin: 0;
+        flex: 1 1 auto;
+      }
+      .sw-toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .sw-toolbar-sep {
+        width: 1px;
+        height: 24px;
+        background: #e2e8f0;
+        margin: 0 4px;
+      }
+      .sw-icon-btn {
+        border: 1px solid #cbd5e0;
+        background: #fff;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+        padding: 7px 10px;
+      }
+      .sw-banner {
+        margin-top: 12px;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+      }
+      .sw-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+        gap: 14px;
+        margin-top: 16px;
+      }
+      .sw-empty {
+        grid-column: 1 / -1;
+        padding: 32px;
+        text-align: center;
+        color: #718096;
+        font-size: 14px;
+        background: #f8f9fa;
+        border: 1px dashed #cbd5e0;
+        border-radius: 12px;
+      }
+      .sw-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 14px 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+        transition: box-shadow 0.15s, border-color 0.15s;
+      }
+      .sw-card:hover {
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.07);
+      }
+      .sw-card.busy {
+        border-color: #90cdf4;
+      }
+      .sw-card.disabled {
+        opacity: 0.55;
+      }
+      .sw-card-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .sw-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #cbd5e0;
+        flex: none;
+      }
+      .sw-dot.ok {
+        background: #38a169;
+      }
+      .sw-dot.err {
+        background: #e53e3e;
+      }
+      .sw-dot.busy {
+        background: #3182ce;
+        animation: sw-pulse 1.4s ease-in-out infinite;
+      }
+      .sw-name {
+        font-weight: 600;
+        color: #2d3748;
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .sw-quota {
+        font-size: 12px;
+        font-weight: 600;
+        color: #4a5568;
+        background: #edf2f7;
+        border-radius: 20px;
+        padding: 2px 9px;
+        flex: none;
+      }
+      .sw-quota.full {
+        background: #c6f6d5;
+        color: #22543d;
+      }
+      .sw-caret {
+        border: none;
+        background: none;
+        cursor: pointer;
+        color: #718096;
+        font-size: 13px;
+        padding: 2px 4px;
+        flex: none;
+      }
+      .sw-stats {
+        margin-top: 6px;
+        font-size: 12px;
+        color: #718096;
+      }
+      .sw-activity {
+        margin-top: 8px;
+        font-size: 13px;
+        color: #4a5568;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .sw-activity.err {
+        color: #c53030;
+      }
+      .sw-card-body {
+        margin-top: 12px;
+        border-top: 1px solid #edf2f7;
+        padding-top: 10px;
+      }
+      .sw-vid {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        font-size: 12px;
+        padding: 4px 0;
+      }
+      .sw-vid-title {
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: #2d3748;
+      }
+      .sw-vid-state {
+        flex: none;
+        color: #718096;
+      }
+      .sw-vid-err {
+        font-size: 12px;
+        color: #c53030;
+        padding-bottom: 4px;
+      }
+      .sw-done-note {
+        font-size: 12px;
+        color: #38a169;
+        padding: 4px 0;
+      }
+      .sw-card-actions {
+        margin-top: 10px;
+        display: flex;
+        gap: 8px;
+      }
+      .sw-cfg-group {
+        margin: 22px 0 10px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #e2e8f0;
+        color: #2d3748;
+        font-size: 14px;
+      }
+      .sw-cfg-group:first-of-type {
+        margin-top: 8px;
+      }
+      .sw-cfg-hint {
+        margin: 0;
+        font-size: 12px;
+        color: #718096;
+      }
+
       .modal {
         display: none;
         position: fixed;
@@ -3714,15 +3918,40 @@
 
         <!-- Theo dõi Sheet Tab -->
         <div id="sheet-watch" class="tab-content">
-          <div class="tab-header" style="display:flex;align-items:center;gap:10px;">
-            <h2 style="margin:0;">Theo dõi Sheet — tự động tải &amp; render</h2>
-            <button id="sw-test" title="Kiểm tra kết nối tới Sheet"
-              style="border:1px solid #cbd5e0;background:#fff;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:5px 8px;">🔌</button>
-            <span id="sw-test-status" style="font-size:13px;"></span>
+          <div class="tab-header sw-toolbar">
+            <h2>Theo dõi Sheet — tự động tải &amp; render</h2>
+            <div class="sw-toolbar-actions">
+              <button class="btn btn-primary" id="sw-start">▶ Start</button>
+              <button class="btn btn-secondary" id="sw-stop">■ Stop</button>
+              <button class="btn btn-secondary" id="sw-run-now">↻ Chạy tất cả ngay</button>
+              <span class="sw-toolbar-sep"></span>
+              <button class="btn btn-secondary" id="sw-gpm-connect-all" style="display:none;">🔌 Connect tất cả</button>
+              <button class="btn btn-secondary" id="sw-stats-refresh">🔄 Số liệu</button>
+              <button class="btn btn-secondary sw-icon-btn" id="sw-open-config" title="Cấu hình">⚙</button>
+            </div>
           </div>
-          <details id="sw-config" style="margin-top:8px;">
-            <summary style="cursor:pointer;font-weight:600;padding:10px 14px;color:#2d3748;user-select:none;background:#f8f9fa;border:1px solid #e2e8f0;border-radius:8px;list-style:none;">⚙ Cấu hình — bấm để thu gọn/mở</summary>
-          <div style="padding:14px 4px 4px;">
+          <div id="sw-stats-banner" class="sw-banner" style="display:none;"></div>
+          <div id="sw-cards" class="sw-grid"></div>
+          <details style="margin-top:16px;">
+            <summary style="cursor:pointer;font-size:13px;color:#4a5568;">📜 Log chi tiết</summary>
+            <pre id="sw-log" style="height:200px;overflow:auto;background:#1a1a2e;color:#0f0;padding:12px;margin-top:8px;border-radius:8px;font-size:12px;line-height:1.5;"></pre>
+          </details>
+        </div>
+      </div>
+    </div>
+    </div><!-- /#work-view -->
+
+    <!-- Cấu hình Theo dõi Sheet -->
+    <div id="sw-config-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Cấu hình — Theo dõi Sheet</h3>
+          <button class="modal-close" id="sw-config-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="sw-cfg-hint">Thay đổi được lưu tự động. Đổi cấu hình khi đang chạy thì phải Stop rồi Start lại.</p>
+
+          <h4 class="sw-cfg-group">Google Sheet</h4>
           <div class="form-group">
             <label>Spreadsheet ID</label>
             <input id="sw-spreadsheet-id" type="text" style="width:100%">
@@ -3745,6 +3974,12 @@
               <button class="btn btn-secondary" id="sw-pick-root">Chọn folder…</button>
             </div>
           </div>
+          <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+            <button class="btn btn-secondary" id="sw-test" title="Kiểm tra kết nối tới Sheet">🔌 Kiểm tra kết nối</button>
+            <span id="sw-test-status" style="font-size:13px;"></span>
+          </div>
+
+          <h4 class="sw-cfg-group">Render</h4>
           <div class="form-group" style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;">
             <div>
               <label>Poll (giây)</label>
@@ -3755,10 +3990,6 @@
               <input id="sw-video-speed" type="number" step="0.01" min="0.1" value="0.95" style="width:100px">
             </div>
           </div>
-          <div class="form-group">
-            <label>YouTube API key (để trống = dùng key mặc định)</label>
-            <input id="sw-yt-api-key" type="text" placeholder="AIza…" style="width:100%">
-          </div>
           <div class="form-group" style="display:flex;gap:24px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin:0;">
               <input id="sw-use-gpu" type="checkbox"> Dùng GPU (NVENC)
@@ -3767,7 +3998,13 @@
               <input id="sw-auto-open" type="checkbox"> Tự chạy khi mở app
             </label>
           </div>
-          <div class="form-group" style="margin-top:20px;border-top:1px solid #e2e8f0;padding-top:16px;">
+          <div class="form-group">
+            <label>YouTube API key (để trống = dùng key mặc định)</label>
+            <input id="sw-yt-api-key" type="text" placeholder="AIza…" style="width:100%">
+          </div>
+
+          <h4 class="sw-cfg-group">GPM &amp; thông báo</h4>
+          <div class="form-group">
             <label style="display:flex;align-items:center;gap:8px;font-weight:600;">
               <input id="sw-gpm-enabled" type="checkbox"> Bật tự động GPM (đăng bằng trình duyệt GPM)
             </label>
@@ -3776,9 +4013,13 @@
             <div class="form-group" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
               <label style="margin:0;">GPM host</label>
               <input id="sw-gpm-host" type="text" value="127.0.0.1:19995" style="width:200px">
-              <button id="sw-gpm-test" title="Kiểm tra kết nối GPM"
-                style="border:1px solid #cbd5e0;background:#fff;border-radius:6px;cursor:pointer;font-size:16px;line-height:1;padding:5px 8px;">🔌</button>
+              <button id="sw-gpm-test" title="Kiểm tra kết nối GPM" class="sw-icon-btn">🔌</button>
               <span id="sw-gpm-test-status" style="font-size:13px;"></span>
+            </div>
+            <div class="form-group" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <label style="margin:0;">Đóng trình duyệt sau (phút rảnh)</label>
+              <input id="sw-gpm-idle-close" type="number" min="0" value="10" style="width:80px">
+              <span style="font-size:12px;color:#718096;">0 = luôn giữ mở</span>
             </div>
             <div class="form-group">
               <label style="display:flex;align-items:center;gap:8px;font-weight:normal;">
@@ -3792,71 +4033,10 @@
               <button class="btn btn-secondary" id="sw-gpm-tg-test">Gửi thử</button>
               <span id="sw-gpm-tg-status" style="font-size:13px;"></span>
             </div>
-            <div class="action-buttons">
-              <button class="btn btn-secondary" id="sw-gpm-list">Tải danh sách kênh</button>
-              <button class="btn btn-primary" id="sw-gpm-connect-all">Connect tất cả</button>
-            </div>
-            <table id="sw-gpm-table" style="width:100%;border-collapse:collapse;margin-top:12px;font-size:13px">
-              <thead>
-                <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
-                  <th style="text-align:left;padding:10px 12px;">Kênh</th>
-                  <th style="text-align:left;padding:10px 12px;">GPM Profile ID</th>
-                  <th style="text-align:left;padding:10px 12px;">Kết nối</th>
-                  <th style="text-align:left;padding:10px 12px;">Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
           </div>
-          </div>
-          </details>
-          <div class="action-buttons">
-            <button class="btn btn-primary" id="sw-start">Start theo dõi</button>
-            <button class="btn btn-secondary" id="sw-stop">Stop</button>
-            <button class="btn btn-secondary" id="sw-run-now">Chạy tất cả ngay</button>
-          </div>
-          <details id="sw-stats-details" style="margin-top:16px;">
-            <summary style="cursor:pointer;font-weight:600;padding:10px 14px;color:#2d3748;user-select:none;background:#f8f9fa;border:1px solid #e2e8f0;border-radius:8px;list-style:none;">📊 Số liệu kênh — bấm để thu gọn/mở</summary>
-            <div style="padding:14px 4px 4px;">
-              <div style="display:flex;align-items:center;gap:10px;">
-                <button class="btn btn-secondary" id="sw-stats-refresh">🔄 Làm mới</button>
-              </div>
-              <div id="sw-stats-banner" style="display:none;margin-top:8px;padding:8px 12px;border-radius:6px;font-size:13px;"></div>
-              <table id="sw-stats-table" style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">
-                <thead>
-                  <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
-                    <th style="text-align:left;padding:10px 12px;">Kênh</th>
-                    <th style="text-align:right;padding:10px 12px;">Sub</th>
-                    <th style="text-align:right;padding:10px 12px;">Tổng view</th>
-                    <th style="text-align:right;padding:10px 12px;">Số video</th>
-                    <th style="text-align:left;padding:10px 12px;">Cập nhật lúc</th>
-                    <th style="text-align:left;padding:10px 12px;"></th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-            </div>
-          </details>
-          <table id="sw-status-table" style="width:100%;border-collapse:collapse;margin-top:16px;font-size:13px">
-            <thead>
-              <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
-                <th style="text-align:left;padding:10px 12px;">Kênh</th>
-                <th style="text-align:left;padding:10px 12px;">Video</th>
-                <th style="text-align:left;padding:10px 12px;">Tải / Render</th>
-                <th style="text-align:left;padding:10px 12px;">Upload GPM</th>
-                <th style="text-align:left;padding:10px 12px;">Lỗi</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-          <details style="margin-top:16px;">
-            <summary style="cursor:pointer;font-size:13px;color:#4a5568;">📜 Log chi tiết</summary>
-            <pre id="sw-log" style="height:200px;overflow:auto;background:#1a1a2e;color:#0f0;padding:12px;margin-top:8px;border-radius:8px;font-size:12px;line-height:1.5;"></pre>
-          </details>
         </div>
       </div>
     </div>
-    </div><!-- /#work-view -->
 
     <!-- Help Modal -->
     <div id="helpModal" class="modal">

@@ -4122,8 +4122,12 @@ async function runConcat() {
   if (!api) return;
   const $ = (id) => document.getElementById(id);
   const logEl = $("sw-log");
-  const statusBody = $("sw-status-table")?.querySelector("tbody");
-  const rows = new Map(); // url -> {chEl, vidEl, statusEl, uploadEl, errEl}
+  const grid = $("sw-cards");
+  const nf = new Intl.NumberFormat("vi-VN");
+
+  // Một Map duy nhất cho cả tab: mỗi kênh gom số liệu, trạng thái GPM và video của nó.
+  // sheetName -> { name, profileId, videosPerDay, countToday, enabled, stats, gpm, videos, el, open }
+  const channels = new Map();
 
   function log(msg) {
     if (!logEl) return;
@@ -4135,25 +4139,308 @@ async function runConcat() {
     const m = s.match(/[?&]v=([\w-]+)/) || s.match(/\/([\w-]{6,})(?:[/?#]|$)/);
     return m ? m[1] : (s.length > 34 ? "…" + s.slice(-32) : s);
   }
-  // Mỗi URL (video) = 1 dòng, theo dõi cả vòng đời tải → render → upload.
-  function ensureRow(url, channel, title) {
-    if (!statusBody || !url) return null;
-    let r = rows.get(url);
-    if (!r) {
-      const tr = document.createElement("tr");
-      tr.style.borderBottom = "1px solid #eee";
-      tr.innerHTML = `<td class="ch" style="padding:8px 12px;"></td><td class="vid" style="padding:8px 12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></td><td class="st" style="padding:8px 12px;"></td><td class="up" style="padding:8px 12px;"></td><td class="er" style="padding:8px 12px;color:#c00"></td>`;
-      statusBody.appendChild(tr);
-      r = {
-        chEl: tr.querySelector(".ch"), vidEl: tr.querySelector(".vid"),
-        statusEl: tr.querySelector(".st"), uploadEl: tr.querySelector(".up"), errEl: tr.querySelector(".er"),
+  const num = (v) => (v === null || v === undefined ? "—" : nf.format(v));
+
+  // Video coi như xong khi đã lên lịch upload, hoặc (không bật GPM) khi render xong.
+  const isDone = (v) => /^✅/.test(v.upload || "") || (!v.upload && /^✅/.test(v.state || ""));
+  const isErr = (v) => !!v.error || /^❌/.test(v.upload || "");
+
+  // ===== Card =====
+
+  function buildCard(c) {
+    const card = document.createElement("div");
+    card.className = "sw-card";
+
+    const top = document.createElement("div");
+    top.className = "sw-card-top";
+    const dot = document.createElement("span");
+    dot.className = "sw-dot";
+    const name = document.createElement("span");
+    name.className = "sw-name";
+    name.textContent = c.name; // chuỗi từ Sheet: luôn textContent, không nội suy HTML
+    name.title = c.name;
+    const plug = document.createElement("button");
+    plug.className = "sw-icon-btn";
+    plug.textContent = "🔌";
+    const quota = document.createElement("span");
+    quota.className = "sw-quota";
+    const caret = document.createElement("button");
+    caret.className = "sw-caret";
+    caret.textContent = "▾";
+    caret.title = "Xem video của kênh";
+    top.append(dot, name, plug, quota, caret);
+
+    const stats = document.createElement("div");
+    stats.className = "sw-stats";
+    const activity = document.createElement("div");
+    activity.className = "sw-activity";
+    const body = document.createElement("div");
+    body.className = "sw-card-body";
+    body.style.display = "none";
+
+    card.append(top, stats, activity, body);
+
+    plug.addEventListener("click", () => connectOne(c));
+    caret.addEventListener("click", () => {
+      c.open = !c.open;
+      caret.textContent = c.open ? "▴" : "▾";
+      renderCard(c);
+    });
+
+    c.el = { card, dot, name, plug, quota, stats, activity, body };
+    return card;
+  }
+
+  function ensureChannel(sheetName) {
+    if (!sheetName) return null;
+    let c = channels.get(sheetName);
+    if (!c) {
+      c = {
+        name: sheetName, profileId: "", videosPerDay: 0, countToday: 0, enabled: true,
+        stats: null, gpm: { state: "idle", msg: "" }, videos: new Map(), open: false,
       };
-      rows.set(url, r);
+      channels.set(sheetName, c);
+      grid.appendChild(buildCard(c));
+      renderCard(c);
     }
-    if (channel) r.chEl.textContent = channel;
-    if (title) { r.vidEl.textContent = title; r.vidEl.title = title; }
-    else if (!r.vidEl.textContent) { r.vidEl.textContent = shortUrl(url); r.vidEl.title = url; }
-    return r;
+    return c;
+  }
+
+  function ensureVideo(c, url, title) {
+    let v = c.videos.get(url);
+    if (!v) { v = { url, title: "", state: "", upload: "", error: "" }; c.videos.set(url, v); }
+    if (title) v.title = title;
+    else if (!v.title) v.title = shortUrl(url);
+    return v;
+  }
+
+  function activityText(c) {
+    const list = [...c.videos.values()];
+    const active = list.find((v) => !isDone(v) && !isErr(v) && (v.state || v.upload));
+    if (active) return { text: `${active.upload || active.state} — “${active.title}”`, err: false, busy: true };
+    const errs = list.filter(isErr).length;
+    if (errs) return { text: `❌ ${errs} video lỗi`, err: true, busy: false };
+    if (c.videosPerDay > 0 && c.countToday >= c.videosPerDay) return { text: "✓ đủ hôm nay", err: false, busy: false };
+    return { text: "— chờ lượt chạy", err: false, busy: false };
+  }
+
+  function renderVideos(c) {
+    const body = c.el.body;
+    body.textContent = "";
+    if (!c.open) { body.style.display = "none"; return; }
+    body.style.display = "";
+
+    const list = [...c.videos.values()];
+    const errs = list.filter(isErr);
+    const active = list.filter((v) => !isDone(v) && !isErr(v));
+    const doneCount = list.filter(isDone).length;
+
+    for (const v of [...errs, ...active]) {
+      const row = document.createElement("div");
+      row.className = "sw-vid";
+      const t = document.createElement("span");
+      t.className = "sw-vid-title";
+      t.textContent = v.title;
+      t.title = v.url;
+      const st = document.createElement("span");
+      st.className = "sw-vid-state";
+      st.textContent = v.upload || v.state || "—";
+      row.append(t, st);
+      body.appendChild(row);
+      if (v.error) {
+        const e = document.createElement("div");
+        e.className = "sw-vid-err";
+        e.textContent = `⚠ ${v.error}`;
+        body.appendChild(e);
+      }
+    }
+    if (doneCount) {
+      const d = document.createElement("div");
+      d.className = "sw-done-note";
+      d.textContent = `✓ ${doneCount} video đã xong`;
+      body.appendChild(d);
+    }
+    if (!list.length) {
+      const d = document.createElement("div");
+      d.className = "sw-vid-state";
+      d.textContent = "Chưa có video nào trong lượt chạy này.";
+      body.appendChild(d);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "sw-card-actions";
+    const btn = document.createElement("button");
+    btn.className = "btn btn-secondary";
+    btn.textContent = "Lấy URL nguồn";
+    const handle = c.stats?.sourceHandle;
+    btn.disabled = !handle;
+    btn.title = handle ? `Lấy video từ ${handle}` : "Kênh chưa điền cột @handle nguồn";
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const old = btn.textContent;
+      btn.textContent = "⏳ đang lấy…";
+      try {
+        const out = await api.fetchSourceUrls(c.name);
+        if (out?.ok) log(`[${c.name}] ✅ Đã thêm ${out.added} URL, bỏ qua ${out.skipped} trùng.`);
+        else log(`[${c.name}] ❌ ${out?.error || "lấy URL thất bại"}`);
+      } catch (err) {
+        log(`[${c.name}] ❌ Lỗi khi lấy URL: ${err.message}`);
+      } finally {
+        btn.textContent = old;
+        btn.disabled = false;
+      }
+    });
+    actions.appendChild(btn);
+    body.appendChild(actions);
+  }
+
+  function renderCard(c) {
+    if (!c.el) return;
+    const { card, dot, plug, quota, stats, activity } = c.el;
+    const act = activityText(c);
+
+    card.classList.toggle("disabled", !c.enabled);
+    card.classList.toggle("busy", act.busy);
+
+    dot.className = "sw-dot" + (act.busy ? " busy" : c.gpm.state === "ok" ? " ok" : c.gpm.state === "err" ? " err" : "");
+    dot.title = c.gpm.msg || (act.busy ? "đang chạy" : "chưa kết nối GPM");
+
+    plug.disabled = !c.profileId || c.gpm.state === "busy";
+    plug.title = c.profileId ? "Mở YouTube Studio bằng profile GPM" : "Kênh chưa có GPM Profile ID trong ⚙config";
+
+    quota.textContent = c.videosPerDay > 0 ? `${c.countToday}/${c.videosPerDay}` : "—";
+    quota.classList.toggle("full", c.videosPerDay > 0 && c.countToday >= c.videosPerDay);
+    quota.title = "Số video đã render hôm nay / hạn mức mỗi ngày";
+
+    const s = c.stats;
+    stats.textContent = !s ? "…"
+      : s.error ? `⚠ ${s.error}`
+        : s.updatedAt ? `${num(s.subscribers)} sub · ${num(s.views)} view · ${num(s.videoCount)} video`
+          : (s.channelUrl ? "chưa làm mới số liệu" : "chưa điền cột Link kênh");
+
+    activity.textContent = act.text;
+    activity.classList.toggle("err", act.err);
+    activity.title = act.text;
+
+    renderVideos(c);
+  }
+
+  function renderAll() { for (const c of channels.values()) renderCard(c); }
+
+  // ===== Nạp danh sách kênh (một lần khi mở tab) =====
+  let loaded = false;
+  let loading = false;
+
+  function setBanner(text, kind) {
+    const el = $("sw-stats-banner");
+    if (!el) return;
+    if (!text) { el.style.display = "none"; return; }
+    el.style.display = "";
+    el.textContent = text;
+    const red = kind === "error";
+    el.style.background = red ? "#fdecea" : "#fff8e1";
+    el.style.color = red ? "#c00" : "#7a5c00";
+  }
+
+  // Chỗ giữ chỗ khi lưới chưa có card nào. Không bao giờ được xoá card thật:
+  // sự kiện runner có thể đã dựng card trước khi người dùng mở tab.
+  function setEmpty(text) {
+    grid.querySelector(".sw-empty")?.remove();
+    if (grid.querySelector(".sw-card")) return;
+    const d = document.createElement("div");
+    d.className = "sw-empty";
+    d.textContent = text;
+    grid.appendChild(d);
+  }
+
+  async function loadChannelsOnce() {
+    if (loaded || loading) return;
+    loading = true;
+    setEmpty("⏳ đang tải danh sách kênh…");
+    try {
+      const r = await api.gpmListChannels();
+      if (!r?.ok) { setEmpty("Chưa tải được danh sách kênh."); setBanner(`❌ ${r?.error || "lỗi"}`, "error"); return; }
+      if (!r.channels.length) { setEmpty("Sheet ⚙config chưa có kênh nào."); loaded = true; return; }
+      // Gộp, KHÔNG xoá: runner có thể đã chạy (autoRunOnOpen) và tạo card từ sự kiện
+      // trước khi người dùng mở tab. Xoá sạch ở đây sẽ nuốt mất video đang chạy.
+      grid.querySelector(".sw-empty")?.remove();
+      for (const ch of r.channels) {
+        const c = ensureChannel(ch.sheetName);
+        c.profileId = ch.gpmProfileId || "";
+        c.videosPerDay = ch.videosPerDay || 0;
+        // runner-state đã tính cả video render trong phiên này, nhưng một video có thể
+        // render xong giữa lúc đọc IPC và lúc này — lấy max để không bao giờ lùi số.
+        c.countToday = Math.max(ch.countToday || 0, c.countToday);
+        c.enabled = ch.enabled !== false;
+        grid.appendChild(c.el.card); // xếp lại theo thứ tự trong ⚙config (appendChild là move)
+        renderCard(c);
+      }
+      loaded = true;
+      setBanner("", null);
+      // Tên kênh + @handle nguồn: đọc thẳng từ Sheet, KHÔNG gọi YouTube API (không tốn quota).
+      applyStats(await api.listStatsChannels());
+    } catch (err) {
+      setEmpty("Chưa tải được danh sách kênh.");
+      setBanner(`❌ Lỗi khi tải danh sách kênh: ${err.message}`, "error");
+    } finally {
+      loading = false;
+    }
+  }
+
+  const MISSING_LABEL = {
+    subscribers: "Sub", totalViews: "Tổng view",
+    videoCount: "Số video", statsUpdatedAt: "Cập nhật lúc",
+  };
+
+  function applyStats(res) {
+    if (!res?.ok) { setBanner(`❌ ${res?.error || "Làm mới số liệu thất bại"}`, "error"); return; }
+
+    const allFailed = res.rows.length > 0 && res.rows.every((r) => r.error);
+    if (allFailed) setBanner(`❌ Mọi kênh đều lỗi: ${res.rows[0].error}`, "error");
+    else if (res.missing?.length) setBanner(`⚠️ Thiếu cột trong ⚙config: ${res.missing.map((k) => MISSING_LABEL[k]).join(", ")}`, "warn");
+    else setBanner("", null);
+
+    for (const r of res.rows) {
+      const c = ensureChannel(r.sheetName);
+      c.stats = r;
+      renderCard(c);
+    }
+  }
+
+  // ===== GPM =====
+  async function connectOne(c) {
+    if (!c.profileId) return;
+    c.gpm = { state: "busy", msg: "đang kết nối…" };
+    renderCard(c);
+    const r = await api.gpmConnect({ gpmHost: $("sw-gpm-host").value.trim(), profileId: c.profileId, sheetName: c.name });
+    c.gpm = r?.ok
+      ? { state: "ok", msg: "đã mở YouTube Studio" }
+      : { state: "err", msg: r?.error || "kết nối thất bại" };
+    if (!r?.ok) log(`[${c.name}] ❌ GPM: ${c.gpm.msg}`);
+    renderCard(c);
+  }
+
+  $("sw-gpm-connect-all")?.addEventListener("click", async () => {
+    for (const c of channels.values()) if (c.profileId) await connectOne(c);
+  });
+
+  // ===== Cấu hình (modal) =====
+  const cfgModal = $("sw-config-modal");
+  const openCfg = () => cfgModal.classList.add("active");
+  const closeCfg = () => cfgModal.classList.remove("active");
+  $("sw-open-config")?.addEventListener("click", openCfg);
+  $("sw-config-close")?.addEventListener("click", closeCfg);
+  cfgModal?.addEventListener("click", (e) => { if (e.target === cfgModal) closeCfg(); });
+  document.addEventListener("keydown", (e) => {
+    // Listener toàn cục: chạy ở MỌI phím bấm, nên phải chịu được cfgModal thiếu.
+    if (e.key === "Escape" && cfgModal?.classList.contains("active")) closeCfg();
+  });
+
+  // "Connect tất cả" chỉ có nghĩa khi GPM bật.
+  function syncGpmVisibility() {
+    const on = $("sw-gpm-enabled").checked;
+    $("sw-gpm-panel").style.display = on ? "" : "none";
+    $("sw-gpm-connect-all").style.display = on ? "" : "none";
   }
 
   async function loadSettings() {
@@ -4167,12 +4454,13 @@ async function runConcat() {
     $("sw-use-gpu").checked = !!s.useGPU;
     $("sw-gpm-enabled").checked = !!s.gpmEnabled;
     $("sw-gpm-host").value = s.gpmHost || "127.0.0.1:19995";
+    $("sw-gpm-idle-close").value = s.gpmIdleCloseMin ?? 10;
     $("sw-gpm-tg-enabled").checked = !!s.gpmTelegramEnabled;
     $("sw-gpm-tg-token").value = s.gpmTelegramToken || "";
     $("sw-gpm-tg-chat").value = s.gpmTelegramChatId || "";
     $("sw-gpm-tg-fields").style.display = s.gpmTelegramEnabled ? "" : "none";
-    $("sw-gpm-panel").style.display = s.gpmEnabled ? "" : "none";
     $("sw-yt-api-key").value = s.ytApiKey || "";
+    syncGpmVisibility();
   }
   function currentSettings() {
     return {
@@ -4185,6 +4473,7 @@ async function runConcat() {
       useGPU: $("sw-use-gpu").checked,
       gpmEnabled: $("sw-gpm-enabled").checked,
       gpmHost: $("sw-gpm-host").value.trim() || "127.0.0.1:19995",
+      gpmIdleCloseMin: Math.max(0, parseInt($("sw-gpm-idle-close").value, 10) || 0),
       gpmTelegramEnabled: $("sw-gpm-tg-enabled").checked,
       gpmTelegramToken: $("sw-gpm-tg-token").value.trim(),
       gpmTelegramChatId: $("sw-gpm-tg-chat").value.trim(),
@@ -4192,19 +4481,17 @@ async function runConcat() {
     };
   }
 
-  // Tự động lưu cấu hình mỗi khi thay đổi (bỏ nút "Lưu cấu hình").
+  // Tự động lưu cấu hình mỗi khi thay đổi (không có nút "Lưu").
   let saveTimer = null;
   async function saveNow() { await api.saveSettings(currentSettings()); }
   function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
-  ["sw-spreadsheet-id", "sw-poll", "sw-video-speed", "sw-yt-api-key"].forEach((id) =>
+  ["sw-spreadsheet-id", "sw-poll", "sw-video-speed", "sw-yt-api-key", "sw-gpm-idle-close"].forEach((id) =>
     $(id)?.addEventListener("input", saveDebounced));
   ["sw-auto-open", "sw-use-gpu", "sw-gpm-enabled"].forEach((id) =>
     $(id)?.addEventListener("change", saveNow));
   ["sw-gpm-host", "sw-gpm-tg-token", "sw-gpm-tg-chat"].forEach((id) =>
     $(id)?.addEventListener("input", saveDebounced));
-  $("sw-gpm-enabled")?.addEventListener("change", () => {
-    $("sw-gpm-panel").style.display = $("sw-gpm-enabled").checked ? "" : "none";
-  });
+  $("sw-gpm-enabled")?.addEventListener("change", syncGpmVisibility);
   $("sw-gpm-tg-enabled")?.addEventListener("change", () => {
     $("sw-gpm-tg-fields").style.display = $("sw-gpm-tg-enabled").checked ? "" : "none";
     saveNow();
@@ -4241,142 +4528,6 @@ async function runConcat() {
       if (btn) btn.disabled = false;
     }
   });
-  $("sw-start")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); await api.start(); log("▶ Bắt đầu theo dõi."); });
-  $("sw-stop")?.addEventListener("click", async () => { await api.stop(); log("⏹ Đã dừng."); });
-  $("sw-run-now")?.addEventListener("click", async () => { await api.saveSettings(currentSettings()); log("Chạy tất cả ngay…"); await api.runNow(); });
-
-  // ===== Số liệu kênh =====
-  const nf = new Intl.NumberFormat("vi-VN");
-  // Bảng đã có dữ liệu chưa (danh sách kênh hoặc số liệu thật).
-  let statsLoaded = false;
-  let statsLoading = false;
-
-  function setStatsBanner(text, kind) {
-    const el = $("sw-stats-banner");
-    if (!el) return;
-    if (!text) { el.style.display = "none"; return; }
-    el.style.display = "";
-    el.textContent = text;
-    const red = kind === "error";
-    el.style.background = red ? "#fdecea" : "#fff8e1";
-    el.style.color = red ? "#c00" : "#7a5c00";
-  }
-
-  const MISSING_LABEL = {
-    subscribers: "Sub", totalViews: "Tổng view",
-    videoCount: "Số video", statsUpdatedAt: "Cập nhật lúc",
-  };
-
-  function renderStats(res) {
-    const body = $("sw-stats-table")?.querySelector("tbody");
-    if (!body) return;
-    if (!res?.ok) { setStatsBanner(`❌ ${res?.error || "Làm mới số liệu thất bại"}`, "error"); return; }
-    // Bảng đã có dữ liệu → lần mở collapse sau không nạp đè bằng danh sách kênh trống.
-    statsLoaded = true;
-
-    const allFailed = res.rows.length > 0 && res.rows.every((r) => r.error);
-    if (allFailed) setStatsBanner(`❌ Mọi kênh đều lỗi: ${res.rows[0].error}`, "error");
-    else if (res.missing?.length) setStatsBanner(`⚠️ Thiếu cột trong ⚙config: ${res.missing.map((k) => MISSING_LABEL[k]).join(", ")}`, "warn");
-    else setStatsBanner("", null);
-
-    body.innerHTML = "";
-    for (const r of res.rows) {
-      const tr = document.createElement("tr");
-      tr.style.borderBottom = "1px solid #eee";
-      const num = (v) => (v === null || v === undefined ? "—" : nf.format(v));
-      // Text từ Sheet và từ thông báo lỗi Google API luôn đặt bằng textContent,
-      // không nội suy vào innerHTML.
-      const cells = r.error
-        ? `<td class="msg" colspan="4" style="padding:8px 12px;color:#c00;"></td>`
-        : r.updatedAt
-          ? `<td style="padding:8px 12px;text-align:right;">${num(r.subscribers)}</td>
-             <td style="padding:8px 12px;text-align:right;">${num(r.views)}</td>
-             <td style="padding:8px 12px;text-align:right;">${num(r.videoCount)}</td>
-             <td class="msg" style="padding:8px 12px;"></td>`
-          : `<td class="msg" colspan="4" style="padding:8px 12px;color:#888;"></td>`;
-      tr.innerHTML = `<td class="ch" style="padding:8px 12px;"></td>${cells}<td style="padding:8px 12px;"></td>`;
-      tr.querySelector(".ch").textContent = r.sheetName;
-      tr.querySelector(".msg").textContent = r.error
-        ? `⚠ ${r.error}`
-        : r.updatedAt || (r.channelUrl ? "chưa làm mới" : "chưa điền cột Link kênh");
-
-      const btn = document.createElement("button");
-      btn.className = "btn btn-secondary";
-      btn.textContent = "Lấy URL nguồn";
-      btn.disabled = !r.sourceHandle;
-      btn.title = r.sourceHandle ? `Lấy video từ ${r.sourceHandle}` : "Kênh chưa điền cột @handle nguồn";
-      btn.addEventListener("click", async () => {
-        btn.disabled = true;
-        const old = btn.textContent;
-        btn.textContent = "⏳ đang lấy…";
-        try {
-          const out = await api.fetchSourceUrls(r.sheetName);
-          if (out?.ok) log(`[${r.sheetName}] ✅ Đã thêm ${out.added} URL, bỏ qua ${out.skipped} trùng.`);
-          else log(`[${r.sheetName}] ❌ ${out?.error || "lấy URL thất bại"}`);
-        } catch (err) {
-          log(`[${r.sheetName}] ❌ Lỗi khi lấy URL: ${err.message}`);
-        } finally {
-          btn.textContent = old;
-          btn.disabled = false;
-        }
-      });
-      tr.lastElementChild.appendChild(btn);
-      body.appendChild(tr);
-    }
-  }
-
-  $("sw-stats-refresh")?.addEventListener("click", async () => {
-    const btn = $("sw-stats-refresh");
-    btn.disabled = true;
-    setStatsBanner("⏳ đang lấy số liệu…", "warn");
-    try { renderStats(await api.refreshStats()); }
-    catch (err) { renderStats({ ok: false, error: `Lỗi khi làm mới: ${err.message}` }); }
-    finally { btn.disabled = false; }
-  });
-
-  // Mở collapse lần đầu → chỉ đọc Sheet lấy tên kênh + @handle nguồn, KHÔNG gọi
-  // YouTube API. Nhờ vậy nút "Lấy URL nguồn" dùng được ngay, không tốn quota.
-  // Thất bại thì không đặt statsLoaded, để lần mở sau thử lại.
-  async function loadStatsChannelsOnce() {
-    if (statsLoaded || statsLoading) return;
-    statsLoading = true;
-    setStatsBanner("⏳ đang tải danh sách kênh…", "warn");
-    try { renderStats(await api.listStatsChannels()); }
-    catch (err) { renderStats({ ok: false, error: `Lỗi khi tải danh sách kênh: ${err.message}` }); }
-    finally { statsLoading = false; }
-  }
-  $("sw-stats-details")?.addEventListener("toggle", () => {
-    if ($("sw-stats-details").open) loadStatsChannelsOnce();
-  });
-
-  api.onEvent((evt) => {
-    if (evt.type === "channel-status") {
-      // Có url → cập nhật dòng của video đó; không có url = thông báo cấp kênh → chỉ ghi log.
-      if (evt.url) { const r = ensureRow(evt.url, evt.channel); if (r) r.statusEl.textContent = evt.status; }
-      log(`[${evt.channel}] ${evt.status}${evt.url ? " — " + shortUrl(evt.url) : ""}`);
-    } else if (evt.type === "video-rendered") {
-      const r = ensureRow(evt.sourceUrl, evt.channel, evt.title);
-      if (r) r.statusEl.textContent = "✅ render xong";
-      log(`[${evt.channel}] ✅ render: ${evt.title}`);
-    } else if (evt.type === "upload-status") {
-      const r = ensureRow(evt.url, evt.channel, evt.title);
-      if (r?.uploadEl) {
-        r.uploadEl.textContent = evt.status;
-        r.uploadEl.style.color = evt.status.startsWith("❌") ? "#c00" : evt.status.startsWith("✅") ? "#1a7f37" : "#666";
-      }
-      log(`[${evt.channel}] ${evt.status}${evt.title ? " — " + evt.title : ""}`);
-    } else if (evt.type === "stats") {
-      renderStats(evt);
-    } else if (evt.type === "error") {
-      const r = evt.url ? ensureRow(evt.url, evt.channel) : null;
-      if (r) r.errEl.textContent = evt.message;
-      log(`❌ ${evt.channel ? "[" + evt.channel + "] " : ""}${evt.message}`);
-    } else if (evt.type === "done") {
-      log("— Hoàn tất lượt chạy —");
-    }
-  });
-
-  // ===== GPM =====
   $("sw-gpm-test")?.addEventListener("click", async () => {
     const statusEl = $("sw-gpm-test-status");
     statusEl.textContent = "⏳ đang kiểm tra…"; statusEl.style.color = "#666";
@@ -4384,7 +4535,6 @@ async function runConcat() {
     if (r?.ok) { statusEl.textContent = `✅ ${r.profiles.length} profiles`; statusEl.style.color = "#1a7f37"; }
     else { statusEl.textContent = `❌ ${r?.error || "lỗi"}`; statusEl.style.color = "#c00"; }
   });
-
   $("sw-gpm-tg-test")?.addEventListener("click", async () => {
     const statusEl = $("sw-gpm-tg-status");
     const token = $("sw-gpm-tg-token").value.trim();
@@ -4397,47 +4547,57 @@ async function runConcat() {
     else { statusEl.textContent = `❌ ${r?.error || "lỗi"}`; statusEl.style.color = "#c00"; }
   });
 
-  function gpmRenderRow(ch) {
-    const tb = $("sw-gpm-table").querySelector("tbody");
-    const tr = document.createElement("tr");
-    tr.style.borderBottom = "1px solid #eee";
-    tr.innerHTML = `
-      <td style="padding:8px 12px;">${ch.sheetName}</td>
-      <td style="padding:8px 12px;">${ch.gpmProfileId || '<span style="color:#c00;">(chưa có)</span>'}</td>
-      <td style="padding:8px 12px;"><button class="btn btn-secondary gpm-connect-btn"${ch.gpmProfileId ? "" : " disabled"}>Connect</button></td>
-      <td class="gpm-st" style="padding:8px 12px;"></td>`;
-    const btn = tr.querySelector(".gpm-connect-btn");
-    const st = tr.querySelector(".gpm-st");
-    btn?.addEventListener("click", () => gpmConnectOne(ch, st, btn));
-    tb.appendChild(tr);
-    return { st, btn, ch };
-  }
-
-  async function gpmConnectOne(ch, st, btn) {
-    if (!ch.gpmProfileId) return;
-    if (btn) btn.disabled = true;
-    st.textContent = "⏳ đang kết nối…"; st.style.color = "#666";
-    const r = await api.gpmConnect({ gpmHost: $("sw-gpm-host").value.trim(), profileId: ch.gpmProfileId, sheetName: ch.sheetName });
-    if (r?.ok) { st.textContent = "✅ đã mở Studio"; st.style.color = "#1a7f37"; }
-    else { st.textContent = `❌ ${r?.error || "lỗi"}`; st.style.color = "#c00"; }
-    if (btn) btn.disabled = false;
-  }
-
-  let gpmRows = [];
-  $("sw-gpm-list")?.addEventListener("click", async () => {
-    const tb = $("sw-gpm-table").querySelector("tbody");
-    tb.innerHTML = "";
-    gpmRows = [];
-    const r = await api.gpmListChannels();
-    if (!r?.ok) { alert(r?.error || "Không tải được danh sách kênh."); return; }
-    gpmRows = r.channels.map((ch) => gpmRenderRow(ch));
+  // ===== Thanh công cụ =====
+  $("sw-start")?.addEventListener("click", async () => { await saveNow(); await api.start(); log("▶ Bắt đầu theo dõi."); });
+  $("sw-stop")?.addEventListener("click", async () => { await api.stop(); log("⏹ Đã dừng."); });
+  $("sw-run-now")?.addEventListener("click", async () => { await saveNow(); log("Chạy tất cả ngay…"); await api.runNow(); });
+  $("sw-stats-refresh")?.addEventListener("click", async () => {
+    const btn = $("sw-stats-refresh");
+    btn.disabled = true;
+    setBanner("⏳ đang lấy số liệu…", "warn");
+    try { applyStats(await api.refreshStats()); }
+    catch (err) { applyStats({ ok: false, error: `Lỗi khi làm mới: ${err.message}` }); }
+    finally { btn.disabled = false; }
   });
 
-  $("sw-gpm-connect-all")?.addEventListener("click", async () => {
-    for (const row of gpmRows) {
-      if (row.ch.gpmProfileId) await gpmConnectOne(row.ch, row.st, row.btn);
+  // ===== Sự kiện từ runner =====
+  api.onEvent((evt) => {
+    if (evt.type === "channel-status") {
+      // Có url → cập nhật video đó; không có url = thông báo cấp kênh → chỉ ghi log.
+      if (evt.url) {
+        const c = ensureChannel(evt.channel);
+        ensureVideo(c, evt.url).state = evt.status;
+        renderCard(c);
+      }
+      log(`[${evt.channel}] ${evt.status}${evt.url ? " — " + shortUrl(evt.url) : ""}`);
+    } else if (evt.type === "video-rendered") {
+      const c = ensureChannel(evt.channel);
+      ensureVideo(c, evt.sourceUrl, evt.title).state = "✅ render xong";
+      c.countToday++; // quota chỉ tính theo video render được, khớp recordRendered
+      renderCard(c);
+      log(`[${evt.channel}] ✅ render: ${evt.title}`);
+    } else if (evt.type === "upload-status") {
+      const c = ensureChannel(evt.channel);
+      ensureVideo(c, evt.url, evt.title).upload = evt.status;
+      renderCard(c);
+      log(`[${evt.channel}] ${evt.status}${evt.title ? " — " + evt.title : ""}`);
+    } else if (evt.type === "stats") {
+      applyStats(evt);
+    } else if (evt.type === "error") {
+      if (evt.url) {
+        const c = ensureChannel(evt.channel);
+        ensureVideo(c, evt.url).error = evt.message;
+        renderCard(c);
+      }
+      log(`❌ ${evt.channel ? "[" + evt.channel + "] " : ""}${evt.message}`);
+    } else if (evt.type === "done") {
+      log("— Hoàn tất lượt chạy —");
     }
   });
+
+  // Nạp kênh lần đầu khi người dùng mở tab (không gọi Sheet lúc khởi động app).
+  document.querySelector('.tab-button[data-tab="sheet-watch"]')
+    ?.addEventListener("click", () => { loadChannelsOnce(); });
 
   loadSettings();
 })();

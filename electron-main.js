@@ -18,7 +18,7 @@ import { sendTelegram, buildDigest } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne } from "./sheet/channel-download.js";
-import { loadState, saveState } from "./sheet/runner-state.js";
+import { loadState, saveState, todayStr, computeRemaining } from "./sheet/runner-state.js";
 import { loadResume, saveResume } from "./sheet/resume-state.js";
 
 const require = createRequire(import.meta.url);
@@ -1340,7 +1340,7 @@ function sheetSettingsPath() {
 }
 function loadSheetSettings() {
   try { return JSON.parse(fs.readFileSync(sheetSettingsPath(), "utf-8")); }
-  catch { return { spreadsheetId: "", credentialsPath: "", channelsRoot: "", pollSec: 300, autoRunOnOpen: false, useGPU: false, videoSpeed: 0.95, gpuVideoCodec: "h264_nvenc", ytApiKey: "" }; }
+  catch { return { spreadsheetId: "", credentialsPath: "", channelsRoot: "", pollSec: 300, autoRunOnOpen: false, useGPU: false, videoSpeed: 0.95, gpuVideoCodec: "h264_nvenc", ytApiKey: "", gpmIdleCloseMin: 10 }; }
 }
 function saveSheetSettings(s) { fs.writeFileSync(sheetSettingsPath(), JSON.stringify(s, null, 2), "utf-8"); }
 
@@ -1368,6 +1368,9 @@ function buildSheetRunner(win) {
     },
     log: (message) => emitEvent({ type: "log", message }),
     emit: emitEvent, // phát sự kiện upload-status lên bảng UI
+    // Rảnh bấy lâu thì tắt trình duyệt GPM (0 = luôn giữ mở). Đọc 1 lần lúc dựng runner:
+    // đổi cấu hình khi đang chạy thì phải Dừng → Chạy lại.
+    idleCloseMs: Math.max(0, Number(s.gpmIdleCloseMin ?? 10) || 0) * 60_000,
 
     // Ghi ngược trạng thái từng bước vào cột C của tab kênh.
     setUploadStatus: (sheetName, rowIndex, status) =>
@@ -1586,13 +1589,22 @@ ipcMain.handle("gpm:list-channels", async () => {
     if (!st.credentialsPath) return { ok: false, error: "Chưa chọn file service account JSON." };
     const sheets = createSheetsClient(st.credentialsPath);
     const channels = await readConfigSheet(sheets, st.spreadsheetId);
+    // Quota hôm nay: đọc runner-state.json để card hiện "3/8". computeRemaining tự
+    // coi quota là 0 khi lastRunDate khác hôm nay, nên không cần reset thủ công.
+    const state = st.channelsRoot ? loadState(path.join(st.channelsRoot, "runner-state.json")) : {};
+    const today = todayStr(new Date());
     return {
       ok: true,
-      channels: channels.map((c) => ({
-        sheetName: c.sheetName,
-        gpmProfileId: c.gpmProfileId || "",
-        videosPerDay: c.videosPerDay || 0,
-      })),
+      channels: channels.map((c) => {
+        const perDay = parseInt(c.videosPerDay, 10) || 0;
+        return {
+          sheetName: c.sheetName,
+          gpmProfileId: c.gpmProfileId || "",
+          videosPerDay: perDay,
+          enabled: !!c.enabled,
+          countToday: perDay - computeRemaining(state[c.sheetName], perDay, today),
+        };
+      }),
     };
   } catch (err) {
     return { ok: false, error: String(err?.message || err) };

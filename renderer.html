@@ -1340,6 +1340,30 @@
         line-height: 1;
         padding: 7px 10px;
       }
+      .sw-icon-btn:hover:not(:disabled) {
+        background: #f7fafc;
+        border-color: #a0aec0;
+      }
+      .sw-icon-btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      /* ⚙ cấu hình: ô vuông đúng bằng chiều cao hàng nút, nằm cuối toolbar bên phải. */
+      .sw-cog {
+        /* 44px ≈ chiều cao .btn (padding 14px + dòng chữ 14px), để hàng nút thẳng mép. */
+        width: 44px;
+        height: 44px;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        border-radius: 10px;
+        transition: transform 0.25s ease, background 0.15s, border-color 0.15s;
+      }
+      .sw-cog:hover {
+        transform: rotate(90deg);
+      }
       .sw-banner {
         margin-top: 12px;
         padding: 8px 12px;
@@ -3982,7 +4006,9 @@
               <span class="sw-toolbar-sep"></span>
               <button class="btn btn-secondary" id="sw-gpm-connect-all" style="display:none;">🔌 Connect tất cả</button>
               <button class="btn btn-secondary" id="sw-stats-refresh">🔄 Số liệu</button>
-              <button class="btn btn-secondary sw-icon-btn" id="sw-open-config" title="Cấu hình">⚙</button>
+              <!-- KHÔNG dùng class .btn/.btn-secondary: .btn-secondary đặt
+                   min-width:145px !important, ép nút icon phình thành viên thuốc. -->
+              <button class="sw-icon-btn sw-cog" id="sw-open-config" title="Cấu hình">⚙️</button>
             </div>
           </div>
           <div id="sw-stats-banner" class="sw-banner" style="display:none;"></div>

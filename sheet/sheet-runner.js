@@ -29,7 +29,7 @@ export function createSheetRunner(deps) {
   let running = false;
 
   function enqueueUpload(ch, item, info, overlaysDir) {
-    if (!(uploadQueue && config.gpmEnabled && ch.gpmProfileId && ch.postTimes)) return;
+    if (!(uploadQueue && config.gpmEnabled && ch.gpmProfileId && ch.postTimes)) return false;
     uploadQueue.enqueue({
       sheetName: ch.sheetName,
       gpmHost: config.gpmHost,
@@ -42,6 +42,7 @@ export function createSheetRunner(deps) {
       rowIndex: item.rowIndex,
       sourceUrl: item.url,
     });
+    return true;
   }
 
   // yt-dlp lưu thumb cùng basename với video: <title>.mp4 -> <title>.jpg
@@ -142,9 +143,13 @@ export function createSheetRunner(deps) {
           continue;
         }
         if (action !== "upload-only") continue;
-        bumpAttempts(ch.sheetName, item.url, "uploadAttempts");
-        emit({ type: "channel-status", channel: ch.sheetName, status: "thử lại upload", url: item.url });
-        enqueueUpload(ch, item, { outputPath: entry.outputPath, title: entry.title }, overlaysDir);
+        const enqueued = enqueueUpload(ch, item, { outputPath: entry.outputPath, title: entry.title }, overlaysDir);
+        if (enqueued) {
+          bumpAttempts(ch.sheetName, item.url, "uploadAttempts");
+          emit({ type: "channel-status", channel: ch.sheetName, status: "thử lại upload", url: item.url });
+        } else {
+          emit({ type: "log", message: `[${ch.sheetName}] bỏ qua upload lại (GPM tắt hoặc kênh thiếu profile/giờ đăng): ${entry?.title ?? item.url}` });
+        }
       }
 
       // Việc render bị quota cắt; việc upload-only thì không (Task 7 dùng tiếp).

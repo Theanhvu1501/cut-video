@@ -581,3 +581,76 @@ test("upload hết lượt thử -> ghi 'bỏ qua:' vào cột C, không enqueue
   assert.deepEqual(enqueued, []);
   assert.equal(upStatus.at(-1), skipText("GPM chết"));
 });
+
+test("GPM tắt: upload-only không tăng uploadAttempts và không chôn video", async () => {
+  const enqueued = [];
+  const upStatus = [];
+  const logs = [];
+  const { deps, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: false, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: GPM chết" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async (s, r, status) => upStatus.push(status),
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+    emit: (e) => { if (e.type === "log") logs.push(e); },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+
+  const runner = createSheetRunner(deps);
+  await runner.runNow();
+  await runner.runNow();
+  await runner.runNow();
+
+  assert.deepEqual(enqueued, []); // GPM tắt: không bao giờ enqueue
+  assert.equal(getResume()["Kênh A"].u1.uploadAttempts ?? 0, 0); // không tăng bộ đếm
+  assert.deepEqual(upStatus, []); // không ghi "bỏ qua:" vào cột C -> không bị chôn
+  assert.ok(logs.length >= 1, "phải có ít nhất một sự kiện log giải thích lý do bỏ qua");
+});
+
+test("kênh thiếu gpmProfileId: upload-only không tăng uploadAttempts", async () => {
+  const enqueued = [];
+  const { deps, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: GPM chết" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(enqueued, []);
+  assert.equal(getResume()["Kênh A"].u1.uploadAttempts ?? 0, 0);
+});
+
+test("GPM bật đầy đủ: upload-only vẫn tăng uploadAttempts và enqueue", async () => {
+  const enqueued = [];
+  const { deps, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: GPM chết" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+  assert.equal(enqueued.length, 1);
+  assert.equal(getResume()["Kênh A"].u1.uploadAttempts, 1);
+});

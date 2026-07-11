@@ -19,7 +19,11 @@ Từ bước overlay trở đi (ghép lên background, chroma tự dò, cắt, r
 - **Tab kênh**: cột A = **tên file** (thay URL YouTube), cột B = trạng thái tải/render, cột C = trạng thái upload — không đổi cấu trúc.
 - Toàn bộ máy móc sẵn có tái dùng nguyên vẹn: `decideAction`, resume-state, hạn mức/ngày, retry render (cột B), retry upload xuyên lượt (cột C), slot lịch (`readChannelUploads` đọc cột C).
 
-**Chỗ khác duy nhất** so với kênh tải là bước "download" trong `runChannel`: thay vì `yt-dlp` tải URL thì copy file từ `inputs/` làm overlay.
+**Người dùng KHÔNG gõ tên file bằng tay.** Runner tự quét `inputs/` và tự điền tên file vào cột A — y như kênh tải tự lấy URL từ kênh nguồn về điền Sheet (`fetchSourceUrlsFor`). Người dùng chỉ việc thả file vào `inputs/`.
+
+Có **hai** chỗ khác so với kênh tải:
+1. Đầu lượt: tự quét `inputs/` → append tên file mới vào cột A (thay cho bước lấy URL từ YouTube).
+2. Bước "download": copy file từ `inputs/` làm overlay (thay vì `yt-dlp` tải URL).
 
 ## Quyết định thiết kế (đã chốt qua trao đổi)
 
@@ -27,6 +31,7 @@ Từ bước overlay trở đi (ghép lên background, chroma tự dò, cắt, r
 2. Kênh local **quản theo Sheet** như kênh tải (KHÔNG quản theo folder). "Done" nhận biết qua cột B ✅ + cột C ✅, nhất quán với kênh tải.
 3. Khai báo mode bằng **cột mới trong ⚙config**, không đoán mò theo nội dung.
 4. File nguồn trong `inputs/` chỉ được **copy** (không xóa, không di chuyển) — nguồn luôn còn để render lại.
+5. **Tự động điền tên file vào Sheet** — người dùng chỉ thả file, không gõ tay. Dù có 100 file cũng chỉ cần thả vào `inputs/`.
 
 ## Cấu hình: cột "Nguồn video" trong ⚙config
 
@@ -51,7 +56,28 @@ Các kênh hiện có để trống cột này → `"download"` → hành vi cũ
 inputsDir: channelRoot/<kênh>/inputs
 ```
 
-Tạo `inputsDir` (mkdir recursive) như đã làm với `overlaysDir`/`outputDir`. Người dùng thả `<tên>.mp4` (và tùy chọn `<tên>.jpg` làm thumbnail) vào `inputs/`, rồi ghi `<tên>.mp4` vào cột A của tab kênh.
+Tạo `inputsDir` (mkdir recursive) như đã làm với `overlaysDir`/`outputDir`. Người dùng chỉ việc thả `<tên>.mp4` (và tùy chọn `<tên>.jpg` làm thumbnail) vào `inputs/` — **không cần đụng Sheet**. Runner tự điền tên file vào cột A (xem dưới).
+
+## Tự đồng bộ inputs/ → Sheet (không gõ tay)
+
+Đầu `runChannel`, chỉ với kênh local, trước khi lập kế hoạch render:
+
+```js
+if (ch.videoSource === "local") {
+  const files = listLocalInputs(inputsDir);              // ["a.mp4", "b.mp4", ...]
+  const existing = (await sheetsApi.readChannelUrls(ch.sheetName)).map((r) => r.url);
+  const fresh = pickNewUrls(existing, files);            // dedup, dùng lại helper sẵn có
+  if (fresh.length) await sheetsApi.appendUrls(ch.sheetName, fresh);
+}
+```
+
+Đây là bản sao của `fetchSourceUrlsFor` (kênh tải), chỉ thay "lấy URL từ YouTube" bằng "liệt kê file trong `inputs/`". Tái dùng `appendUrls` + `pickNewUrls` có sẵn.
+
+- `listLocalInputs(inputsDir)`: liệt kê `.mp4` trong `inputsDir` (không đệ quy), sắp theo tên. Inject qua deps (như `listBackgrounds`).
+- Dedup theo tên chuỗi tuyệt đối: file đã có dòng trong Sheet (kể cả đã render xong, cột B ✅) **không** bị thêm lại — không sinh dòng trùng, không render lại.
+- File render xong vẫn nằm trong `inputs/` (chỉ copy, không xóa): lần quét sau thấy lại nhưng dedup bỏ qua. Xong việc.
+
+Sau bước này, phần còn lại của `runChannel` đọc các dòng cột A và xử lý y như kênh tải.
 
 ## Luồng runner: rẽ nhánh tại bước lấy overlay
 
@@ -106,6 +132,7 @@ Sau đó `patchEntry(... stage: "downloaded", filePath: dest ...)` và `setUrlSt
 
 - **sheets-service.test.js**: `parseConfigRows` đọc cột "Nguồn video" → `videoSource` đúng (`local` cho các biến thể, `download` khi trống/khác).
 - **sheet-runner.test.js** (`runChannel` với dep bơm giả, `videoSource: "local"`):
+  - tự đồng bộ: `listLocalInputs` trả 3 file, 1 đã có trong cột A → `appendUrls` chỉ được gọi với 2 file mới (dedup qua `pickNewUrls`).
   - file tồn tại → `copyLocalOverlay` được gọi, render nhận `overlayFile = overlays/<file>`, cột B set `DOWNLOADED` rồi `DONE`, `recordRendered` tăng, `enqueueUpload` được gọi. File gốc `inputs/` còn nguyên.
   - thiếu file → cột B ghi lỗi (prefix `ERR_DL`), attempts tăng; quá `MAX_ATTEMPTS` → skipText.
   - render lỗi → `upload-only`/retry ở lượt sau vẫn hoạt động (dùng lại test path sẵn có).

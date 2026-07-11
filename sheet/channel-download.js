@@ -46,3 +46,17 @@ export async function downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPat
   const thumbCandidate = path.join(outputDir, `${title}.jpg`);
   return { filePath, title, thumbPath: fs.existsSync(thumbCandidate) ? thumbCandidate : null };
 }
+
+// Kênh "lấy tại máy": copy file trong inputs/ sang overlays/ làm overlay, cùng shape
+// trả về với downloadOne. File gốc trong inputs/ KHÔNG bị đụng (chỉ copy).
+export function copyLocalOverlay(fileName, inputsDir, overlaysDir) {
+  const src = path.join(inputsDir, fileName);
+  if (!fs.existsSync(src)) throw new Error(`Không thấy file trong inputs: ${fileName}`);
+  if (!fs.existsSync(overlaysDir)) fs.mkdirSync(overlaysDir, { recursive: true });
+  const dest = path.join(overlaysDir, fileName);
+  fs.copyFileSync(src, dest);
+  const title = fileName.replace(/\.[^.]+$/, "");
+  const jpg = path.join(inputsDir, `${title}.jpg`);
+  if (fs.existsSync(jpg)) fs.copyFileSync(jpg, path.join(overlaysDir, `${title}.jpg`));
+  return { filePath: dest, title };
+}

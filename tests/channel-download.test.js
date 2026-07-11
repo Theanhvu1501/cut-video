@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { pickDownloadedFile, downloadOne } from "../sheet/channel-download.js";
+import { pickDownloadedFile, downloadOne, copyLocalOverlay } from "../sheet/channel-download.js";
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "dl-"));
@@ -52,4 +52,35 @@ test("downloadOne không set proxy khi để trống (cố ý tải thẳng)", a
   await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, { proxy: "  ", ytdlFactory: fakeYtdlFactory(seen) });
   assert.equal("proxy" in seen[0], false);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("copyLocalOverlay copies file to overlays and derives title", () => {
+  const inputs = tmpDir();
+  const overlays = tmpDir();
+  fs.writeFileSync(path.join(inputs, "video-a.mp4"), "DATA");
+  const r = copyLocalOverlay("video-a.mp4", inputs, overlays);
+  assert.equal(r.title, "video-a");
+  assert.equal(r.filePath, path.join(overlays, "video-a.mp4"));
+  assert.equal(fs.readFileSync(r.filePath, "utf-8"), "DATA");
+  fs.rmSync(inputs, { recursive: true, force: true });
+  fs.rmSync(overlays, { recursive: true, force: true });
+});
+
+test("copyLocalOverlay copies sibling <title>.jpg thumbnail when present", () => {
+  const inputs = tmpDir();
+  const overlays = tmpDir();
+  fs.writeFileSync(path.join(inputs, "clip.mp4"), "V");
+  fs.writeFileSync(path.join(inputs, "clip.jpg"), "IMG");
+  copyLocalOverlay("clip.mp4", inputs, overlays);
+  assert.equal(fs.readFileSync(path.join(overlays, "clip.jpg"), "utf-8"), "IMG");
+  fs.rmSync(inputs, { recursive: true, force: true });
+  fs.rmSync(overlays, { recursive: true, force: true });
+});
+
+test("copyLocalOverlay throws when source file missing", () => {
+  const inputs = tmpDir();
+  const overlays = tmpDir();
+  assert.throws(() => copyLocalOverlay("nope.mp4", inputs, overlays), /nope\.mp4/);
+  fs.rmSync(inputs, { recursive: true, force: true });
+  fs.rmSync(overlays, { recursive: true, force: true });
 });

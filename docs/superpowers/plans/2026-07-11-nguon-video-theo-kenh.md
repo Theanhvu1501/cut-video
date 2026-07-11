@@ -242,14 +242,9 @@ test("kênh local: tự quét inputs/ và append tên file mới vào Sheet (ded
 Run: `node --test tests/sheet-runner.test.js`
 Expected: FAIL — `appendUrls` không được gọi (`appended.length` là 0), hoặc lỗi `listLocalInputs is not a function`.
 
-- [ ] **Step 3: Import `pickNewUrls`**
+- [ ] **Step 3: (không cần import thêm)**
 
-Trong `sheet/sheet-runner.js`, thêm sau dòng import `normalizeProxy`:
-
-```js
-import { normalizeProxy } from "./proxy.js";
-import { pickNewUrls } from "./youtube-api.js";
-```
+Dedup tên file làm bằng `Set` inline — KHÔNG dùng `pickNewUrls` vì hàm đó rút video-id từ URL YouTube, không hiểu tên file `.mp4` (sẽ loại sạch).
 
 - [ ] **Step 4: Thêm `copyLocalOverlay`, `listLocalInputs` vào deps destructure**
 
@@ -278,8 +273,10 @@ Ngay SAU khối kiểm background (sau dòng `}` đóng `if (!backgrounds.length
       // làm với URL). Người dùng chỉ thả file, không gõ tay.
       if (ch.videoSource === "local") {
         const localFiles = listLocalInputs(inputsDir);
-        const existing = (await sheetsApi.readChannelUrls(ch.sheetName)).map((r) => r.url);
-        const fresh = pickNewUrls(existing, localFiles);
+        // Dedup theo tên file (khớp chuỗi tuyệt đối) — KHÔNG dùng pickNewUrls vì nó
+        // rút video-id từ URL YouTube, không hiểu tên file .mp4.
+        const existing = new Set((await sheetsApi.readChannelUrls(ch.sheetName)).map((r) => r.url));
+        const fresh = localFiles.filter((f) => !existing.has(f));
         if (fresh.length) await sheetsApi.appendUrls(ch.sheetName, fresh);
       }
 ```

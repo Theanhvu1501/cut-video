@@ -21,7 +21,7 @@ export function pickDownloadDelay(config = {}, rand = Math.random) {
 
 export function createSheetRunner(deps) {
   const {
-    config, sheetsApi, downloader, renderer, listBackgrounds,
+    config, sheetsApi, downloader, copyLocalOverlay, listLocalInputs, renderer, listBackgrounds,
     ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma, sleep,
     uploadQueue, refreshStats, resumeStore, fileExists,
   } = deps;
@@ -88,11 +88,22 @@ export function createSheetRunner(deps) {
       }
 
       const channelRoot = path.join(config.channelsRoot, ch.sheetName);
-      const { backgroundsDir, overlaysDir, outputDir } = ensureDirs(channelRoot);
+      const { backgroundsDir, overlaysDir, outputDir, inputsDir } = ensureDirs(channelRoot);
       const backgrounds = listBackgrounds(backgroundsDir);
       if (!backgrounds.length) {
         emit({ type: "error", channel: ch.sheetName, message: "Chưa có background (.mp4) trong folder kênh." });
         return;
+      }
+
+      // Kênh local: tự điền tên file trong inputs/ vào cột A (như fetchSourceUrlsFor
+      // làm với URL). Người dùng chỉ thả file, không gõ tay.
+      if (ch.videoSource === "local") {
+        const localFiles = listLocalInputs(inputsDir);
+        // Dedup theo tên file (khớp chuỗi tuyệt đối) — KHÔNG dùng pickNewUrls vì nó
+        // rút video-id từ URL YouTube, không hiểu tên file .mp4.
+        const existing = new Set((await sheetsApi.readChannelUrls(ch.sheetName)).map((r) => r.url));
+        const fresh = localFiles.filter((f) => !existing.has(f));
+        if (fresh.length) await sheetsApi.appendUrls(ch.sheetName, fresh);
       }
 
       const state = stateStore.load();

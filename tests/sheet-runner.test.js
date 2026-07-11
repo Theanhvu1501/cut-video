@@ -37,6 +37,27 @@ test("second download is delayed but first is immediate", async () => {
   assert.deepEqual(slept, [90000]); // chỉ chờ 1 lần: trước lượt tải thứ 2
 });
 
+test("kênh local: tự quét inputs/ và append tên file mới vào Sheet (dedup)", async () => {
+  const appended = [];
+  const { deps } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 0, renderMode: "topTransparent", cfg: {}, proxy: "", videoSource: "local" },
+      ],
+      // "a.mp4" đã có sẵn trong Sheet → chỉ "b.mp4","c.mp4" là mới
+      readChannelUrls: async () => [{ rowIndex: 2, url: "a.mp4", status: "done", uploadStatus: "✅" }],
+      setUrlStatus: async () => {},
+      appendUrls: async (name, urls) => { appended.push({ name, urls }); },
+    },
+    listLocalInputs: () => ["a.mp4", "b.mp4", "c.mp4"],
+    ensureDirs: () => ({ backgroundsDir: "/bg", overlaysDir: "/ov", outputDir: "/out", inputsDir: "/in" }),
+  });
+  await createSheetRunner(deps).runNow();
+  assert.equal(appended.length, 1);
+  assert.equal(appended[0].name, "Kênh A");
+  assert.deepEqual(appended[0].urls, ["b.mp4", "c.mp4"]);
+});
+
 function makeDeps(overrides = {}) {
   const calls = { status: [], rendered: [], errors: [], downloaded: [], unlinked: [] };
   let savedState = {};
@@ -56,7 +77,10 @@ function makeDeps(overrides = {}) {
       ],
       setUrlStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status }),
       setUploadStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status, col: "C" }),
+      appendUrls: async () => {},
     },
+    listLocalInputs: () => [],
+    copyLocalOverlay: (name) => ({ filePath: `/ov/${name}`, title: name.replace(/\.[^.]+$/, "") }),
     downloader: async (url) => {
       const filePath = `/ov/${url}.mp4`;
       // Mô phỏng yt-dlp noOverwrites: nếu file đích đã tồn tại, yt-dlp bỏ qua và

@@ -58,6 +58,56 @@ test("kênh local: tự quét inputs/ và append tên file mới vào Sheet (ded
   assert.deepEqual(appended[0].urls, ["b.mp4", "c.mp4"]);
 });
 
+test("kênh local: dùng copyLocalOverlay, render, set DONE; không proxy/không delay", async () => {
+  const copied = [];
+  const slept = [];
+  const rendered = [];
+  const { deps, calls } = makeDeps({
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/s.json", renderConcurrency: 2, downloadDelayMinMs: 90000, downloadDelayMaxMs: 90000 },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "socks5://bad", videoSource: "local" },
+      ],
+      readChannelUrls: async () => [
+        { rowIndex: 2, url: "a.mp4", status: "", uploadStatus: "" },
+        { rowIndex: 3, url: "b.mp4", status: "", uploadStatus: "" },
+      ],
+      setUrlStatus: async (n, r, s) => calls.status.push({ rowIndex: r, status: s }),
+      appendUrls: async () => {},
+    },
+    listLocalInputs: () => ["a.mp4", "b.mp4"],
+    ensureDirs: () => ({ backgroundsDir: "/bg", overlaysDir: "/ov", outputDir: "/out", inputsDir: "/in" }),
+    copyLocalOverlay: (name, inputsDir, overlaysDir) => { copied.push({ name, inputsDir, overlaysDir }); return { filePath: `/ov/${name}`, title: name.replace(/\.[^.]+$/, "") }; },
+    renderer: async (opts) => { rendered.push(opts); return { outputPath: opts.outputPath }; },
+    sleep: async (ms) => { slept.push(ms); },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.equal(copied.length, 2);
+  assert.equal(copied[0].inputsDir, "/in");
+  assert.equal(rendered.length, 2);
+  assert.equal(rendered[0].overlayFile, "/ov/a.mp4");
+  assert.equal(calls.status.filter((s) => s.status === ST.DONE).length, 2);
+  assert.deepEqual(slept, []); // local KHÔNG delay dù cấu hình delay 90s
+});
+
+test("kênh local: proxy hỏng vẫn chạy (không dừng kênh)", async () => {
+  const { deps, calls } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "socks5://bad", videoSource: "local" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "a.mp4", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      appendUrls: async () => {},
+    },
+    listLocalInputs: () => ["a.mp4"],
+    ensureDirs: () => ({ backgroundsDir: "/bg", overlaysDir: "/ov", outputDir: "/out", inputsDir: "/in" }),
+    copyLocalOverlay: (name) => ({ filePath: `/ov/${name}`, title: "a" }),
+  });
+  await createSheetRunner(deps).runNow();
+  assert.equal(calls.errors.length, 0); // proxy "bad" KHÔNG làm kênh local dừng
+});
+
 function makeDeps(overrides = {}) {
   const calls = { status: [], rendered: [], errors: [], downloaded: [], unlinked: [] };
   let savedState = {};

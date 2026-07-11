@@ -78,7 +78,7 @@ export function createSheetRunner(deps) {
       // Proxy hỏng -> dừng kênh. Tải thẳng bằng IP thật là kết cục tệ nhất cho
       // người dùng đang dựa vào proxy để né bot-check.
       let proxy = "";
-      if (String(ch.proxy ?? "").trim()) {
+      if (ch.videoSource !== "local" && String(ch.proxy ?? "").trim()) {
         try {
           proxy = normalizeProxy(ch.proxy);
         } catch (err) {
@@ -193,6 +193,12 @@ export function createSheetRunner(deps) {
         try {
           if (action === "render-only") {
             dl = { filePath: entry.filePath, title: entry.title };
+          } else if (ch.videoSource === "local") {
+            // Kênh local: item.url = tên file ở cột A. Copy inputs/<file> làm overlay.
+            emit({ type: "channel-status", channel: ch.sheetName, status: "đang lấy file", url: item.url });
+            dl = copyLocalOverlay(item.url, inputsDir, overlaysDir);
+            patchEntry(ch.sheetName, item.url, { stage: "downloaded", filePath: dl.filePath, title: dl.title });
+            await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, ST.DOWNLOADED);
           } else {
             emit({ type: "channel-status", channel: ch.sheetName, status: "đang tải", url: item.url });
             dl = await downloadLimit(async () => {

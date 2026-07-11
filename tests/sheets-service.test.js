@@ -16,7 +16,7 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
   assert.deepEqual(out[0], {
     sheetName: "Kênh A", enabled: true, videosPerDay: 3, renderMode: "topTransparent",
     cfg: { opacity: 0.7 }, proxy: "", gpmProfileId: "", postTimes: "",
-    rowIndex: 2, channelUrl: "", sourceHandle: "",
+    rowIndex: 2, channelUrl: "", sourceHandle: "", videoSource: "download",
   });
   assert.equal(out[1].enabled, true);
   assert.equal(out[1].proxy, "socks5://1.2.3.4:1080");
@@ -168,6 +168,23 @@ test("parseConfigRows gpmProfileId rỗng khi không có cột", () => {
   ];
   const out = parseConfigRows(rows);
   assert.equal(out[0].gpmProfileId, "");
+});
+
+test("parseConfigRows đọc cột Nguồn video → videoSource", () => {
+  const header = ["sheetName", "videosPerDay", "Nguồn video"];
+  const rows = [header,
+    ["Kênh A", "3", "tại máy"],
+    ["Kênh B", "3", "local"],
+    ["Kênh C", "3", ""],
+    ["Kênh D", "3", "tải"],
+    ["Kênh E", "3", "MÁY"],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].videoSource, "local");
+  assert.equal(out[1].videoSource, "local");
+  assert.equal(out[2].videoSource, "download");
+  assert.equal(out[3].videoSource, "download");
+  assert.equal(out[4].videoSource, "local");
 });
 
 // Header có dòng nhóm-mode phía trên, đúng như Sheet thật.

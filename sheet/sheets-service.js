@@ -56,6 +56,7 @@ const HEADER_ALIASES = {
   postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
   channelUrl: ["link kênh", "url kênh"],
   sourceHandle: ["@handle nguồn", "handle nguồn", "kênh nguồn", "nguồn kênh chính", "nguồn kênh"],
+  videoSource: ["nguồn video", "kiểu nguồn"],
   subscribers: ["sub", "subs", "người đăng ký"],
   totalViews: ["tổng view", "tổng lượt xem"],
   videoCount: ["số video"],
@@ -129,6 +130,8 @@ export function parseConfigRows(values) {
       .split(",")
       .map((p) => p.trim().replace("#", "").toUpperCase())
       .filter((p) => /^[0-9A-F]{6}$/.test(p));
+    const vsNorm = norm(col(row, "videoSource"));
+    const videoSource = ["tai may", "local", "may", "file"].includes(vsNorm) ? "local" : "download";
     const channel = {
       sheetName,
       enabled: truthy(col(row, "enabled")),
@@ -141,6 +144,7 @@ export function parseConfigRows(values) {
       rowIndex: r + 1, // 1-based, dùng thẳng trong A1 notation
       channelUrl: col(row, "channelUrl"),
       sourceHandle: col(row, "sourceHandle"),
+      videoSource,
     };
     if (chromaPalette.length) channel.chromaPalette = chromaPalette;
     out.push(channel);

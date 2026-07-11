@@ -17,7 +17,7 @@ import { createUploadQueue } from "./sheet/upload-queue.js";
 import { sendTelegram, buildDigest } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
-import { downloadOne } from "./sheet/channel-download.js";
+import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
 import { loadState, saveState, todayStr, computeRemaining } from "./sheet/runner-state.js";
 import { loadResume, saveResume } from "./sheet/resume-state.js";
 
@@ -1406,8 +1406,11 @@ function buildSheetRunner(win) {
       readChannelUrls: (name) => readChannelUrls(sheets, s.spreadsheetId, name),
       setUrlStatus: (name, row, status) => setUrlStatus(sheets, s.spreadsheetId, name, row, status),
       setUploadStatus: (name, row, status) => setUploadStatus(sheets, s.spreadsheetId, name, row, status),
+      appendUrls: (name, urls) => appendUrls(sheets, s.spreadsheetId, name, urls),
     },
     downloader: (url, dir, opts) => downloadOne(url, dir, { ...opts, ytdlpPath: YTDLP_PATH }),
+    copyLocalOverlay,
+    listLocalInputs: (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".mp4")).sort() : []),
     renderer: (opts) => renderOne(opts),
     detectChroma: (videoPath, palette) =>
       detectChromaColor(videoPath, palette, { ffmpegPath: resolveFfmpegPaths().ffmpegPath, spawn, sharp }),
@@ -1417,8 +1420,9 @@ function buildSheetRunner(win) {
         backgroundsDir: path.join(root, "backgrounds"),
         overlaysDir: path.join(root, "overlays"),
         outputDir: path.join(root, "output"),
+        inputsDir: path.join(root, "inputs"),
       };
-      for (const d of [dirs.overlaysDir, dirs.outputDir]) if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+      for (const d of [dirs.overlaysDir, dirs.outputDir, dirs.inputsDir]) if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
       return dirs;
     },
     stateStore: { load: () => loadState(statePath), save: (st) => saveState(statePath, st) },

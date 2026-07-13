@@ -4141,9 +4141,25 @@ async function runConcat() {
   }
   const num = (v) => (v === null || v === undefined ? "—" : nf.format(v));
 
+  // Ngày địa phương dạng YYYY-MM-DD — cùng quy ước với todayStr() của runner-state.
+  const todayKey = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+
   // Video coi như xong khi đã lên lịch upload, hoặc (không bật GPM) khi render xong.
   const isDone = (v) => /^✅/.test(v.upload || "") || (!v.upload && /^✅/.test(v.state || ""));
   const isErr = (v) => !!v.error || /^❌/.test(v.upload || "");
+
+  // v.error là lỗi của LƯỢT gần nhất, không phải vết sẹo vĩnh viễn: mọi tín hiệu mới cho
+  // URL đó (đang tải lại / render xong / upload lại) phải xoá nó. Không xoá thì video
+  // retry thành công vẫn bị isErr() đếm là lỗi tới khi tắt app — trong khi digest
+  // Telegram (dựng từ kết quả lượt chạy) báo OK.
+  function touchVideo(c, url, title) {
+    const v = ensureVideo(c, url, title);
+    v.error = "";
+    return v;
+  }
 
   // ===== Card =====
 
@@ -4198,8 +4214,8 @@ async function runConcat() {
     let c = channels.get(sheetName);
     if (!c) {
       c = {
-        name: sheetName, profileId: "", videosPerDay: 0, countToday: 0, enabled: true,
-        stats: null, gpm: { state: "idle", msg: "" }, videos: new Map(), open: false,
+        name: sheetName, profileId: "", videosPerDay: 0, countToday: 0, countDate: null,
+        enabled: true, stats: null, gpm: { state: "idle", msg: "" }, videos: new Map(), open: false,
       };
       channels.set(sheetName, c);
       grid.appendChild(buildCard(c));
@@ -4220,9 +4236,11 @@ async function runConcat() {
     const list = [...c.videos.values()];
     const active = list.find((v) => !isDone(v) && !isErr(v) && (v.state || v.upload));
     if (active) return { text: `${active.upload || active.state} — “${active.title}”`, err: false, busy: true };
+    // Đủ quota hôm nay là XONG việc của ngày: những URL lỗi còn lại không cản trở gì nữa
+    // (lượt sau vẫn tự retry), nên card không báo đỏ. Chi tiết lỗi xem ở cột B/C của Sheet.
+    if (c.videosPerDay > 0 && c.countToday >= c.videosPerDay) return { text: "✓ đủ hôm nay", err: false, busy: false };
     const errs = list.filter(isErr).length;
     if (errs) return { text: `❌ ${errs} video lỗi`, err: true, busy: false };
-    if (c.videosPerDay > 0 && c.countToday >= c.videosPerDay) return { text: "✓ đủ hôm nay", err: false, busy: false };
     return { text: "— chờ lượt chạy", err: false, busy: false };
   }
 
@@ -4304,7 +4322,8 @@ async function runConcat() {
 
     card.classList.toggle("disabled", !c.enabled);
     card.classList.toggle("busy", act.busy);
-    // Dải màu bên trái: đang chạy > có lỗi > đủ hôm nay. Chỉ một trạng thái thắng.
+    // Dải màu bên trái: đang chạy > đủ hôm nay > có lỗi. Chỉ một trạng thái thắng —
+    // act.err đã tự tắt khi đủ quota (xem activityText), nên "full" luôn thắng "err".
     card.classList.toggle("err", !act.busy && act.err);
     card.classList.toggle("full", !act.busy && !act.err && full);
 
@@ -4385,6 +4404,7 @@ async function runConcat() {
         // runner-state đã tính cả video render trong phiên này, nhưng một video có thể
         // render xong giữa lúc đọc IPC và lúc này — lấy max để không bao giờ lùi số.
         c.countToday = Math.max(ch.countToday || 0, c.countToday);
+        c.countDate = todayKey();
         c.enabled = ch.enabled !== false;
         grid.appendChild(c.el.card); // xếp lại theo thứ tự trong ⚙config (appendChild là move)
         renderCard(c);
@@ -4400,6 +4420,24 @@ async function runConcat() {
     } finally {
       loading = false;
     }
+  }
+
+  // runner-state.json là nguồn sự thật của quota (nó tự reset sang ngày mới). Bộ đếm
+  // countToday trong UI chỉ là phỏng đoán lạc quan để phản hồi ngay lúc render xong, nên
+  // phải đối chiếu lại sau MỖI lượt chạy — không thì nó cộng dồn qua nhiều ngày và hiện
+  // ra kiểu "6/3". Cũng là lúc cập nhật videosPerDay nếu ⚙config đổi.
+  async function syncQuota() {
+    try {
+      const r = await api.gpmListChannels();
+      if (!r?.ok) return;
+      for (const ch of r.channels) {
+        const c = ensureChannel(ch.sheetName);
+        c.countToday = ch.countToday || 0;
+        c.countDate = todayKey();
+        c.videosPerDay = ch.videosPerDay || 0;
+        renderCard(c);
+      }
+    } catch { /* im lặng: chỉ là đối chiếu số liệu, không phải việc chính */ }
   }
 
   const MISSING_LABEL = {
@@ -4618,19 +4656,22 @@ async function runConcat() {
       // Có url → cập nhật video đó; không có url = thông báo cấp kênh → chỉ ghi log.
       if (evt.url) {
         const c = ensureChannel(evt.channel);
-        ensureVideo(c, evt.url).state = evt.status;
+        touchVideo(c, evt.url).state = evt.status;
         renderCard(c);
       }
       log(`[${evt.channel}] ${evt.status}${evt.url ? " — " + shortUrl(evt.url) : ""}`);
     } else if (evt.type === "video-rendered") {
       const c = ensureChannel(evt.channel);
-      ensureVideo(c, evt.sourceUrl, evt.title).state = "✅ render xong";
-      c.countToday++; // quota chỉ tính theo video render được, khớp recordRendered
+      touchVideo(c, evt.sourceUrl, evt.title).state = "✅ render xong";
+      // Quota chỉ tính theo video render được, khớp recordRendered. Sang ngày mới thì
+      // runner đã reset quota của nó — bộ đếm UI phải reset theo, không cộng tiếp.
+      if (c.countDate !== todayKey()) { c.countToday = 0; c.countDate = todayKey(); }
+      c.countToday++;
       renderCard(c);
       log(`[${evt.channel}] ✅ render: ${evt.title}`);
     } else if (evt.type === "upload-status") {
       const c = ensureChannel(evt.channel);
-      ensureVideo(c, evt.url, evt.title).upload = evt.status;
+      touchVideo(c, evt.url, evt.title).upload = evt.status;
       renderCard(c);
       log(`[${evt.channel}] ${evt.status}${evt.title ? " — " + evt.title : ""}`);
     } else if (evt.type === "stats") {
@@ -4644,6 +4685,7 @@ async function runConcat() {
       log(`❌ ${evt.channel ? "[" + evt.channel + "] " : ""}${evt.message}`);
     } else if (evt.type === "done") {
       log("— Hoàn tất lượt chạy —");
+      syncQuota();
     }
   });
 

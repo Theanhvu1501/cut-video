@@ -152,8 +152,7 @@ Ba điểm cố ý:
 Cạnh `notifyDigest` (dòng 1379), thêm:
 
 ```js
-notifyShots: async (shots, batch) => {
-  if (!s.gpmTelegramEnabled) return;
+notifyShots: !(s.gpmTelegramEnabled && s.gpmTelegramPhoto) ? null : async (shots, batch) => {
   if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;
   for (const { sheetName, image } of shots) {
     const r = await sendTelegramPhoto(
@@ -165,7 +164,17 @@ notifyShots: async (shots, batch) => {
 
 Import thêm `sendTelegramPhoto, buildShotCaption` ở dòng 17.
 
-**Không thêm ô cài đặt mới.** Dùng chung công tắc `gpmTelegramEnabled` + token/chat ID sẵn có: tắt Telegram là tắt luôn ảnh. Một công tắc riêng cho ảnh chỉ có nghĩa khi người dùng muốn digest mà không muốn ảnh — chưa có nhu cầu đó, YAGNI.
+**Công tắc riêng `gpmTelegramPhoto`** (mặc định tắt), nằm trong khối cài đặt Telegram của tab Theo dõi Sheet — người dùng có thể muốn digest text mà không muốn ảnh.
+
+Khi tắt thì truyền `notifyShots: null` chứ **không** chỉ chặn bên trong callback: `sendShots` thoát ngay ở dòng đầu, hàng đợi khỏi tốn ~20s/kênh điều hướng và chụp một tấm ảnh sẽ bị vứt đi.
+
+Ảnh chỉ gửi khi bật **cả hai**: `gpmTelegramEnabled` (công tắc Telegram chung) và `gpmTelegramPhoto`.
+
+- `electron-main.js` — `notifyShots: !(s.gpmTelegramEnabled && s.gpmTelegramPhoto) ? null : async (...)`.
+- `renderer.html` — checkbox `sw-gpm-tg-photo` bên trong `#sw-gpm-tg-fields` (khối đã tự ẩn/hiện theo công tắc Telegram chung).
+- `renderer.js` — `loadSettings` đọc `s.gpmTelegramPhoto`; `currentSettings` trả `gpmTelegramPhoto`; thêm `sw-gpm-tg-photo` vào mảng listener `change` tự-lưu.
+
+Giống `idleCloseMs`: cấu hình đọc một lần lúc dựng runner, đổi khi đang chạy thì phải Dừng → Chạy lại.
 
 ## Xử lý lỗi
 

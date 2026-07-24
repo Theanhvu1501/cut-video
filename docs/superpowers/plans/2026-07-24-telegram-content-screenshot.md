@@ -506,9 +506,10 @@ import { sendTelegram, sendTelegramPhoto, buildDigest, buildShotCaption } from "
 Thêm ngay sau khối `notifyDigest` (kết thúc ở dòng 1386, trước dấu `});` của `createUploadQueue`):
 
 ```js
-    // Gửi ảnh trang Nội dung Studio của từng kênh, ngay sau digest.
-    notifyShots: async (shots, batch) => {
-      if (!s.gpmTelegramEnabled) return; // người dùng tắt thông báo
+    // Gửi ảnh trang Nội dung Studio của từng kênh, ngay sau digest. Phải bật RIÊNG ô
+    // "Gửi kèm ảnh…"; không bật thì để null hẳn để hàng đợi khỏi tốn công chụp.
+    // Đọc 1 lần lúc dựng runner — đổi cấu hình khi đang chạy thì phải Dừng → Chạy lại.
+    notifyShots: !(s.gpmTelegramEnabled && s.gpmTelegramPhoto) ? null : async (shots, batch) => {
       if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;
       for (const { sheetName, image } of shots) {
         const r = await sendTelegramPhoto(
@@ -518,7 +519,29 @@ Thêm ngay sau khối `notifyDigest` (kết thúc ở dòng 1386, trước dấu
     },
 ```
 
-Không thêm ô cài đặt mới: dùng chung công tắc `gpmTelegramEnabled` + token/chat ID sẵn có.
+Thêm công tắc riêng `gpmTelegramPhoto` (mặc định tắt) — bật Telegram không có nghĩa là muốn ảnh.
+
+`renderer.html`, bên trong `#sw-gpm-tg-fields` (ngay sau `<span id="sw-gpm-tg-status">`):
+
+```html
+              <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin:0;width:100%;">
+                <input id="sw-gpm-tg-photo" type="checkbox"> Gửi kèm ảnh trang Nội dung của kênh khi xong
+              </label>
+```
+
+`renderer.js` — 3 chỗ:
+
+```js
+// trong loadSettings, cạnh sw-gpm-tg-chat:
+$("sw-gpm-tg-photo").checked = !!s.gpmTelegramPhoto;
+
+// trong currentSettings, cạnh gpmTelegramChatId:
+gpmTelegramPhoto: $("sw-gpm-tg-photo").checked,
+
+// thêm vào mảng listener change tự-lưu:
+["sw-auto-open", "sw-use-gpu", "sw-gpm-enabled", "sw-gpm-tg-photo"].forEach((id) =>
+  $(id)?.addEventListener("change", saveNow));
+```
 
 - [ ] **Step 7: Kiểm tra cú pháp + chạy lại toàn bộ test**
 
@@ -540,8 +563,9 @@ git commit -m "feat(app): gửi ảnh trang Nội dung Studio kèm digest Telegr
 
 Không tự động hoá được vì cần GPM + tài khoản YouTube thật:
 
-1. Bật `npm start`, vào tab **Theo dõi Sheet** → ⚙ → bật **Thông báo Telegram**, điền token + chat ID, bấm nút test → phải nhận được tin text.
+1. Bật `npm start`, vào tab **Theo dõi Sheet** → ⚙ → bật **Thông báo Telegram**, điền token + chat ID, bấm nút test → phải nhận được tin text. Bật thêm ô **Gửi kèm ảnh trang Nội dung của kênh khi xong**.
 2. Chạy một lượt có ít nhất 1 video lên lịch thành công cho 2 kênh khác nhau.
 3. Sau khi lượt xong ~3 giây: Telegram phải nhận digest text, rồi 2 tin ảnh, mỗi ảnh là trang Nội dung của một kênh, caption `📋 <tên kênh> — ✅ n lên lịch, ❌ m lỗi`.
 4. Soi ảnh: các video vừa đăng phải hiện thumbnail tuỳ chỉnh (không phải khung hình auto) và cột trạng thái `Đã lên lịch <giờ>`.
-5. Tắt công tắc Telegram → chạy lại → không có tin nào, và log tab Theo dõi Sheet không có dòng lỗi nào.
+5. Tắt riêng ô **Gửi kèm ảnh** (giữ Telegram bật) → Dừng → Chạy lại → chỉ nhận digest text, không có ảnh, và log không có dòng nào về chụp trang Nội dung.
+6. Tắt công tắc Telegram → chạy lại → không có tin nào, và log tab Theo dõi Sheet không có dòng lỗi nào.

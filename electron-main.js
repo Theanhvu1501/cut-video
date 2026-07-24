@@ -14,7 +14,7 @@ import { createYoutubeClient, fetchChannelStats, fetchSourceVideos, pickNewUrls,
 import { parseScheduledISO, formatStamp } from "./sheet/schedule-slots.js";
 import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
-import { sendTelegram, buildDigest } from "./sheet/telegram-notify.js";
+import { sendTelegram, sendTelegramPhoto, buildDigest, buildShotCaption } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
@@ -1383,6 +1383,17 @@ function buildSheetRunner(win) {
       if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;
       const r = await sendTelegram(s.gpmTelegramToken, s.gpmTelegramChatId, text);
       if (!r.ok) emitEvent({ type: "log", message: `Telegram lỗi: ${r.error || "?"}` });
+    },
+    // Gửi ảnh trang Nội dung Studio của từng kênh, ngay sau digest. Phải bật RIÊNG ô
+    // "Gửi kèm ảnh…"; không bật thì để null hẳn để hàng đợi khỏi tốn công chụp.
+    // Đọc 1 lần lúc dựng runner — đổi cấu hình khi đang chạy thì phải Dừng → Chạy lại.
+    notifyShots: !(s.gpmTelegramEnabled && s.gpmTelegramPhoto) ? null : async (shots, batch) => {
+      if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;
+      for (const { sheetName, image } of shots) {
+        const r = await sendTelegramPhoto(
+          s.gpmTelegramToken, s.gpmTelegramChatId, image, buildShotCaption(sheetName, batch));
+        if (!r.ok) emitEvent({ type: "log", message: `Telegram ảnh lỗi: ${r.error || "?"}` });
+      }
     },
   });
   return createSheetRunner({

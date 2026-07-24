@@ -4547,6 +4547,7 @@ async function runConcat() {
     $("sw-gpm-tg-enabled").checked = !!s.gpmTelegramEnabled;
     $("sw-gpm-tg-token").value = s.gpmTelegramToken || "";
     $("sw-gpm-tg-chat").value = s.gpmTelegramChatId || "";
+    $("sw-gpm-tg-photo").checked = !!s.gpmTelegramPhoto;
     $("sw-gpm-tg-fields").style.display = s.gpmTelegramEnabled ? "" : "none";
     $("sw-yt-api-key").value = s.ytApiKey || "";
     syncGpmVisibility();
@@ -4566,6 +4567,7 @@ async function runConcat() {
       gpmTelegramEnabled: $("sw-gpm-tg-enabled").checked,
       gpmTelegramToken: $("sw-gpm-tg-token").value.trim(),
       gpmTelegramChatId: $("sw-gpm-tg-chat").value.trim(),
+      gpmTelegramPhoto: $("sw-gpm-tg-photo").checked,
       ytApiKey: $("sw-yt-api-key").value.trim(),
     };
   }
@@ -4576,7 +4578,7 @@ async function runConcat() {
   function saveDebounced() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 400); }
   ["sw-spreadsheet-id", "sw-poll", "sw-video-speed", "sw-yt-api-key", "sw-gpm-idle-close"].forEach((id) =>
     $(id)?.addEventListener("input", saveDebounced));
-  ["sw-auto-open", "sw-use-gpu", "sw-gpm-enabled"].forEach((id) =>
+  ["sw-auto-open", "sw-use-gpu", "sw-gpm-enabled", "sw-gpm-tg-photo"].forEach((id) =>
     $(id)?.addEventListener("change", saveNow));
   ["sw-gpm-host", "sw-gpm-tg-token", "sw-gpm-tg-chat"].forEach((id) =>
     $(id)?.addEventListener("input", saveDebounced));

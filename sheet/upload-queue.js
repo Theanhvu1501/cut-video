@@ -9,6 +9,7 @@ import { connectProfile, closeProfile } from "./gpm-client.js";
 import { findThumbnailForVideo } from "./thumb-match.js";
 import { assignTomorrowSlots, formatSchedule } from "./schedule-slots.js";
 import { uploadAndSchedule } from "./yt-upload.js";
+import { captureContentPage } from "./yt-capture.js";
 
 /**
  * Chuẩn bị 1 job (thuần, test được): tìm thumbnail trong overlays theo title + cấp slot lịch.
@@ -38,6 +39,8 @@ export function createUploadQueue({
   log = () => {},
   emit = () => {},                     // (evt) — phát sự kiện trạng thái lên UI ({type:"upload-status",...})
   notifyDigest = null,                 // async (results[]) — gửi digest khi hàng đợi rảnh
+  notifyShots = null,                  // async (shots[], batch[]) — shots: [{ sheetName, image: Buffer }]
+  capture = captureContentPage,        // (page, opts) → Buffer PNG (tiêm để test)
   setUploadStatus = async () => {},    // async (sheetName, rowIndex, status) — ghi ngược vào Sheet
   retries = 3,                         // số lần thử lại khi lỗi (chỉ khi CHƯA bắt đầu upload)
   retryDelayMs = 3000,
@@ -49,6 +52,7 @@ export function createUploadQueue({
   const conns = new Map();        // profileId -> { browser, page, gpmHost } (tái dùng kết nối)
   const channelCache = new Map(); // sheetName -> { scheduledUrls, usedSlots } (đọc từ Sheet 1 lần/lượt)
   const results = [];             // kết quả từ lượt bận hiện tại (để gộp digest)
+  const lastProfile = new Map();  // sheetName -> { gpmHost, profileId } (để biết chụp bằng profile nào)
   let pending = 0;                // số job đang chờ/chạy
   let flushTimer = null;
   let idleTimer = null;           // hẹn giờ đóng trình duyệt khi rảnh
@@ -117,19 +121,46 @@ export function createUploadQueue({
     try { emit({ type: "upload-status", channel, status, ...extra }); } catch { /* ignore */ }
   }
 
-  // Khi hàng đợi rảnh → gửi 1 digest gộp các kết quả từ lượt bận.
+  // Khi hàng đợi rảnh → gửi 1 digest gộp các kết quả từ lượt bận, rồi ảnh trang Nội dung.
   function scheduleFlush() {
     if (flushTimer) clearTimeout(flushTimer);
     flushTimer = setTimeout(async () => {
       if (runActive || pending > 0 || !results.length) return; // lượt chạy chưa xong → chưa gửi
       const batch = results.splice(0, results.length);
-      if (!notifyDigest) return;
-      try { await notifyDigest(batch); } catch (e) { log(`Lỗi gửi Telegram: ${e?.message || e}`); }
+      if (notifyDigest) {
+        try { await notifyDigest(batch); } catch (e) { log(`Lỗi gửi Telegram: ${e?.message || e}`); }
+      }
+      await sendShots(batch);
     }, flushMs);
+  }
+
+  // Chụp trang Nội dung Studio của từng kênh trong lượt rồi gửi kèm digest.
+  // Mọi lỗi ở đây chỉ ghi log — digest đã gửi xong trước đó, không được để ảnh làm hỏng nó.
+  async function sendShots(batch) {
+    if (!notifyShots || closing) return;
+    // Chụp mất ~20s/kênh. scheduleClose() đã chạy cùng lúc với scheduleFlush(), nên với
+    // gpmIdleCloseMin nhỏ, closeIdleConns() có thể nổ giữa lúc đang chụp và giết page.
+    cancelClose();
+    const shots = [];
+    for (const sheetName of new Set(batch.map((r) => r.sheetName))) {
+      const p = lastProfile.get(sheetName);
+      const c = p && conns.get(p.profileId);
+      if (!c) { log(`[${sheetName}] không chụp được trang Nội dung — trình duyệt GPM đã đóng`); continue; }
+      try {
+        shots.push({ sheetName, image: await capture(c.page, { log }) });
+      } catch (e) {
+        log(`[${sheetName}] chụp trang Nội dung lỗi: ${e?.message || e}`);
+      }
+    }
+    if (shots.length) {
+      try { await notifyShots(shots, batch); } catch (e) { log(`Lỗi gửi ảnh Telegram: ${e?.message || e}`); }
+    }
+    scheduleClose(); // chụp xong mới tính lại giờ đóng trình duyệt
   }
 
   async function runJob(job) {
     const { sheetName, gpmHost, profileId, videoPath, overlaysDir, title, postTimes, locale, rowIndex, sourceUrl } = job;
+    lastProfile.set(sheetName, { gpmHost, profileId });
     // Nguồn sự thật = Sheet cột C (đọc 1 lần/lượt, cache).
     const ch = await getChannelUploads(sheetName);
 

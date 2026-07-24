@@ -12,6 +12,27 @@ export async function sendTelegram(token, chatId, text, deps = {}) {
   return { ok: !!data.ok, error: data.description };
 }
 
+// Gửi ảnh (multipart). Telegram giới hạn caption 1024 ký tự.
+export async function sendTelegramPhoto(token, chatId, photo, caption, deps = {}) {
+  const fetchFn = deps.fetch || globalThis.fetch;
+  if (!token || !chatId) return { ok: false, error: "thiếu token/chatId" };
+  const form = new FormData();
+  form.append("chat_id", chatId);
+  if (caption) form.append("caption", caption.slice(0, 1024));
+  form.append("photo", new Blob([photo], { type: "image/png" }), "content.png");
+  // KHÔNG đặt Content-Type thủ công — fetch phải tự sinh boundary cho multipart.
+  const res = await fetchFn(`https://api.telegram.org/bot${token}/sendPhoto`, { method: "POST", body: form });
+  const data = await res.json().catch(() => ({}));
+  return { ok: !!data.ok, error: data.description };
+}
+
+// Caption cho ảnh trang Nội dung của 1 kênh (hàm thuần).
+export function buildShotCaption(sheetName, results) {
+  const mine = (results || []).filter((r) => r.sheetName === sheetName);
+  const ok = mine.filter((r) => r.ok).length;
+  return `📋 ${sheetName} — ✅ ${ok} lên lịch, ❌ ${mine.length - ok} lỗi`;
+}
+
 // Dựng tin digest dạng bảng từ danh sách kết quả upload (hàm thuần, test được).
 // results: [{ sheetName, title, ok, error?, scheduleISO? }]
 export function buildDigest(results) {

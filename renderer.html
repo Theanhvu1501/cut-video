@@ -2576,6 +2576,209 @@
                   font-weight: normal;
                 "
               >
+                <input
+                  type="radio"
+                  name="render-mode"
+                  id="render-mode-blurframe"
+                  value="blurFrame"
+                  onchange="toggleRenderMode()"
+                />
+                <span>Nền mờ + Khung</span>
+              </label>
+              <div
+                id="render-blurframe-group"
+                style="display: none; margin-left: 25px; margin-top: 5px"
+              >
+                <!-- Lớp 1: nền twitch/pexel -->
+                <label
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-weight: normal;
+                  "
+                >
+                  <input
+                    type="checkbox"
+                    id="render-bf-blur-enabled"
+                    onchange="toggleBlurFrameLayers()"
+                  />
+                  <span>Làm mờ nền</span>
+                </label>
+                <div
+                  id="render-bf-blur-group"
+                  class="form-group"
+                  style="display: none; margin-left: 20px; margin-top: 5px"
+                >
+                  <label>Độ mờ nền (sigma, 1 - 50):</label>
+                  <input
+                    type="number"
+                    id="render-bf-blur"
+                    value="20"
+                    min="1"
+                    max="50"
+                    step="1"
+                  />
+                </div>
+
+                <!-- Lớp 2: video gốc thu nhỏ (luôn bật) -->
+                <div class="form-group" style="margin-top: 10px">
+                  <label>Tỉ lệ video gốc (0.1 - 1.0):</label>
+                  <input
+                    type="number"
+                    id="render-bf-main-scale"
+                    value="0.85"
+                    min="0.1"
+                    max="1"
+                    step="0.01"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Độ đục video gốc (0.0 - 1.0):</label>
+                  <input
+                    type="number"
+                    id="render-bf-main-opacity"
+                    value="0.9"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                  />
+                </div>
+
+                <!-- Lớp 3: khung PNG -->
+                <label
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-weight: normal;
+                    margin-top: 10px;
+                  "
+                >
+                  <input
+                    type="checkbox"
+                    id="render-bf-frame-enabled"
+                    onchange="toggleBlurFrameLayers()"
+                  />
+                  <span>Dùng khung</span>
+                </label>
+                <div
+                  id="render-bf-frame-group"
+                  style="display: none; margin-left: 20px; margin-top: 5px"
+                >
+                  <div class="form-group">
+                    <label>Ảnh khung PNG (1 file, hoặc thư mục để random):</label>
+                    <div style="display: flex; gap: 8px">
+                      <input
+                        type="text"
+                        id="render-bf-frame-path"
+                        placeholder="Chọn file PNG hoặc thư mục khung"
+                        readonly
+                        style="flex: 1"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        onclick="selectRenderFrameFile()"
+                      >
+                        Chọn file
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        onclick="selectRenderFrameFolder()"
+                      >
+                        Chọn thư mục
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        onclick="clearRenderFramePath()"
+                      >
+                        Xoá
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Lớp 4: hiệu ứng ngoài cùng -->
+                <label
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-weight: normal;
+                    margin-top: 10px;
+                  "
+                >
+                  <input
+                    type="checkbox"
+                    id="render-bf-effect-enabled"
+                    onchange="toggleBlurFrameLayers()"
+                  />
+                  <span>Dùng lớp hiệu ứng</span>
+                </label>
+                <div
+                  id="render-bf-effect-group"
+                  style="display: none; margin-left: 20px; margin-top: 5px"
+                >
+                  <div class="form-group">
+                    <label
+                      >Video hiệu ứng nền đen (1 file, hoặc thư mục để
+                      random):</label
+                    >
+                    <div style="display: flex; gap: 8px">
+                      <input
+                        type="text"
+                        id="render-bf-effect-path"
+                        placeholder="Chọn video hiệu ứng hoặc thư mục"
+                        readonly
+                        style="flex: 1"
+                      />
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        onclick="selectRenderEffectFile()"
+                      >
+                        Chọn file
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        onclick="selectRenderEffectFolder()"
+                      >
+                        Chọn thư mục
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn-secondary"
+                        onclick="clearRenderEffectPath()"
+                      >
+                        Xoá
+                      </button>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Độ mạnh hiệu ứng (0.0 - 1.0):</label>
+                    <input
+                      type="number"
+                      id="render-bf-effect-opacity"
+                      value="0.6"
+                      min="0"
+                      max="1"
+                      step="0.05"
+                    />
+                  </div>
+                </div>
+              </div>
+              <label
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  font-weight: normal;
+                "
+              >
                 <input type="checkbox" id="render-use-gpu" />
                 <span>Use GPU (Tự động phát hiện)</span>
               </label>

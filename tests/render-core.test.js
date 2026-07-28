@@ -1,6 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildComplexFilter, resolveFfmpegPaths } from "../sheet/render-core.js";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import {
+  buildComplexFilter,
+  resolveFfmpegPaths,
+  buildStudioInputs,
+  blurFrameLayers,
+  frameGeometry,
+  pickAsset,
+  resolveBlurFrameAssets,
+} from "../sheet/render-core.js";
 
 test("topTransparent uses opacity and overlay at 0:0", () => {
   const f = buildComplexFilter("topTransparent", { opacity: 0.7 });
@@ -40,6 +51,160 @@ test("chromaKeyAuto uses same filter as chromaKey (color already resolved)", () 
 test("invalid mode falls back to topTransparent", () => {
   const f = buildComplexFilter("nope", {});
   assert.ok(f.some((s) => s.includes("[base_video][top_video]overlay=0:0[combined_video]")));
+});
+
+// ===== blurFrame: nền mờ + video gốc thu nhỏ + khung + hiệu ứng =====
+
+const BF = {
+  frameEnabled: true,
+  frameFile: "khung.png",
+  effectEnabled: true,
+  effectFile: "mua.mp4",
+  bgBlurEnabled: true,
+  bgBlur: 25,
+};
+
+test("blurFrame: cả 4 lớp — chỉ số input và thứ tự chồng lớp", () => {
+  const f = buildComplexFilter("blurFrame", BF);
+  assert.ok(f.includes("[0:v]scale=1280:720,gblur=sigma=25[bf_bg]"));
+  assert.ok(
+    f.includes("[1:v]scale=1088:612,format=yuva420p,colorchannelmixer=aa=0.9[bf_main]")
+  );
+  assert.ok(f.includes("[bf_bg][bf_main]overlay=96:54:shortest=1[bf_stage1]"));
+  assert.ok(f.includes("[2:v]scale=1088:612[bf_frame]"));
+  assert.ok(f.includes("[bf_stage1][bf_frame]overlay=96:54:shortest=1[bf_stage2]"));
+  assert.ok(f.includes("[3:v]scale=1280:720,format=yuv420p[bf_fx]"));
+  assert.ok(
+    f.includes("[bf_stage2][bf_fx]blend=all_mode=screen:all_opacity=0.6:shortest=1[combined_video]")
+  );
+  assert.ok(f.includes("[1:a]volume=1.0[overlay_audio]"));
+});
+
+test("blurFrame: tắt hết 3 công tắc — chỉ còn nền sắc nét + video gốc", () => {
+  const f = buildComplexFilter("blurFrame", {});
+  assert.ok(f.includes("[0:v]scale=1280:720[bf_bg]"));
+  assert.ok(!f.join("|").includes("gblur"));
+  assert.ok(f.includes("[bf_bg][bf_main]overlay=96:54:shortest=1[combined_video]"));
+  assert.ok(!f.join("|").includes("[2:v]"));
+  assert.ok(!f.join("|").includes("blend="));
+});
+
+test("blurFrame: tắt khung thì hiệu ứng tụt xuống [2:v]", () => {
+  const f = buildComplexFilter("blurFrame", { ...BF, frameEnabled: false });
+  const joined = f.join("|");
+  assert.ok(!joined.includes("bf_frame"));
+  assert.ok(f.includes("[2:v]scale=1280:720,format=yuv420p[bf_fx]"));
+  assert.ok(!joined.includes("[3:v]"));
+  assert.ok(
+    f.includes("[bf_stage1][bf_fx]blend=all_mode=screen:all_opacity=0.6:shortest=1[combined_video]")
+  );
+});
+
+test("blurFrame: tắt hiệu ứng thì khung là bước cuối", () => {
+  const f = buildComplexFilter("blurFrame", { ...BF, effectEnabled: false });
+  assert.ok(f.includes("[bf_stage1][bf_frame]overlay=96:54:shortest=1[combined_video]"));
+  assert.ok(!f.join("|").includes("[3:v]"));
+});
+
+test("blurFrame: mọi tổ hợp công tắc đều có đúng một [combined_video]", () => {
+  for (const frameEnabled of [false, true]) {
+    for (const effectEnabled of [false, true]) {
+      for (const bgBlurEnabled of [false, true]) {
+        const f = buildComplexFilter("blurFrame", {
+          ...BF,
+          frameEnabled,
+          effectEnabled,
+          bgBlurEnabled,
+        });
+        const outs = f.join("|").match(/\[combined_video\]/g) || [];
+        assert.equal(outs.length, 1, `tổ hợp ${frameEnabled}/${effectEnabled}/${bgBlurEnabled}`);
+      }
+    }
+  }
+});
+
+test("blurFrame: công tắc bật nhưng thiếu file thì bỏ qua lớp đó", () => {
+  const layers = blurFrameLayers({ frameEnabled: true, frameFile: "", effectEnabled: true, effectFile: "" });
+  assert.equal(layers.frame, false);
+  assert.equal(layers.effect, false);
+  const f = buildComplexFilter("blurFrame", { frameEnabled: true, effectEnabled: true });
+  assert.ok(f.includes("[bf_bg][bf_main]overlay=96:54:shortest=1[combined_video]"));
+});
+
+test("blurFrame: bgBlur = 0 coi như tắt làm mờ", () => {
+  const f = buildComplexFilter("blurFrame", { bgBlurEnabled: true, bgBlur: 0 });
+  assert.ok(!f.join("|").includes("gblur"));
+});
+
+test("blurFrame: mainScale/mainOpacity tuỳ chỉnh được", () => {
+  const f = buildComplexFilter("blurFrame", { mainScale: 0.5, mainOpacity: 0.4 });
+  assert.ok(f.includes("[1:v]scale=640:360,format=yuva420p,colorchannelmixer=aa=0.4[bf_main]"));
+  assert.ok(f.includes("[bf_bg][bf_main]overlay=320:180:shortest=1[combined_video]"));
+});
+
+test("frameGeometry luôn trả kích thước chẵn và căn giữa", () => {
+  for (const r of [0.85, 0.8449, 0.77, 0.9, 0.66, 1]) {
+    const g = frameGeometry(r);
+    assert.equal(g.w % 2, 0, `w lẻ ở tỉ lệ ${r}`);
+    assert.equal(g.h % 2, 0, `h lẻ ở tỉ lệ ${r}`);
+    assert.equal(g.x * 2 + g.w, 1280);
+    assert.equal(g.y * 2 + g.h, 720);
+  }
+});
+
+test("frameGeometry rơi về 0.85 khi tỉ lệ vô lý", () => {
+  assert.deepEqual(frameGeometry(0), frameGeometry(0.85));
+  assert.deepEqual(frameGeometry(5), frameGeometry(0.85));
+  assert.deepEqual(frameGeometry("hỏng"), frameGeometry(0.85));
+});
+
+test("buildStudioInputs khớp thứ tự với filter, rỗng với mode cũ", () => {
+  assert.deepEqual(buildStudioInputs("topTransparent", BF), []);
+  assert.deepEqual(buildStudioInputs("chromaKey", BF), []);
+  assert.deepEqual(buildStudioInputs("blurFrame", BF), [
+    { file: "khung.png", inputOptions: ["-loop", "1"] },
+    { file: "mua.mp4", inputOptions: ["-stream_loop", "-1"] },
+  ]);
+  assert.deepEqual(buildStudioInputs("blurFrame", { ...BF, frameEnabled: false }), [
+    { file: "mua.mp4", inputOptions: ["-stream_loop", "-1"] },
+  ]);
+});
+
+test("pickAsset: file dùng nguyên, thư mục bốc ngẫu nhiên, hỏng trả rỗng", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bf-"));
+  const a = path.join(dir, "a.png");
+  const b = path.join(dir, "b.png");
+  fs.writeFileSync(a, "x");
+  fs.writeFileSync(b, "x");
+  fs.writeFileSync(path.join(dir, "bo-qua.txt"), "x");
+
+  assert.equal(pickAsset(a, [".png"]), a);
+  assert.equal(pickAsset(dir, [".png"], () => 0), a);
+  assert.equal(pickAsset(dir, [".png"], () => 0.99), b);
+  assert.equal(pickAsset(dir, [".mp4"]), "");
+  assert.equal(pickAsset(path.join(dir, "khong-ton-tai.png"), [".png"]), "");
+  assert.equal(pickAsset("", [".png"]), "");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("resolveBlurFrameAssets cảnh báo thay vì ném lỗi khi đường dẫn hỏng", () => {
+  const r = resolveBlurFrameAssets({
+    frameEnabled: true,
+    framePath: "/khong/co/that.png",
+    effectEnabled: true,
+    effectPath: "",
+  });
+  assert.equal(r.frameFile, "");
+  assert.equal(r.effectFile, "");
+  assert.equal(r.warnings.length, 2);
+  assert.ok(r.warnings[0].includes("khung"));
+  assert.ok(r.warnings[1].includes("hiệu ứng"));
+});
+
+test("resolveBlurFrameAssets im lặng khi cả hai công tắc đều tắt", () => {
+  const r = resolveBlurFrameAssets({ framePath: "/khong/co/that.png" });
+  assert.deepEqual(r.warnings, []);
+  assert.equal(r.frameFile, "");
 });
 
 test("resolveFfmpegPaths returns string paths", () => {

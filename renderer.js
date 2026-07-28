@@ -495,6 +495,20 @@ async function saveSettings() {
         document.getElementById("render-gpu-codec")?.value || "h264_nvenc",
       height: document.getElementById("render-height")?.value || "220",
       y_offset: document.getElementById("render-y-offset")?.value || "490",
+      bgBlurEnabled:
+        document.getElementById("render-bf-blur-enabled")?.checked || false,
+      bgBlur: document.getElementById("render-bf-blur")?.value || "20",
+      mainScale: document.getElementById("render-bf-main-scale")?.value || "0.85",
+      mainOpacity:
+        document.getElementById("render-bf-main-opacity")?.value || "0.9",
+      frameEnabled:
+        document.getElementById("render-bf-frame-enabled")?.checked || false,
+      framePath: selectedRenderFramePath,
+      effectEnabled:
+        document.getElementById("render-bf-effect-enabled")?.checked || false,
+      effectPath: selectedRenderEffectPath,
+      effectOpacity:
+        document.getElementById("render-bf-effect-opacity")?.value || "0.6",
       overlayFolder: selectedRenderOverlayFolder,
       backgroundFolder: selectedRenderBackgroundFolder,
       outputFolder: selectedRenderOutputFolder,
@@ -684,6 +698,7 @@ async function loadSettings() {
           chromaKey: "render-mode-chromakey",
           crop: "render-mode-crop",
           keepColor: "render-mode-keepcolor",
+          blurFrame: "render-mode-blurframe",
         };
         const modeId =
           modeIdMap[settings.render.renderMode] ||
@@ -706,6 +721,38 @@ async function loadSettings() {
       if (settings.render.opacity)
         document.getElementById("render-opacity").value =
           settings.render.opacity;
+      // Nền mờ + Khung: nạp giá trị trước, rồi mới đồng bộ hiện/ẩn theo công tắc
+      if (settings.render.bgBlurEnabled !== undefined)
+        document.getElementById("render-bf-blur-enabled").checked =
+          settings.render.bgBlurEnabled;
+      if (settings.render.bgBlur)
+        document.getElementById("render-bf-blur").value = settings.render.bgBlur;
+      if (settings.render.mainScale)
+        document.getElementById("render-bf-main-scale").value =
+          settings.render.mainScale;
+      if (settings.render.mainOpacity)
+        document.getElementById("render-bf-main-opacity").value =
+          settings.render.mainOpacity;
+      if (settings.render.frameEnabled !== undefined)
+        document.getElementById("render-bf-frame-enabled").checked =
+          settings.render.frameEnabled;
+      if (settings.render.framePath) {
+        selectedRenderFramePath = settings.render.framePath;
+        document.getElementById("render-bf-frame-path").value =
+          settings.render.framePath;
+      }
+      if (settings.render.effectEnabled !== undefined)
+        document.getElementById("render-bf-effect-enabled").checked =
+          settings.render.effectEnabled;
+      if (settings.render.effectPath) {
+        selectedRenderEffectPath = settings.render.effectPath;
+        document.getElementById("render-bf-effect-path").value =
+          settings.render.effectPath;
+      }
+      if (settings.render.effectOpacity)
+        document.getElementById("render-bf-effect-opacity").value =
+          settings.render.effectOpacity;
+      toggleBlurFrameLayers();
       if (settings.render.chromaKeyMode) {
         document.getElementById(
           settings.render.chromaKeyMode === "color"
@@ -1721,6 +1768,21 @@ async function saveCurrentProjectSettings() {
           document.getElementById("render-gpu-codec")?.value || "h264_nvenc",
         height: document.getElementById("render-height")?.value || "220",
         y_offset: document.getElementById("render-y-offset")?.value || "490",
+        bgBlurEnabled:
+          document.getElementById("render-bf-blur-enabled")?.checked || false,
+        bgBlur: document.getElementById("render-bf-blur")?.value || "20",
+        mainScale:
+          document.getElementById("render-bf-main-scale")?.value || "0.85",
+        mainOpacity:
+          document.getElementById("render-bf-main-opacity")?.value || "0.9",
+        frameEnabled:
+          document.getElementById("render-bf-frame-enabled")?.checked || false,
+        framePath: selectedRenderFramePath,
+        effectEnabled:
+          document.getElementById("render-bf-effect-enabled")?.checked || false,
+        effectPath: selectedRenderEffectPath,
+        effectOpacity:
+          document.getElementById("render-bf-effect-opacity")?.value || "0.6",
         overlayFolder: selectedRenderOverlayFolder,
         backgroundFolder: selectedRenderBackgroundFolder,
         outputFolder: selectedRenderOutputFolder,
@@ -2005,6 +2067,8 @@ let selectedRenderOverlayFolder = null;
 let selectedRenderBackgroundFolder = null;
 let selectedRenderOutputFolder = null;
 let selectedRenderChromaKeyFile = null;
+let selectedRenderFramePath = null;
+let selectedRenderEffectPath = null;
 
 // Toggle functions for render options
 function toggleRenderMode() {
@@ -2017,6 +2081,7 @@ function toggleRenderMode() {
   document.getElementById("render-chromakey-group").style.display = "none";
   document.getElementById("render-crop-group").style.display = "none";
   document.getElementById("render-keepcolor-group").style.display = "none";
+  document.getElementById("render-blurframe-group").style.display = "none";
 
   // Show relevant option group based on mode
   if (mode === "topTransparent") {
@@ -2028,7 +2093,23 @@ function toggleRenderMode() {
   } else if (mode === "keepColor") {
     document.getElementById("render-keepcolor-group").style.display = "block";
     toggleKeepColorCrop();
+  } else if (mode === "blurFrame") {
+    document.getElementById("render-blurframe-group").style.display = "block";
+    toggleBlurFrameLayers();
   }
+}
+
+// 3 công tắc của mode Nền mờ + Khung: tắt chỉ ẩn tham số, không xoá đường dẫn
+// đã chọn, nên bỏ tick rồi tick lại là chạy tiếp được ngay.
+function toggleBlurFrameLayers() {
+  const show = (checkboxId, groupId) => {
+    const on = document.getElementById(checkboxId)?.checked || false;
+    const group = document.getElementById(groupId);
+    if (group) group.style.display = on ? "block" : "none";
+  };
+  show("render-bf-blur-enabled", "render-bf-blur-group");
+  show("render-bf-frame-enabled", "render-bf-frame-group");
+  show("render-bf-effect-enabled", "render-bf-effect-group");
 }
 
 function toggleChromaKeyMode() {
@@ -2072,6 +2153,81 @@ async function selectRenderChromaKeyFile() {
 function clearRenderChromaKeyFile() {
   selectedRenderChromaKeyFile = null;
   const input = document.getElementById("render-chromakey-file");
+  if (input) input.value = "";
+  saveSettings();
+}
+
+// ===== Nền mờ + Khung: chọn ảnh khung và video hiệu ứng =====
+// Cả hai đều nhận file lẻ hoặc thư mục: trỏ vào thư mục thì mỗi video render ra
+// sẽ bốc ngẫu nhiên một file trong đó.
+async function selectRenderFrameFile() {
+  if (!checkElectronAPI()) return;
+  try {
+    const filePath = await window.electronAPI.selectFile({
+      filters: [
+        { name: "Ảnh khung", extensions: ["png", "webp"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (filePath) setRenderFramePath(filePath);
+  } catch (error) {
+    console.error("Error selecting frame file:", error);
+    alert("Lỗi khi chọn ảnh khung: " + error.message);
+  }
+}
+
+async function selectRenderFrameFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) setRenderFramePath(folder);
+}
+
+function setRenderFramePath(value) {
+  selectedRenderFramePath = value;
+  const input = document.getElementById("render-bf-frame-path");
+  if (input) input.value = value;
+  saveSettings();
+}
+
+function clearRenderFramePath() {
+  selectedRenderFramePath = null;
+  const input = document.getElementById("render-bf-frame-path");
+  if (input) input.value = "";
+  saveSettings();
+}
+
+async function selectRenderEffectFile() {
+  if (!checkElectronAPI()) return;
+  try {
+    const filePath = await window.electronAPI.selectFile({
+      filters: [
+        { name: "Video hiệu ứng", extensions: ["mp4", "mov", "webm", "mkv"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (filePath) setRenderEffectPath(filePath);
+  } catch (error) {
+    console.error("Error selecting effect file:", error);
+    alert("Lỗi khi chọn video hiệu ứng: " + error.message);
+  }
+}
+
+async function selectRenderEffectFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) setRenderEffectPath(folder);
+}
+
+function setRenderEffectPath(value) {
+  selectedRenderEffectPath = value;
+  const input = document.getElementById("render-bf-effect-path");
+  if (input) input.value = value;
+  saveSettings();
+}
+
+function clearRenderEffectPath() {
+  selectedRenderEffectPath = null;
+  const input = document.getElementById("render-bf-effect-path");
   if (input) input.value = "";
   saveSettings();
 }
@@ -2306,6 +2462,25 @@ async function runRender() {
   const y_offset =
     parseInt(document.getElementById("render-y-offset").value) || 490;
 
+  // Nền mờ + Khung config
+  const bgBlurEnabled = document.getElementById("render-bf-blur-enabled").checked;
+  const bgBlur =
+    parseFloat(document.getElementById("render-bf-blur").value) || 20;
+  const mainScale =
+    parseFloat(document.getElementById("render-bf-main-scale").value) || 0.85;
+  const mainOpacity =
+    parseFloat(document.getElementById("render-bf-main-opacity").value) || 0.9;
+  const frameEnabled = document.getElementById(
+    "render-bf-frame-enabled",
+  ).checked;
+  const framePath = selectedRenderFramePath || "";
+  const effectEnabled = document.getElementById(
+    "render-bf-effect-enabled",
+  ).checked;
+  const effectPath = selectedRenderEffectPath || "";
+  const effectOpacity =
+    parseFloat(document.getElementById("render-bf-effect-opacity").value) || 0.6;
+
   // Chroma Key config
   let chromaKeyMode = "color";
   let chromaKeyColor = null;
@@ -2396,6 +2571,15 @@ async function runRender() {
         opacity,
         height,
         y_offset,
+        bgBlurEnabled,
+        bgBlur,
+        mainScale,
+        mainOpacity,
+        frameEnabled,
+        framePath,
+        effectEnabled,
+        effectPath,
+        effectOpacity,
         // Sử dụng path trực tiếp từ GUI, không copy
         overlayFolder: selectedRenderOverlayFolder || "./overlays",
         backgroundFolder: selectedRenderBackgroundFolder || "./backgrounds",

@@ -82,6 +82,38 @@ test("parseConfigRows parses keepColor crop columns", () => {
   assert.deepEqual(out[1].cfg, { keepColors: ["F6FF00"] });
 });
 
+test("parseConfigRows đọc cột blurFrame, mỗi kênh một khung riêng", () => {
+  const header = ["sheetName","renderMode","bgBlurEnabled","bgBlur","mainScale","mainOpacity","frameEnabled","framePath","effectEnabled","effectPath","effectOpacity"];
+  const rows = [header,
+    ["Kênh A","blurFrame","true","25","0.8","0.85","true","D:/khung/a.png","true","D:/hieu-ung","0.5"],
+    ["Kênh B","blurFrame","","","","","true","D:/khung/b.png","",""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].renderMode, "blurFrame");
+  assert.deepEqual(out[0].cfg, {
+    bgBlurEnabled: true, bgBlur: 25, mainScale: 0.8, mainOpacity: 0.85,
+    frameEnabled: true, framePath: "D:/khung/a.png",
+    effectEnabled: true, effectPath: "D:/hieu-ung", effectOpacity: 0.5,
+  });
+  // ô trống -> không set, dùng mặc định của render-core; khung vẫn riêng theo kênh
+  assert.deepEqual(out[1].cfg, { frameEnabled: true, framePath: "D:/khung/b.png" });
+});
+
+test("parseConfigRows đọc cột blurFrame qua alias tiếng Việt", () => {
+  const header = ["Tên kênh","Chế độ render","Làm mờ nền","Độ mờ nền","Tỉ lệ video","Dùng khung","Khung","Dùng hiệu ứng","Hiệu ứng","Độ mạnh hiệu ứng"];
+  const rows = [header,
+    ["Kênh A","blurFrame","true","30","0.9","true","D:/khung.png","false","D:/fx","0.7"],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].cfg.bgBlurEnabled, true);
+  assert.equal(out[0].cfg.bgBlur, 30);
+  assert.equal(out[0].cfg.mainScale, 0.9);
+  assert.equal(out[0].cfg.frameEnabled, true);
+  assert.equal(out[0].cfg.framePath, "D:/khung.png");
+  assert.equal(out[0].cfg.effectEnabled, false);
+  assert.equal(out[0].cfg.effectOpacity, 0.7);
+});
+
 test("parseConfigRows parses chromaPalette and chromaKeyAuto mode", () => {
   const header = ["sheetName","enabled","videosPerDay","renderMode","chromaPalette"];
   const rows = [header,

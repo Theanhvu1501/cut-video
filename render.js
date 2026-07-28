@@ -283,6 +283,18 @@ let keepColorAddDarkLayer = false; // Thêm lớp đen mờ khi có crop
 let height = 220;
 let y_offset = 490;
 
+// Chế độ nền mờ + khung (blurFrame): 3 công tắc độc lập, mỗi công tắc tách khỏi
+// giá trị của nó để tắt tạm một lớp mà không mất đường dẫn đã chọn.
+let bgBlurEnabled = false;
+let bgBlur = 20;
+let mainScale = 0.85;
+let mainOpacity = 0.9;
+let frameEnabled = false;
+let framePath = "";
+let effectEnabled = false;
+let effectPath = "";
+let effectOpacity = 0.6;
+
 // Đọc config từ project JSON hoặc từ environment variable RENDER_CONFIG_JSON
 // Ưu tiên RENDER_CONFIG_JSON (từ options) nếu có, sau đó mới đọc từ project JSON
 let config = null;
@@ -347,6 +359,18 @@ if (config) {
     keepColorAddDarkLayer = config.keepColorAddDarkLayer;
   if (config.height !== undefined) height = config.height;
   if (config.y_offset !== undefined) y_offset = config.y_offset;
+  if (config.bgBlurEnabled !== undefined) bgBlurEnabled = config.bgBlurEnabled;
+  if (config.bgBlur !== undefined) bgBlur = parseFloat(config.bgBlur) || 20;
+  if (config.mainScale !== undefined)
+    mainScale = parseFloat(config.mainScale) || 0.85;
+  if (config.mainOpacity !== undefined)
+    mainOpacity = parseFloat(config.mainOpacity) || 0.9;
+  if (config.frameEnabled !== undefined) frameEnabled = config.frameEnabled;
+  if (config.framePath) framePath = config.framePath;
+  if (config.effectEnabled !== undefined) effectEnabled = config.effectEnabled;
+  if (config.effectPath) effectPath = config.effectPath;
+  if (config.effectOpacity !== undefined)
+    effectOpacity = parseFloat(config.effectOpacity) || 0.6;
   // Đọc đường dẫn từ config
   if (config.overlayFolder) {
     // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
@@ -546,6 +570,132 @@ const complexFilterTopTransparent = () => {
   ];
 };
 
+// region ========== Chế độ nền mờ + khung (blurFrame) ==========
+const BLURFRAME_BASE_W = 1280;
+const BLURFRAME_BASE_H = 720;
+const FRAME_EXTS = [".png", ".webp"];
+const EFFECT_EXTS = [".mp4", ".mov", ".webm", ".mkv"];
+
+// yuv420p yêu cầu chiều rộng/cao chẵn nên phải làm tròn xuống số chẵn.
+const evenDown = (value) => {
+  const n = Math.round(value);
+  return n % 2 === 0 ? n : n - 1;
+};
+
+// Hình học của lớp video gốc thu nhỏ, căn giữa khung 1280x720.
+const frameGeometry = (scale) => {
+  const raw = parseFloat(scale);
+  const ratio = raw > 0 && raw <= 1 ? raw : 0.85;
+  const w = Math.max(2, evenDown(BLURFRAME_BASE_W * ratio));
+  const h = Math.max(2, evenDown(BLURFRAME_BASE_H * ratio));
+  return {
+    w,
+    h,
+    x: Math.round((BLURFRAME_BASE_W - w) / 2),
+    y: Math.round((BLURFRAME_BASE_H - h) / 2),
+  };
+};
+
+// target trỏ vào file thì dùng đúng file đó; trỏ vào thư mục thì bốc ngẫu nhiên
+// một file hợp lệ bên trong. Trả về "" khi thiếu/hỏng để lớp đó bị bỏ qua.
+const pickAsset = (target, exts) => {
+  if (!target) return "";
+  try {
+    const stat = fs.statSync(target);
+    if (stat.isFile()) return target;
+    if (!stat.isDirectory()) return "";
+    const files = fs
+      .readdirSync(target)
+      .filter((f) => exts.includes(path.extname(f).toLowerCase()))
+      .sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" })
+      );
+    if (!files.length) return "";
+    return path.join(target, files[Math.floor(Math.random() * files.length)]);
+  } catch {
+    return "";
+  }
+};
+
+// Bật công tắc mà đường dẫn hỏng thì bỏ qua lớp đó chứ không cho job chết.
+const resolveBlurFrameAssets = () => {
+  let frameFile = "";
+  let effectFile = "";
+  if (frameEnabled) {
+    frameFile = pickAsset(framePath, FRAME_EXTS);
+    if (!frameFile)
+      log(
+        `⚠️ Bật khung nhưng không tìm được ảnh khung hợp lệ tại: ${framePath || "(trống)"} — bỏ qua lớp khung`,
+        LOG_LEVEL.WARN
+      );
+  }
+  if (effectEnabled) {
+    effectFile = pickAsset(effectPath, EFFECT_EXTS);
+    if (!effectFile)
+      log(
+        `⚠️ Bật hiệu ứng nhưng không tìm được video hiệu ứng hợp lệ tại: ${effectPath || "(trống)"} — bỏ qua lớp hiệu ứng`,
+        LOG_LEVEL.WARN
+      );
+  }
+  return { frameFile, effectFile };
+};
+
+// Các input phụ (sau nền [0] và video gốc [1]) đúng thứ tự filter giả định.
+const buildStudioInputs = ({ frameFile, effectFile }) => {
+  const inputs = [];
+  // Ảnh tĩnh phải -loop 1, nếu không chỉ có đúng 1 khung hình đầu tiên có khung.
+  if (frameFile) inputs.push({ file: frameFile, inputOptions: ["-loop", "1"] });
+  if (effectFile)
+    inputs.push({ file: effectFile, inputOptions: ["-stream_loop", "-1"] });
+  return inputs;
+};
+
+const complexFilterBlurFrame = ({ frameFile, effectFile }) => {
+  const { w, h, x, y } = frameGeometry(mainScale);
+  const useBlur = bgBlurEnabled && bgBlur > 0;
+  const filters = [];
+
+  // 1. Nền (twitch/pexel) phủ kín khung, làm nhoè nếu bật công tắc.
+  filters.push(
+    `[0:v]scale=${BLURFRAME_BASE_W}:${BLURFRAME_BASE_H}${useBlur ? `,gblur=sigma=${bgBlur}` : ""}[bf_bg]`
+  );
+  // 2. Video gốc thu nhỏ theo mainScale, giảm độ đục theo mainOpacity.
+  filters.push(
+    `[1:v]scale=${w}:${h},format=yuva420p,colorchannelmixer=aa=${mainOpacity}[bf_main]`
+  );
+
+  // Nhãn cuối chuỗi luôn phải là [combined_video] nên mỗi bước phải biết nó có
+  // phải bước cuối không.
+  const label = (isLast, name) => (isLast ? "[combined_video]" : name);
+  let stage = label(!frameFile && !effectFile, "[bf_stage1]");
+  // shortest=1: nền và hiệu ứng lặp vô hạn, chỉ video gốc là hữu hạn.
+  filters.push(`[bf_bg][bf_main]overlay=${x}:${y}:shortest=1${stage}`);
+
+  let idx = 2;
+  if (frameFile) {
+    // 3. Ảnh PNG khung scale vừa đúng vùng video 85% rồi đè lên chính vùng đó.
+    filters.push(`[${idx}:v]scale=${w}:${h}[bf_frame]`);
+    const next = label(!effectFile, "[bf_stage2]");
+    filters.push(`${stage}[bf_frame]overlay=${x}:${y}:shortest=1${next}`);
+    stage = next;
+    idx++;
+  }
+  if (effectFile) {
+    // 4. Lớp hiệu ứng nền đen ghép bằng blend screen nên vùng đen tự biến mất.
+    filters.push(
+      `[${idx}:v]scale=${BLURFRAME_BASE_W}:${BLURFRAME_BASE_H},format=yuv420p[bf_fx]`
+    );
+    filters.push(
+      `${stage}[bf_fx]blend=all_mode=screen:all_opacity=${effectOpacity}:shortest=1[combined_video]`
+    );
+    idx++;
+  }
+
+  filters.push("[1:a]volume=1.0[overlay_audio]"); // Tiếng vẫn lấy từ video gốc
+  return filters;
+};
+// endregion
+
 const complexFilterKeepColor = () => {
   const filters = [];
   const count = keepColorsList.length;
@@ -653,7 +803,16 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       const newDuration = duration / videoSpeed; // Điều chỉnh duration theo tốc độ video
 
       let filterConfig;
-      if (renderMode === "keepColor") {
+      let studioInputs = [];
+      if (renderMode === "blurFrame") {
+        const assets = resolveBlurFrameAssets();
+        log(
+          `🖼️ Sử dụng chế độ Nền mờ + Khung cho ${path.basename(outputPath)}`,
+          LOG_LEVEL.DEBUG
+        );
+        filterConfig = complexFilterBlurFrame(assets);
+        studioInputs = buildStudioInputs(assets);
+      } else if (renderMode === "keepColor") {
         log(
           `🎨 Sử dụng chế độ GIỮ MÀU (Keep Colors) cho ${path.basename(
             outputPath
@@ -704,9 +863,14 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
       // - Chỉ dùng GPU cho encoding (videoCodec)
       // - Complex filter sẽ decode trên CPU, xử lý filter, rồi encode bằng GPU
 
+      command.inputOptions(["-stream_loop", "-1"]).input(inputOverlay);
+
+      // Input phụ của blurFrame (khung, hiệu ứng); rỗng với 4 mode cũ.
+      for (const extra of studioInputs) {
+        command.input(extra.file).inputOptions(extra.inputOptions);
+      }
+
       command
-        .inputOptions(["-stream_loop", "-1"])
-        .input(inputOverlay)
         .complexFilter(filterConfig)
         .outputOptions("-t", newDuration)
         .audioCodec("aac")

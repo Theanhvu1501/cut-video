@@ -51,6 +51,15 @@ const HEADER_ALIASES = {
   keepAddDarkLayer: ["lớp nền tối"],
   cropHeight: ["chiều cao cắt"],
   cropYOffset: ["vị trí y cắt"],
+  bgBlurEnabled: ["làm mờ nền", "bật làm mờ nền"],
+  bgBlur: ["độ mờ nền"],
+  mainScale: ["tỉ lệ video", "tỷ lệ video"],
+  mainOpacity: ["độ đục video"],
+  frameEnabled: ["dùng khung", "bật khung"],
+  framePath: ["khung", "đường dẫn khung"],
+  effectEnabled: ["dùng hiệu ứng", "bật hiệu ứng"],
+  effectPath: ["hiệu ứng", "đường dẫn hiệu ứng"],
+  effectOpacity: ["độ mạnh hiệu ứng"],
   proxy: ["proxy tải", "proxy"],
   gpmProfileId: ["gpm profile id", "gpm", "profile gpm"],
   postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
@@ -126,6 +135,25 @@ export function parseConfigRows(values) {
     if (cropHeight !== undefined) cfg.cropHeight = cropHeight;
     const cropYOffset = num(col(row, "cropYOffset"));
     if (cropYOffset !== undefined) cfg.cropYOffset = cropYOffset;
+    // Mode blurFrame: 3 công tắc + tham số của từng lớp
+    const bgBlurEnabledRaw = col(row, "bgBlurEnabled");
+    if (bgBlurEnabledRaw) cfg.bgBlurEnabled = boolFalse(bgBlurEnabledRaw);
+    const bgBlur = num(col(row, "bgBlur"));
+    if (bgBlur !== undefined) cfg.bgBlur = bgBlur;
+    const mainScale = num(col(row, "mainScale"));
+    if (mainScale !== undefined) cfg.mainScale = mainScale;
+    const mainOpacity = num(col(row, "mainOpacity"));
+    if (mainOpacity !== undefined) cfg.mainOpacity = mainOpacity;
+    const frameEnabledRaw = col(row, "frameEnabled");
+    if (frameEnabledRaw) cfg.frameEnabled = boolFalse(frameEnabledRaw);
+    const framePath = col(row, "framePath");
+    if (framePath) cfg.framePath = framePath;
+    const effectEnabledRaw = col(row, "effectEnabled");
+    if (effectEnabledRaw) cfg.effectEnabled = boolFalse(effectEnabledRaw);
+    const effectPath = col(row, "effectPath");
+    if (effectPath) cfg.effectPath = effectPath;
+    const effectOpacity = num(col(row, "effectOpacity"));
+    if (effectOpacity !== undefined) cfg.effectOpacity = effectOpacity;
     const chromaPalette = col(row, "chromaPalette")
       .split(",")
       .map((p) => p.trim().replace("#", "").toUpperCase())

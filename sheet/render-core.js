@@ -25,7 +25,23 @@ export const DEFAULT_RENDER_CFG = {
   cropHeight: 220,
   cropYOffset: 490,
   videoSpeed: 0.95,
+  // Mode blurFrame: 3 công tắc độc lập, mỗi công tắc tách khỏi giá trị của nó
+  // để tắt tạm một lớp mà không mất đường dẫn đã chọn.
+  bgBlurEnabled: false,
+  bgBlur: 20,
+  mainScale: 0.85,
+  mainOpacity: 0.9,
+  frameEnabled: false,
+  framePath: "",
+  frameFile: "",
+  effectEnabled: false,
+  effectPath: "",
+  effectFile: "",
+  effectOpacity: 0.6,
 };
+
+export const FRAME_EXTS = [".png", ".webp"];
+export const EFFECT_EXTS = [".mp4", ".mov", ".webm", ".mkv"];
 
 function topTransparent(cfg) {
   const filter = [
@@ -112,6 +128,129 @@ function keepColor(cfg) {
   ];
 }
 
+const BASE_W = 1280;
+const BASE_H = 720;
+
+// yuv420p yêu cầu chiều rộng/cao chẵn nên phải làm tròn xuống số chẵn.
+function evenDown(value) {
+  const n = Math.round(value);
+  return n % 2 === 0 ? n : n - 1;
+}
+
+// Hình học của lớp video gốc thu nhỏ, căn giữa khung 1280x720.
+export function frameGeometry(mainScale) {
+  const raw = Number(mainScale);
+  const ratio = raw > 0 && raw <= 1 ? raw : DEFAULT_RENDER_CFG.mainScale;
+  const w = Math.max(2, evenDown(BASE_W * ratio));
+  const h = Math.max(2, evenDown(BASE_H * ratio));
+  return { w, h, x: Math.round((BASE_W - w) / 2), y: Math.round((BASE_H - h) / 2) };
+}
+
+// Nguồn sự thật duy nhất về "lớp nào đang bật". buildStudioInputs và blurFrame
+// đều hỏi hàm này, nên thứ tự input và chỉ số [n:v] trong filter không bao giờ lệch.
+export function blurFrameLayers(cfgIn = {}) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  return {
+    blurBg: Boolean(cfg.bgBlurEnabled) && Number(cfg.bgBlur) > 0,
+    frame: Boolean(cfg.frameEnabled) && Boolean(cfg.frameFile),
+    effect: Boolean(cfg.effectEnabled) && Boolean(cfg.effectFile),
+  };
+}
+
+// target trỏ vào file thì dùng đúng file đó; trỏ vào thư mục thì bốc ngẫu nhiên
+// một file hợp lệ bên trong. Trả về "" khi thiếu/hỏng để lớp đó bị bỏ qua.
+export function pickAsset(target, exts, rand = Math.random) {
+  if (!target) return "";
+  try {
+    const stat = fs.statSync(target);
+    if (stat.isFile()) return target;
+    if (!stat.isDirectory()) return "";
+    const files = fs
+      .readdirSync(target)
+      .filter((f) => exts.includes(path.extname(f).toLowerCase()))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+    if (!files.length) return "";
+    return path.join(target, files[Math.floor(rand() * files.length)]);
+  } catch {
+    return "";
+  }
+}
+
+// Biến framePath/effectPath (file hoặc thư mục) thành file cụ thể cho lần render này.
+// Bật công tắc mà đường dẫn hỏng thì trả cảnh báo và bỏ qua lớp đó, không ném lỗi:
+// luồng sheet chạy không người trông, một ô gõ sai không đáng làm hỏng cả mẻ video.
+export function resolveBlurFrameAssets(cfgIn = {}, rand = Math.random) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  const warnings = [];
+  let frameFile = "";
+  let effectFile = "";
+  if (cfg.frameEnabled) {
+    frameFile = pickAsset(cfg.framePath, FRAME_EXTS, rand);
+    if (!frameFile)
+      warnings.push(
+        `⚠️ Bật khung nhưng không tìm được ảnh khung hợp lệ tại: ${cfg.framePath || "(trống)"} — bỏ qua lớp khung`
+      );
+  }
+  if (cfg.effectEnabled) {
+    effectFile = pickAsset(cfg.effectPath, EFFECT_EXTS, rand);
+    if (!effectFile)
+      warnings.push(
+        `⚠️ Bật hiệu ứng nhưng không tìm được video hiệu ứng hợp lệ tại: ${cfg.effectPath || "(trống)"} — bỏ qua lớp hiệu ứng`
+      );
+  }
+  return { frameFile, effectFile, warnings };
+}
+
+// Các input phụ (sau nền [0] và video gốc [1]) mà mode cần, đúng thứ tự filter giả định.
+export function buildStudioInputs(renderMode, cfgIn = {}) {
+  if (renderMode !== "blurFrame") return [];
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  const layers = blurFrameLayers(cfg);
+  const inputs = [];
+  // Ảnh tĩnh phải -loop 1, nếu không chỉ có đúng 1 khung hình đầu tiên có khung.
+  if (layers.frame) inputs.push({ file: cfg.frameFile, inputOptions: ["-loop", "1"] });
+  if (layers.effect) inputs.push({ file: cfg.effectFile, inputOptions: ["-stream_loop", "-1"] });
+  return inputs;
+}
+
+function blurFrame(cfg) {
+  const { w, h, x, y } = frameGeometry(cfg.mainScale);
+  const layers = blurFrameLayers(cfg);
+  const filters = [];
+
+  const blur = layers.blurBg ? `,gblur=sigma=${cfg.bgBlur}` : "";
+  filters.push(`[0:v]scale=${BASE_W}:${BASE_H}${blur}[bf_bg]`);
+  filters.push(
+    `[1:v]scale=${w}:${h},format=yuva420p,colorchannelmixer=aa=${cfg.mainOpacity}[bf_main]`
+  );
+
+  // Nhãn cuối cùng của chuỗi luôn phải là [combined_video], nên mỗi bước phải biết
+  // nó có phải bước cuối không.
+  const label = (isLast, name) => (isLast ? "[combined_video]" : name);
+  let stage = label(!layers.frame && !layers.effect, "[bf_stage1]");
+  // shortest=1: nền và hiệu ứng lặp vô hạn, chỉ video gốc là hữu hạn.
+  filters.push(`[bf_bg][bf_main]overlay=${x}:${y}:shortest=1${stage}`);
+
+  let idx = 2;
+  if (layers.frame) {
+    filters.push(`[${idx}:v]scale=${w}:${h}[bf_frame]`);
+    const next = label(!layers.effect, "[bf_stage2]");
+    filters.push(`${stage}[bf_frame]overlay=${x}:${y}:shortest=1${next}`);
+    stage = next;
+    idx++;
+  }
+  if (layers.effect) {
+    filters.push(`[${idx}:v]scale=${BASE_W}:${BASE_H},format=yuv420p[bf_fx]`);
+    filters.push(
+      `${stage}[bf_fx]blend=all_mode=screen:all_opacity=${cfg.effectOpacity}:shortest=1[combined_video]`
+    );
+    idx++;
+  }
+
+  filters.push("[1:a]volume=1.0[overlay_audio]");
+  return filters;
+}
+
 export function buildComplexFilter(renderMode, cfgIn = {}) {
   const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
   switch (renderMode) {
@@ -119,6 +258,7 @@ export function buildComplexFilter(renderMode, cfgIn = {}) {
     case "chromaKey": return chromaKey(cfg);
     case "crop": return crop(cfg);
     case "keepColor": return keepColor(cfg);
+    case "blurFrame": return blurFrame(cfg);
     case "topTransparent":
     default: return topTransparent(cfg);
   }
@@ -148,6 +288,12 @@ export function renderOne({
   onProgress,
 }) {
   const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  if (renderMode === "blurFrame") {
+    const { frameFile, effectFile, warnings } = resolveBlurFrameAssets(cfg);
+    cfg.frameFile = frameFile;
+    cfg.effectFile = effectFile;
+    if (onProgress) warnings.forEach((w) => onProgress(w));
+  }
   const { ffmpegPath, ffprobePath } = resolveFfmpegPaths();
   ffmpeg.setFfmpegPath(ffmpegPath);
   ffmpeg.setFfprobePath(ffprobePath);
@@ -164,7 +310,14 @@ export function renderOne({
 
       const command = ffmpeg(backgroundFile)
         .inputOptions(["-stream_loop", "-1"])
-        .input(overlayFile)
+        .input(overlayFile);
+
+      // Input phụ của blurFrame (khung, hiệu ứng); rỗng với 4 mode cũ.
+      for (const extra of buildStudioInputs(renderMode, cfg)) {
+        command.input(extra.file).inputOptions(extra.inputOptions);
+      }
+
+      command
         .complexFilter(filterConfig)
         .outputOptions(`-t ${newDuration}`)
         .audioCodec("aac")

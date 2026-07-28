@@ -291,6 +291,7 @@ let mainScale = 0.85;
 let mainOpacity = 0.9;
 let frameEnabled = false;
 let framePath = "";
+let frameScale = 1;
 let effectEnabled = false;
 let effectPath = "";
 let effectOpacity = 0.6;
@@ -367,6 +368,8 @@ if (config) {
     mainOpacity = parseFloat(config.mainOpacity) || 0.9;
   if (config.frameEnabled !== undefined) frameEnabled = config.frameEnabled;
   if (config.framePath) framePath = config.framePath;
+  if (config.frameScale !== undefined)
+    frameScale = parseFloat(config.frameScale) || 1;
   if (config.effectEnabled !== undefined) effectEnabled = config.effectEnabled;
   if (config.effectPath) effectPath = config.effectPath;
   if (config.effectOpacity !== undefined)
@@ -596,6 +599,25 @@ const frameGeometry = (scale) => {
   };
 };
 
+// Hình học của lớp khung: phóng to/thu nhỏ quanh cùng tâm với vùng video.
+// Ảnh PNG khung thường có sẵn viền trong suốt bao quanh hình vẽ, nên phủ khít
+// vùng video vẫn thấy khung thụt vào — frameScale > 1 bù đúng phần viền rỗng đó.
+// Cho phép vượt 1.0: khung tràn ra ngoài 1280x720 thì overlay toạ độ âm, ffmpeg
+// tự cắt phần thừa.
+const frameOverlayGeometry = (scale, fScale) => {
+  const { w, h } = frameGeometry(scale);
+  const raw = parseFloat(fScale);
+  const s = raw > 0 ? raw : 1;
+  const fw = Math.max(2, evenDown(w * s));
+  const fh = Math.max(2, evenDown(h * s));
+  return {
+    w: fw,
+    h: fh,
+    x: Math.round((BLURFRAME_BASE_W - fw) / 2),
+    y: Math.round((BLURFRAME_BASE_H - fh) / 2),
+  };
+};
+
 // target trỏ vào file thì dùng đúng file đó; trỏ vào thư mục thì bốc ngẫu nhiên
 // một file hợp lệ bên trong. Trả về "" khi thiếu/hỏng để lớp đó bị bỏ qua.
 const pickAsset = (target, exts) => {
@@ -673,10 +695,11 @@ const complexFilterBlurFrame = ({ frameFile, effectFile }) => {
 
   let idx = 2;
   if (frameFile) {
-    // 3. Ảnh PNG khung scale vừa đúng vùng video 85% rồi đè lên chính vùng đó.
-    filters.push(`[${idx}:v]scale=${w}:${h}[bf_frame]`);
+    // 3. Ảnh PNG khung phủ vùng video, nhân thêm frameScale để bù viền trong suốt.
+    const fr = frameOverlayGeometry(mainScale, frameScale);
+    filters.push(`[${idx}:v]scale=${fr.w}:${fr.h}[bf_frame]`);
     const next = label(!effectFile, "[bf_stage2]");
-    filters.push(`${stage}[bf_frame]overlay=${x}:${y}:shortest=1${next}`);
+    filters.push(`${stage}[bf_frame]overlay=${fr.x}:${fr.y}:shortest=1${next}`);
     stage = next;
     idx++;
   }

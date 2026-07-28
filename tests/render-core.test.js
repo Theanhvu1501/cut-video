@@ -9,6 +9,7 @@ import {
   buildStudioInputs,
   blurFrameLayers,
   frameGeometry,
+  frameOverlayGeometry,
   pickAsset,
   resolveBlurFrameAssets,
 } from "../sheet/render-core.js";
@@ -140,6 +141,48 @@ test("blurFrame: mainScale/mainOpacity tuỳ chỉnh được", () => {
   const f = buildComplexFilter("blurFrame", { mainScale: 0.5, mainOpacity: 0.4 });
   assert.ok(f.includes("[1:v]scale=640:360,format=yuva420p,colorchannelmixer=aa=0.4[bf_main]"));
   assert.ok(f.includes("[bf_bg][bf_main]overlay=320:180:shortest=1[combined_video]"));
+});
+
+test("frameScale mặc định 1.0 — khung phủ khít đúng vùng video", () => {
+  const f = buildComplexFilter("blurFrame", { frameEnabled: true, frameFile: "k.png" });
+  assert.ok(f.includes("[2:v]scale=1088:612[bf_frame]"));
+  assert.ok(f.includes("[bf_stage1][bf_frame]overlay=96:54:shortest=1[combined_video]"));
+});
+
+test("frameScale > 1 phóng khung quanh cùng tâm để bù viền trong suốt", () => {
+  const f = buildComplexFilter("blurFrame", {
+    frameEnabled: true, frameFile: "k.png", frameScale: 1.1,
+  });
+  // 1088*1.1 = 1196.8 -> chẵn 1196 ; 612*1.1 = 673.2 -> chẵn 672
+  assert.ok(f.includes("[2:v]scale=1196:672[bf_frame]"));
+  assert.ok(f.includes("[bf_stage1][bf_frame]overlay=42:24:shortest=1[combined_video]"));
+});
+
+test("frameScale đủ lớn thì khung tràn ra ngoài, overlay toạ độ âm", () => {
+  const g = frameOverlayGeometry(0.85, 1.3);
+  assert.ok(g.w > 1280, `w=${g.w}`);
+  assert.ok(g.x < 0, `x=${g.x}`);
+  assert.equal(g.x * 2 + g.w, 1280); // vẫn căn giữa
+});
+
+test("frameOverlayGeometry rơi về 1.0 khi hệ số vô lý, luôn chẵn và căn giữa", () => {
+  assert.deepEqual(frameOverlayGeometry(0.85, 0), frameOverlayGeometry(0.85, 1));
+  assert.deepEqual(frameOverlayGeometry(0.85, -2), frameOverlayGeometry(0.85, 1));
+  assert.deepEqual(frameOverlayGeometry(0.85, "hỏng"), frameOverlayGeometry(0.85, 1));
+  for (const s of [0.5, 1, 1.07, 1.25]) {
+    const g = frameOverlayGeometry(0.85, s);
+    assert.equal(g.w % 2, 0);
+    assert.equal(g.h % 2, 0);
+    assert.equal(g.x * 2 + g.w, 1280);
+    assert.equal(g.y * 2 + g.h, 720);
+  }
+});
+
+test("frameScale không đụng tới lớp video gốc", () => {
+  const a = buildComplexFilter("blurFrame", { frameEnabled: true, frameFile: "k.png", frameScale: 1.2 });
+  const b = buildComplexFilter("blurFrame", { frameEnabled: true, frameFile: "k.png" });
+  const main = (f) => f.find((s) => s.includes("[bf_main]"));
+  assert.equal(main(a), main(b));
 });
 
 test("frameGeometry luôn trả kích thước chẵn và căn giữa", () => {

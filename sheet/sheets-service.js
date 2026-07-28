@@ -57,6 +57,7 @@ const HEADER_ALIASES = {
   mainOpacity: ["độ đục video"],
   frameEnabled: ["dùng khung", "bật khung"],
   framePath: ["khung", "đường dẫn khung"],
+  frameScale: ["phóng khung", "hệ số khung"],
   effectEnabled: ["dùng hiệu ứng", "bật hiệu ứng"],
   effectPath: ["hiệu ứng", "đường dẫn hiệu ứng"],
   effectOpacity: ["độ mạnh hiệu ứng"],
@@ -148,6 +149,8 @@ export function parseConfigRows(values) {
     if (frameEnabledRaw) cfg.frameEnabled = boolFalse(frameEnabledRaw);
     const framePath = col(row, "framePath");
     if (framePath) cfg.framePath = framePath;
+    const frameScale = num(col(row, "frameScale"));
+    if (frameScale !== undefined) cfg.frameScale = frameScale;
     const effectEnabledRaw = col(row, "effectEnabled");
     if (effectEnabledRaw) cfg.effectEnabled = boolFalse(effectEnabledRaw);
     const effectPath = col(row, "effectPath");

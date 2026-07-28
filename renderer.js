@@ -504,6 +504,7 @@ async function saveSettings() {
       frameEnabled:
         document.getElementById("render-bf-frame-enabled")?.checked || false,
       framePath: selectedRenderFramePath,
+      frameScale: document.getElementById("render-bf-frame-scale")?.value || "1",
       effectEnabled:
         document.getElementById("render-bf-effect-enabled")?.checked || false,
       effectPath: selectedRenderEffectPath,
@@ -741,6 +742,9 @@ async function loadSettings() {
         document.getElementById("render-bf-frame-path").value =
           settings.render.framePath;
       }
+      if (settings.render.frameScale)
+        document.getElementById("render-bf-frame-scale").value =
+          settings.render.frameScale;
       if (settings.render.effectEnabled !== undefined)
         document.getElementById("render-bf-effect-enabled").checked =
           settings.render.effectEnabled;
@@ -1778,6 +1782,8 @@ async function saveCurrentProjectSettings() {
         frameEnabled:
           document.getElementById("render-bf-frame-enabled")?.checked || false,
         framePath: selectedRenderFramePath,
+        frameScale:
+          document.getElementById("render-bf-frame-scale")?.value || "1",
         effectEnabled:
           document.getElementById("render-bf-effect-enabled")?.checked || false,
         effectPath: selectedRenderEffectPath,
@@ -2474,6 +2480,8 @@ async function runRender() {
     "render-bf-frame-enabled",
   ).checked;
   const framePath = selectedRenderFramePath || "";
+  const frameScale =
+    parseFloat(document.getElementById("render-bf-frame-scale").value) || 1;
   const effectEnabled = document.getElementById(
     "render-bf-effect-enabled",
   ).checked;
@@ -2577,6 +2585,7 @@ async function runRender() {
         mainOpacity,
         frameEnabled,
         framePath,
+        frameScale,
         effectEnabled,
         effectPath,
         effectOpacity,

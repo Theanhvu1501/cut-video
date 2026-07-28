@@ -34,6 +34,7 @@ export const DEFAULT_RENDER_CFG = {
   frameEnabled: false,
   framePath: "",
   frameFile: "",
+  frameScale: 1,
   effectEnabled: false,
   effectPath: "",
   effectFile: "",
@@ -146,6 +147,20 @@ export function frameGeometry(mainScale) {
   return { w, h, x: Math.round((BASE_W - w) / 2), y: Math.round((BASE_H - h) / 2) };
 }
 
+// Hình học của lớp khung: phóng to/thu nhỏ quanh cùng tâm với vùng video.
+// Ảnh PNG khung thường có sẵn viền trong suốt bao quanh hình vẽ, nên phủ khít
+// vùng video vẫn thấy khung thụt vào — frameScale > 1 bù đúng phần viền rỗng đó.
+// Cho phép vượt 1.0: khung tràn ra ngoài 1280x720 thì overlay toạ độ âm, ffmpeg
+// tự cắt phần thừa.
+export function frameOverlayGeometry(mainScale, frameScale) {
+  const { w, h } = frameGeometry(mainScale);
+  const raw = Number(frameScale);
+  const s = raw > 0 ? raw : DEFAULT_RENDER_CFG.frameScale;
+  const fw = Math.max(2, evenDown(w * s));
+  const fh = Math.max(2, evenDown(h * s));
+  return { w: fw, h: fh, x: Math.round((BASE_W - fw) / 2), y: Math.round((BASE_H - fh) / 2) };
+}
+
 // Nguồn sự thật duy nhất về "lớp nào đang bật". buildStudioInputs và blurFrame
 // đều hỏi hàm này, nên thứ tự input và chỉ số [n:v] trong filter không bao giờ lệch.
 export function blurFrameLayers(cfgIn = {}) {
@@ -233,9 +248,10 @@ function blurFrame(cfg) {
 
   let idx = 2;
   if (layers.frame) {
-    filters.push(`[${idx}:v]scale=${w}:${h}[bf_frame]`);
+    const fr = frameOverlayGeometry(cfg.mainScale, cfg.frameScale);
+    filters.push(`[${idx}:v]scale=${fr.w}:${fr.h}[bf_frame]`);
     const next = label(!layers.effect, "[bf_stage2]");
-    filters.push(`${stage}[bf_frame]overlay=${x}:${y}:shortest=1${next}`);
+    filters.push(`${stage}[bf_frame]overlay=${fr.x}:${fr.y}:shortest=1${next}`);
     stage = next;
     idx++;
   }

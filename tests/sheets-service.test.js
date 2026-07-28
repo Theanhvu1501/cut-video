@@ -83,16 +83,16 @@ test("parseConfigRows parses keepColor crop columns", () => {
 });
 
 test("parseConfigRows đọc cột blurFrame, mỗi kênh một khung riêng", () => {
-  const header = ["sheetName","renderMode","bgBlurEnabled","bgBlur","mainScale","mainOpacity","frameEnabled","framePath","effectEnabled","effectPath","effectOpacity"];
+  const header = ["sheetName","renderMode","bgBlurEnabled","bgBlur","mainScale","mainOpacity","frameEnabled","framePath","frameScale","effectEnabled","effectPath","effectOpacity"];
   const rows = [header,
-    ["Kênh A","blurFrame","true","25","0.8","0.85","true","D:/khung/a.png","true","D:/hieu-ung","0.5"],
-    ["Kênh B","blurFrame","","","","","true","D:/khung/b.png","",""],
+    ["Kênh A","blurFrame","true","25","0.8","0.85","true","D:/khung/a.png","1.09","true","D:/hieu-ung","0.5"],
+    ["Kênh B","blurFrame","","","","","true","D:/khung/b.png","","",""],
   ];
   const out = parseConfigRows(rows);
   assert.equal(out[0].renderMode, "blurFrame");
   assert.deepEqual(out[0].cfg, {
     bgBlurEnabled: true, bgBlur: 25, mainScale: 0.8, mainOpacity: 0.85,
-    frameEnabled: true, framePath: "D:/khung/a.png",
+    frameEnabled: true, framePath: "D:/khung/a.png", frameScale: 1.09,
     effectEnabled: true, effectPath: "D:/hieu-ung", effectOpacity: 0.5,
   });
   // ô trống -> không set, dùng mặc định của render-core; khung vẫn riêng theo kênh
@@ -100,9 +100,9 @@ test("parseConfigRows đọc cột blurFrame, mỗi kênh một khung riêng", (
 });
 
 test("parseConfigRows đọc cột blurFrame qua alias tiếng Việt", () => {
-  const header = ["Tên kênh","Chế độ render","Làm mờ nền","Độ mờ nền","Tỉ lệ video","Dùng khung","Khung","Dùng hiệu ứng","Hiệu ứng","Độ mạnh hiệu ứng"];
+  const header = ["Tên kênh","Chế độ render","Làm mờ nền","Độ mờ nền","Tỉ lệ video","Dùng khung","Khung","Phóng khung","Dùng hiệu ứng","Hiệu ứng","Độ mạnh hiệu ứng"];
   const rows = [header,
-    ["Kênh A","blurFrame","true","30","0.9","true","D:/khung.png","false","D:/fx","0.7"],
+    ["Kênh A","blurFrame","true","30","0.9","true","D:/khung.png","1.12","false","D:/fx","0.7"],
   ];
   const out = parseConfigRows(rows);
   assert.equal(out[0].cfg.bgBlurEnabled, true);
@@ -110,6 +110,7 @@ test("parseConfigRows đọc cột blurFrame qua alias tiếng Việt", () => {
   assert.equal(out[0].cfg.mainScale, 0.9);
   assert.equal(out[0].cfg.frameEnabled, true);
   assert.equal(out[0].cfg.framePath, "D:/khung.png");
+  assert.equal(out[0].cfg.frameScale, 1.12);
   assert.equal(out[0].cfg.effectEnabled, false);
   assert.equal(out[0].cfg.effectOpacity, 0.7);
 });

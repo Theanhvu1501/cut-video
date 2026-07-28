@@ -322,6 +322,49 @@ export function resolveFfmpegPaths() {
   };
 }
 
+// fluent-ffmpeg dựng message lỗi bằng utils.extractError, hàm này VỨT BỎ mọi dòng
+// stderr bắt đầu bằng "[" — mà lỗi thật của ffmpeg gần như luôn nằm ở đó
+// ([h264_nvenc @ ...], [AVFilterGraph @ ...]). Kết quả là chỉ còn lại phần đuôi vô
+// nghĩa "frame=0 ... Conversion failed!". Tự bóc lại những dòng có ý nghĩa.
+export function extractFfmpegError(stderr) {
+  return String(stderr || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    // "Conversion failed!" là dòng cuối mặc định, không nói lên điều gì — bỏ đi
+    // để 5 slot còn lại dành cho lý do thật.
+    .filter((l) => !/^conversion failed/i.test(l))
+    .filter((l) => /error|failed|cannot|unable|no capable|not supported|invalid|denied/i.test(l))
+    .slice(-5)
+    .join("\n");
+}
+
+// Chọn encoder + tham số. Tách riêng để test được mà không cần chạy ffmpeg thật.
+export function encoderSettings(useGPU, gpuVideoCodec = "h264_nvenc") {
+  if (useGPU && String(gpuVideoCodec).includes("nvenc")) {
+    return {
+      codec: gpuVideoCodec,
+      options: [
+        "-pix_fmt yuv420p", `-r ${FIXED_FPS}`, `-g ${FIXED_GOP}`, `-keyint_min ${FIXED_GOP}`,
+        "-sc_threshold 0", "-preset medium", `-cq:v ${VIDEO_QUALITY}`, "-rc:v vbr", "-movflags +faststart",
+      ],
+    };
+  }
+  if (useGPU) {
+    return { codec: gpuVideoCodec, options: ["-pix_fmt yuv420p", "-movflags +faststart"] };
+  }
+  return {
+    codec: "libx264",
+    options: [
+      "-preset ultrafast", "-pix_fmt yuv420p", `-r ${FIXED_FPS}`, `-g ${FIXED_GOP}`,
+      `-keyint_min ${FIXED_GOP}`, "-sc_threshold 0", `-crf ${VIDEO_QUALITY}`, "-movflags +faststart",
+    ],
+  };
+}
+
+// GPU hỏng ở video đầu thì các video sau khỏi thử lại cho mất thời gian.
+let gpuBroken = false;
+export function resetGpuState() { gpuBroken = false; }
+
 export function renderOne({
   overlayFile, backgroundFile, outputPath,
   renderMode, cfg: cfgIn = {}, useGPU = false, gpuVideoCodec = "h264_nvenc",
@@ -348,43 +391,51 @@ export function renderOne({
       filterConfig.push(`[combined_video]setpts=PTS/${cfg.videoSpeed}[final_video_speed]`);
       filterConfig.push(`[overlay_audio]atempo=${cfg.videoSpeed}[final_audio_speed]`);
 
-      const command = ffmpeg(backgroundFile)
-        .inputOptions(["-stream_loop", "-1"])
-        .input(overlayFile);
-
       // Input phụ của blurFrame (khung, hiệu ứng); rỗng với 4 mode cũ.
-      for (const extra of buildStudioInputs(renderMode, cfg)) {
-        command.input(extra.file).inputOptions(extra.inputOptions);
-      }
+      // Tính một lần để lần thử lại bằng CPU dùng đúng bộ asset đã bốc.
+      const studioInputs = buildStudioInputs(renderMode, cfg);
+      const say = (m) => { if (onProgress) onProgress(m); };
 
-      command
-        .complexFilter(filterConfig)
-        .outputOptions(`-t ${newDuration}`)
-        .audioCodec("aac")
-        .audioFrequency(AUDIO_FREQ)
-        .audioChannels(2)
-        .map("[final_video_speed]")
-        .map("[final_audio_speed]");
+      const run = (gpuOn) => {
+        const command = ffmpeg(backgroundFile)
+          .inputOptions(["-stream_loop", "-1"])
+          .input(overlayFile);
 
-      if (useGPU && gpuVideoCodec.includes("nvenc")) {
-        command.videoCodec(gpuVideoCodec).outputOptions([
-          "-pix_fmt yuv420p", `-r ${FIXED_FPS}`, `-g ${FIXED_GOP}`, `-keyint_min ${FIXED_GOP}`,
-          "-sc_threshold 0", "-preset medium", `-cq:v ${VIDEO_QUALITY}`, "-rc:v vbr", "-movflags +faststart",
-        ]);
-      } else if (useGPU) {
-        command.videoCodec(gpuVideoCodec).outputOptions(["-pix_fmt", "yuv420p", "-movflags", "+faststart"]);
-      } else {
-        command.videoCodec("libx264").outputOptions([
-          "-preset ultrafast", "-pix_fmt yuv420p", `-r ${FIXED_FPS}`, `-g ${FIXED_GOP}`,
-          `-keyint_min ${FIXED_GOP}`, "-sc_threshold 0", `-crf ${VIDEO_QUALITY}`, "-movflags +faststart",
-        ]);
-      }
+        for (const extra of studioInputs) {
+          command.input(extra.file).inputOptions(extra.inputOptions);
+        }
 
-      command
-        .on("stderr", (line) => { if (onProgress) onProgress(line); })
-        .on("end", () => resolve({ outputPath, durationSec: newDuration }))
-        .on("error", (e) => reject(e))
-        .save(outputPath);
+        command
+          .complexFilter(filterConfig)
+          .outputOptions(`-t ${newDuration}`)
+          .audioCodec("aac")
+          .audioFrequency(AUDIO_FREQ)
+          .audioChannels(2)
+          .map("[final_video_speed]")
+          .map("[final_audio_speed]");
+
+        const enc = encoderSettings(gpuOn, gpuVideoCodec);
+        command.videoCodec(enc.codec).outputOptions(enc.options);
+
+        let stderrLog = "";
+        command
+          .on("stderr", (line) => { stderrLog += line + "\n"; say(line); })
+          .on("end", () => resolve({ outputPath, durationSec: newDuration, usedGpu: gpuOn }))
+          .on("error", (e) => {
+            const detail = extractFfmpegError(stderrLog);
+            // GPU chết ngay khi khởi tạo encoder là chuyện thường (không có card NVIDIA,
+            // driver cũ, hết session NVENC). Lùi về CPU thay vì bỏ luôn video.
+            if (gpuOn) {
+              gpuBroken = true;
+              say(`⚠️ GPU (${gpuVideoCodec}) không encode được, render lại bằng CPU. Lý do: ${detail || e.message}`);
+              return run(false);
+            }
+            reject(detail ? new Error(`${e.message}\n${detail}`) : e);
+          })
+          .save(outputPath);
+      };
+
+      run(Boolean(useGPU) && !gpuBroken);
     });
   });
 }

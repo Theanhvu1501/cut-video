@@ -164,84 +164,113 @@ ffmpeg.setFfprobePath(FFPROBE_PATH);
 // Giữ FFMPEG_PATH cho các hàm khác nếu cần
 const FFMPEG_PATH = SELECTED_FFMPEG_PATH;
 
-// Hàm kiểm tra FFmpeg có hỗ trợ GPU encoder không
-const checkGpuSupport = async (codec) => {
-  return new Promise((resolve) => {
-    const checkProcess = spawn(FFMPEG_PATH, ["-encoders"]);
+const PROBE_TIMEOUT_MS = 20000;
+
+const firstMeaningfulLine = (text) =>
+  String(text || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)[0] || "không rõ lý do";
+
+// fluent-ffmpeg dựng message lỗi bằng utils.extractError, hàm này VỨT BỎ mọi dòng
+// stderr bắt đầu bằng "[" — mà lỗi thật của ffmpeg gần như luôn nằm ở đó
+// ([h264_nvenc @ ...], [AVFilterGraph @ ...]). Kết quả là chỉ còn lại phần đuôi vô
+// nghĩa "frame=0 ... Conversion failed!". Tự bóc lại những dòng có ý nghĩa.
+const extractFfmpegError = (stderr) =>
+  String(stderr || "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    // "Conversion failed!" là dòng cuối mặc định, không nói lên điều gì — bỏ đi
+    // để 5 slot còn lại dành cho lý do thật.
+    .filter((l) => !/^conversion failed/i.test(l))
+    .filter((l) => /error|failed|cannot|unable|no capable|not supported|invalid|denied/i.test(l))
+    .slice(-5)
+    .join("\n");
+
+// fluent-ffmpeg KHÔNG gán error.code (processor.js chỉ tạo Error với message), nên
+// phải bóc mã thoát từ chính message. Windows trả mã âm dưới dạng unsigned 32-bit:
+// 4294967256 = -40, nghĩa là ffmpeg abort ngay khi khởi tạo, chưa encode frame nào.
+const parseFfmpegExitCode = (message) => {
+  const m = /exited with code (-?\d+)/.exec(String(message || ""));
+  if (!m) return null;
+  const raw = Number(m[1]);
+  return raw > 0x7fffffff ? raw - 0x100000000 : raw;
+};
+
+const listEncoders = () =>
+  new Promise((resolve) => {
+    const proc = spawn(FFMPEG_PATH, ["-hide_banner", "-encoders"]);
     let output = "";
+    proc.stdout.on("data", (d) => { output += d.toString(); });
+    proc.stderr.on("data", (d) => { output += d.toString(); });
+    proc.on("close", () => resolve(output));
+    proc.on("error", () => resolve(""));
+  });
 
-    checkProcess.stdout.on("data", (data) => {
-      output += data.toString();
+// `ffmpeg -encoders` chỉ cho biết BẢN BUILD có encoder, không cho biết MÁY NÀY chạy
+// được: mọi bản ffmpeg Windows phổ biến đều liệt kê h264_nvenc dù máy dùng AMD/Intel
+// hay không có NVIDIA. Phải encode thử 1 frame mới biết chắc.
+const probeEncoder = (codec) =>
+  new Promise((resolve) => {
+    const proc = spawn(FFMPEG_PATH, [
+      "-hide_banner",
+      "-loglevel", "error",
+      "-f", "lavfi",
+      "-i", "color=c=black:s=256x144:r=30",
+      "-frames:v", "1",
+      "-c:v", codec,
+      "-f", "null",
+      "-",
+    ]);
+    let stderr = "";
+    const timer = setTimeout(() => {
+      try { proc.kill(); } catch { /* tiến trình đã chết */ }
+    }, PROBE_TIMEOUT_MS);
+
+    proc.stderr.on("data", (d) => { stderr += d.toString(); });
+    proc.on("close", (code) => {
+      clearTimeout(timer);
+      resolve({ ok: code === 0, reason: firstMeaningfulLine(stderr) });
     });
-
-    checkProcess.stderr.on("data", (data) => {
-      output += data.toString();
-    });
-
-    checkProcess.on("close", () => {
-      const hasSupport = output.includes(codec);
-      if (!hasSupport) {
-        log(
-          `⚠️ FFmpeg không hỗ trợ codec ${codec}. Kiểm tra: ffmpeg -encoders | grep ${codec}`,
-          LOG_LEVEL.WARN
-        );
-      }
-      resolve(hasSupport);
-    });
-
-    checkProcess.on("error", () => {
-      resolve(false);
+    proc.on("error", (e) => {
+      clearTimeout(timer);
+      resolve({ ok: false, reason: e.message });
     });
   });
+
+// Hàm kiểm tra GPU encoder có THỰC SỰ dùng được trên máy này không
+const checkGpuSupport = async (codec) => {
+  const { ok, reason } = await probeEncoder(codec);
+  if (!ok) {
+    log(`⚠️ Encoder ${codec} không dùng được trên máy này: ${reason}`, LOG_LEVEL.WARN);
+  }
+  return ok;
 };
+
+// Ưu tiên theo thứ tự: NVIDIA > Intel > AMD
+const GPU_CANDIDATES = [
+  { codec: "h264_nvenc", label: "NVIDIA (h264_nvenc)" },
+  { codec: "h264_qsv", label: "Intel QuickSync (h264_qsv)" },
+  { codec: "h264_amf", label: "AMD AMF (h264_amf)" },
+];
 
 // Hàm tự động phát hiện GPU và chọn codec phù hợp
 const detectGpuCodec = async () => {
-  return new Promise((resolve) => {
-    const checkProcess = spawn(FFMPEG_PATH, ["-encoders"]);
-    let output = "";
+  const encoders = await listEncoders();
 
-    checkProcess.stdout.on("data", (data) => {
-      output += data.toString();
-    });
+  for (const { codec, label } of GPU_CANDIDATES) {
+    if (!encoders.includes(codec)) continue;
 
-    checkProcess.stderr.on("data", (data) => {
-      output += data.toString();
-    });
+    const { ok, reason } = await probeEncoder(codec);
+    if (ok) {
+      log(`✅ Phát hiện GPU: ${label}`, LOG_LEVEL.INFO);
+      return codec;
+    }
+    log(`⚠️ FFmpeg có ${codec} nhưng máy không encode được: ${reason}`, LOG_LEVEL.WARN);
+  }
 
-    checkProcess.on("close", () => {
-      // Ưu tiên theo thứ tự: NVIDIA > Intel > AMD
-      // Kiểm tra NVIDIA NVENC
-      if (output.includes("h264_nvenc")) {
-        log("✅ Phát hiện GPU: NVIDIA (h264_nvenc)", LOG_LEVEL.INFO);
-        resolve("h264_nvenc");
-        return;
-      }
-
-      // Kiểm tra Intel QuickSync
-      if (output.includes("h264_qsv")) {
-        log("✅ Phát hiện GPU: Intel QuickSync (h264_qsv)", LOG_LEVEL.INFO);
-        resolve("h264_qsv");
-        return;
-      }
-
-      // Kiểm tra AMD AMF
-      if (output.includes("h264_amf")) {
-        log("✅ Phát hiện GPU: AMD AMF (h264_amf)", LOG_LEVEL.INFO);
-        resolve("h264_amf");
-        return;
-      }
-
-      // Không tìm thấy GPU encoder nào
-      log("⚠️ Không phát hiện GPU encoder nào. Sẽ sử dụng CPU (libx264)", LOG_LEVEL.WARN);
-      resolve(null);
-    });
-
-    checkProcess.on("error", () => {
-      log("❌ Lỗi khi kiểm tra GPU encoder", LOG_LEVEL.ERROR);
-      resolve(null);
-    });
-  });
+  log("⚠️ Không có GPU encoder nào dùng được. Sẽ sử dụng CPU (libx264)", LOG_LEVEL.WARN);
+  return null;
 };
 
 let overlayFolder = "./overlays";
@@ -827,9 +856,16 @@ const complexFilterKeepColor = () => {
   ];
 };
 
-const processVideo = async (inputOverlay, inputBackground, outputPath) => {
+// forceCpu = true: lần render lại sau khi GPU thất bại (xem handler "error" bên dưới).
+const processVideo = async (
+  inputOverlay,
+  inputBackground,
+  outputPath,
+  forceCpu = false
+) => {
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
+    const gpuForThis = useGPU && !forceCpu;
 
     ffmpeg.ffprobe(inputOverlay, (err, metadata) => {
       if (err) {
@@ -924,7 +960,7 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
         .map("[final_video_speed]")
         .map("[final_audio_speed]");
 
-      if (useGPU) {
+      if (gpuForThis) {
         log(
           `🚀 Sử dụng GPU (${gpuVideoCodec}) để render ${path.basename(
             outputPath
@@ -1028,62 +1064,69 @@ const processVideo = async (inputOverlay, inputBackground, outputPath) => {
           resolve();
         })
         .on("error", (error) => {
-          const errorDetails = error.message;
-          const exitCode = error.code || "unknown";
+          const exitCode = parseFfmpegExitCode(error.message);
+          const detail = extractFfmpegError(ffmpegStderr);
 
           log(
-            `❌ Lỗi khi xử lý video ${path.basename(
-              outputPath
-            )}: ${errorDetails}`,
+            `❌ Lỗi khi xử lý video ${path.basename(outputPath)}: ${
+              error.message
+            }`,
             LOG_LEVEL.ERROR
           );
-          log(`❌ Exit code: ${exitCode}`, LOG_LEVEL.ERROR);
-
-          // Hiển thị stderr nếu có
+          log(
+            `❌ Exit code: ${exitCode === null ? "unknown" : exitCode}`,
+            LOG_LEVEL.ERROR
+          );
+          if (detail) {
+            log(`❌ FFmpeg báo:\n${detail}`, LOG_LEVEL.ERROR);
+          }
           if (ffmpegStderr) {
-            log(`❌ FFmpeg stderr:\n${ffmpegStderr}`, LOG_LEVEL.ERROR);
+            log(`❌ FFmpeg stderr đầy đủ:\n${ffmpegStderr}`, LOG_LEVEL.DEBUG);
           }
 
-          // Gợi ý giải pháp nếu là lỗi GPU
-          if (
-            useGPU &&
-            (errorDetails.includes("nvenc") ||
-              errorDetails.includes("cuda") ||
-              exitCode === "4294967256" ||
-              ffmpegStderr.includes("Driver does not support") ||
-              ffmpegStderr.includes("minimum required Nvidia driver"))
-          ) {
-            if (ffmpegStderr.includes("minimum required Nvidia driver")) {
-              const driverMatch = ffmpegStderr.match(
-                /minimum required Nvidia driver for nvenc is ([\d.]+)/
-              );
-              if (driverMatch) {
-                log(
-                  `❌ Driver NVIDIA quá cũ! Cần driver ${driverMatch[1]} hoặc mới hơn.`,
-                  LOG_LEVEL.ERROR
-                );
-                log(
-                  `💡 Giải pháp: Cập nhật driver NVIDIA từ https://www.nvidia.com/drivers hoặc tắt useGPU để dùng CPU.`,
-                  LOG_LEVEL.ERROR
-                );
-              } else {
-                log(
-                  `❌ Driver NVIDIA không hỗ trợ NVENC. Cần cập nhật driver NVIDIA.`,
-                  LOG_LEVEL.ERROR
-                );
-              }
-            } else {
-              log(
-                `💡 Gợi ý: Có thể GPU không khả dụng hoặc FFmpeg không hỗ trợ GPU. Thử tắt useGPU hoặc kiểm tra driver NVIDIA.`,
-                LOG_LEVEL.ERROR
-              );
-            }
+          // Driver NVIDIA quá cũ — ffmpeg nói thẳng phiên bản tối thiểu cần có.
+          const driverMatch = ffmpegStderr.match(
+            /minimum required Nvidia driver for nvenc is ([\d.]+)/
+          );
+          if (driverMatch) {
+            log(
+              `❌ Driver NVIDIA quá cũ! Cần driver ${driverMatch[1]} hoặc mới hơn. Cập nhật tại https://www.nvidia.com/drivers`,
+              LOG_LEVEL.ERROR
+            );
+          }
+
+          // GPU hỏng thì render lại video này bằng CPU thay vì bỏ luôn. Nếu CPU chạy
+          // được thì chính GPU là thủ phạm ⇒ tắt GPU cho các video còn lại.
+          if (gpuForThis) {
+            log(
+              `⚠️ GPU (${gpuVideoCodec}) render thất bại, thử lại bằng CPU: ${path.basename(
+                outputPath
+              )}`,
+              LOG_LEVEL.WARN
+            );
+            return processVideo(
+              inputOverlay,
+              inputBackground,
+              outputPath,
+              true
+            )
+              .then(() => {
+                if (useGPU) {
+                  useGPU = false;
+                  log(
+                    `⚠️ Đã TẮT GPU cho các video còn lại: ${gpuVideoCodec} không encode được trên máy này.`,
+                    LOG_LEVEL.WARN
+                  );
+                }
+                resolve();
+              })
+              .catch(reject);
           }
 
           processedVideos++;
           errorVideos++;
           updateProgress();
-          reject(error);
+          reject(detail ? new Error(`${error.message}\n${detail}`) : error);
         })
         .save(outputPath);
     });
@@ -1096,15 +1139,30 @@ const processAllVideos = async () => {
   const startTime = Date.now();
   let totalVideoBackgrounds;
   try {
-    // 0. Tự động phát hiện GPU codec nếu useGPU được bật nhưng chưa có codec
-    if (useGPU && (!gpuVideoCodec || gpuVideoCodec === "h264_nvenc")) {
-      const detectedCodec = await detectGpuCodec();
-      if (detectedCodec) {
-        gpuVideoCodec = detectedCodec;
-        log(`✅ Đã tự động phát hiện GPU codec: ${gpuVideoCodec}`, LOG_LEVEL.INFO);
+    // 0. Kiểm tra GPU codec bằng cách encode thử. Luôn kiểm tra kể cả khi người dùng
+    // tự chọn codec — chọn tay vẫn có thể chọn nhầm codec máy không chạy được.
+    if (useGPU) {
+      const probe = gpuVideoCodec
+        ? await probeEncoder(gpuVideoCodec)
+        : { ok: false, reason: "chưa chọn codec" };
+
+      if (probe.ok) {
+        log(`✅ GPU encoder ${gpuVideoCodec} sẵn sàng`, LOG_LEVEL.INFO);
       } else {
-        log(`⚠️ Không phát hiện GPU encoder, sẽ sử dụng CPU`, LOG_LEVEL.WARN);
-        useGPU = false; // Tắt GPU nếu không phát hiện được
+        log(
+          `⚠️ GPU encoder ${gpuVideoCodec || "(trống)"} không dùng được: ${
+            probe.reason
+          }`,
+          LOG_LEVEL.WARN
+        );
+        const detectedCodec = await detectGpuCodec();
+        if (detectedCodec) {
+          gpuVideoCodec = detectedCodec;
+          log(`✅ Đã chuyển sang GPU codec: ${gpuVideoCodec}`, LOG_LEVEL.INFO);
+        } else {
+          log(`⚠️ Không có GPU encoder dùng được, sẽ sử dụng CPU`, LOG_LEVEL.WARN);
+          useGPU = false; // Tắt GPU nếu không phát hiện được
+        }
       }
     }
 

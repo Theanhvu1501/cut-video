@@ -12,6 +12,8 @@ import {
   frameOverlayGeometry,
   pickAsset,
   resolveBlurFrameAssets,
+  encoderSettings,
+  extractFfmpegError,
 } from "../sheet/render-core.js";
 
 test("topTransparent uses opacity and overlay at 0:0", () => {
@@ -330,4 +332,50 @@ test("resolveFfmpegPaths returns string paths", () => {
   assert.equal(typeof ffprobePath, "string");
   assert.ok(ffmpegPath.length > 0);
   assert.ok(ffprobePath.length > 0);
+});
+
+test("encoderSettings: tắt GPU thì dùng libx264 + crf", () => {
+  const { codec, options } = encoderSettings(false, "h264_nvenc");
+  assert.equal(codec, "libx264");
+  assert.ok(options.includes("-crf 23"));
+  assert.ok(options.includes("-preset ultrafast"));
+});
+
+test("encoderSettings: nvenc dùng cq/vbr chứ không dùng crf", () => {
+  const { codec, options } = encoderSettings(true, "h264_nvenc");
+  assert.equal(codec, "h264_nvenc");
+  assert.ok(options.includes("-cq:v 23"));
+  assert.ok(options.includes("-rc:v vbr"));
+  assert.ok(!options.some((o) => o.startsWith("-crf")));
+});
+
+test("encoderSettings: GPU không phải nvenc chỉ nhận tham số tối thiểu", () => {
+  const { codec, options } = encoderSettings(true, "h264_qsv");
+  assert.equal(codec, "h264_qsv");
+  assert.deepEqual(options, ["-pix_fmt yuv420p", "-movflags +faststart"]);
+});
+
+test("encoderSettings: lùi về CPU cho ra đúng cấu hình libx264", () => {
+  assert.deepEqual(encoderSettings(false, "h264_nvenc"), encoderSettings(false, "h264_qsv"));
+});
+
+test("extractFfmpegError giữ lại dòng [...] mà fluent-ffmpeg vứt bỏ", () => {
+  const stderr = [
+    "  Stream #0:0 -> #0:0 (h264 -> h264_nvenc)",
+    "[h264_nvenc @ 0000021b] Cannot load nvcuda.dll",
+    "[h264_nvenc @ 0000021b] The minimum required Nvidia driver for nvenc is 551.76 or newer",
+    "Error initializing output stream 0:0",
+    "frame=    0 fps=0.0 q=0.0 Lsize=       0KiB",
+    "Conversion failed!",
+  ].join("\n");
+  const out = extractFfmpegError(stderr);
+  assert.ok(out.includes("Cannot load nvcuda.dll"));
+  assert.ok(out.includes("Error initializing output stream"));
+  assert.ok(!out.includes("Conversion failed!"));
+});
+
+test("extractFfmpegError trả chuỗi rỗng khi stderr không có dòng lỗi nào", () => {
+  assert.equal(extractFfmpegError("frame=  120 fps=30\nvideo:1kB"), "");
+  assert.equal(extractFfmpegError(""), "");
+  assert.equal(extractFfmpegError(undefined), "");
 });

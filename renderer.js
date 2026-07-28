@@ -500,7 +500,7 @@ async function saveSettings() {
       bgBlur: document.getElementById("render-bf-blur")?.value || "20",
       mainScale: document.getElementById("render-bf-main-scale")?.value || "0.85",
       mainOpacity:
-        document.getElementById("render-bf-main-opacity")?.value || "0.9",
+        document.getElementById("render-bf-main-opacity")?.value || "0.85",
       frameEnabled:
         document.getElementById("render-bf-frame-enabled")?.checked || false,
       framePath: selectedRenderFramePath,
@@ -509,9 +509,9 @@ async function saveSettings() {
         document.getElementById("render-bf-effect-enabled")?.checked || false,
       effectPath: selectedRenderEffectPath,
       effectOpacity:
-        document.getElementById("render-bf-effect-opacity")?.value || "0.6",
-      effectKeyBlack:
-        document.getElementById("render-bf-effect-key-black")?.checked || false,
+        document.getElementById("render-bf-effect-opacity")?.value || "0.15",
+      effectBlend:
+        document.getElementById("render-bf-effect-blend")?.value || "normal",
       effectKeyThreshold:
         document.getElementById("render-bf-effect-key-threshold")?.value ||
         "0.15",
@@ -761,9 +761,9 @@ async function loadSettings() {
       if (settings.render.effectOpacity)
         document.getElementById("render-bf-effect-opacity").value =
           settings.render.effectOpacity;
-      if (settings.render.effectKeyBlack !== undefined)
-        document.getElementById("render-bf-effect-key-black").checked =
-          settings.render.effectKeyBlack;
+      if (settings.render.effectBlend)
+        document.getElementById("render-bf-effect-blend").value =
+          settings.render.effectBlend;
       if (settings.render.effectKeyThreshold)
         document.getElementById("render-bf-effect-key-threshold").value =
           settings.render.effectKeyThreshold;
@@ -1789,7 +1789,7 @@ async function saveCurrentProjectSettings() {
         mainScale:
           document.getElementById("render-bf-main-scale")?.value || "0.85",
         mainOpacity:
-          document.getElementById("render-bf-main-opacity")?.value || "0.9",
+          document.getElementById("render-bf-main-opacity")?.value || "0.85",
         frameEnabled:
           document.getElementById("render-bf-frame-enabled")?.checked || false,
         framePath: selectedRenderFramePath,
@@ -1799,10 +1799,9 @@ async function saveCurrentProjectSettings() {
           document.getElementById("render-bf-effect-enabled")?.checked || false,
         effectPath: selectedRenderEffectPath,
         effectOpacity:
-          document.getElementById("render-bf-effect-opacity")?.value || "0.6",
-        effectKeyBlack:
-          document.getElementById("render-bf-effect-key-black")?.checked ||
-          false,
+          document.getElementById("render-bf-effect-opacity")?.value || "0.15",
+        effectBlend:
+          document.getElementById("render-bf-effect-blend")?.value || "normal",
         effectKeyThreshold:
           document.getElementById("render-bf-effect-key-threshold")?.value ||
           "0.15",
@@ -2133,7 +2132,12 @@ function toggleBlurFrameLayers() {
   show("render-bf-blur-enabled", "render-bf-blur-group");
   show("render-bf-frame-enabled", "render-bf-frame-group");
   show("render-bf-effect-enabled", "render-bf-effect-group");
-  show("render-bf-effect-key-black", "render-bf-effect-key-group");
+  // Ngưỡng chỉ có nghĩa với cách ghép khử nền tối
+  const keyGroup = document.getElementById("render-bf-effect-key-group");
+  if (keyGroup) {
+    const blend = document.getElementById("render-bf-effect-blend")?.value;
+    keyGroup.style.display = blend === "lumakey" ? "block" : "none";
+  }
 }
 
 function toggleChromaKeyMode() {
@@ -2493,7 +2497,7 @@ async function runRender() {
   const mainScale =
     parseFloat(document.getElementById("render-bf-main-scale").value) || 0.85;
   const mainOpacity =
-    parseFloat(document.getElementById("render-bf-main-opacity").value) || 0.9;
+    parseFloat(document.getElementById("render-bf-main-opacity").value) || 0.85;
   const frameEnabled = document.getElementById(
     "render-bf-frame-enabled",
   ).checked;
@@ -2505,10 +2509,9 @@ async function runRender() {
   ).checked;
   const effectPath = selectedRenderEffectPath || "";
   const effectOpacity =
-    parseFloat(document.getElementById("render-bf-effect-opacity").value) || 0.6;
-  const effectKeyBlack = document.getElementById(
-    "render-bf-effect-key-black",
-  ).checked;
+    parseFloat(document.getElementById("render-bf-effect-opacity").value) || 0.15;
+  const effectBlend =
+    document.getElementById("render-bf-effect-blend").value || "normal";
   const effectKeyThreshold =
     parseFloat(
       document.getElementById("render-bf-effect-key-threshold").value,
@@ -2614,7 +2617,7 @@ async function runRender() {
         effectEnabled,
         effectPath,
         effectOpacity,
-        effectKeyBlack,
+        effectBlend,
         effectKeyThreshold,
         // Sử dụng path trực tiếp từ GUI, không copy
         overlayFolder: selectedRenderOverlayFolder || "./overlays",

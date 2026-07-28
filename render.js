@@ -288,15 +288,18 @@ let y_offset = 490;
 let bgBlurEnabled = false;
 let bgBlur = 20;
 let mainScale = 0.85;
-let mainOpacity = 0.9;
+let mainOpacity = 0.85;
 let frameEnabled = false;
 let framePath = "";
 let frameScale = 1;
 let effectEnabled = false;
 let effectPath = "";
-let effectOpacity = 0.6;
-let effectKeyBlack = false;
+let effectOpacity = 0.15;
+// "normal" = chồng thẳng như Blend Mode Normal của Premiere (vùng tối vẫn làm tối
+// ảnh); "screen" = cộng sáng, vùng đen tự mất; "lumakey" = khử vùng tối rồi chồng.
+let effectBlend = "normal";
 let effectKeyThreshold = 0.15;
+const EFFECT_BLENDS = ["normal", "screen", "lumakey"];
 
 // Đọc config từ project JSON hoặc từ environment variable RENDER_CONFIG_JSON
 // Ưu tiên RENDER_CONFIG_JSON (từ options) nếu có, sau đó mới đọc từ project JSON
@@ -375,9 +378,9 @@ if (config) {
   if (config.effectEnabled !== undefined) effectEnabled = config.effectEnabled;
   if (config.effectPath) effectPath = config.effectPath;
   if (config.effectOpacity !== undefined)
-    effectOpacity = parseFloat(config.effectOpacity) || 0.6;
-  if (config.effectKeyBlack !== undefined)
-    effectKeyBlack = config.effectKeyBlack;
+    effectOpacity = parseFloat(config.effectOpacity) || 0.15;
+  if (config.effectBlend && EFFECT_BLENDS.includes(config.effectBlend))
+    effectBlend = config.effectBlend;
   if (config.effectKeyThreshold !== undefined)
     effectKeyThreshold = parseFloat(config.effectKeyThreshold) || 0.15;
   // Đọc đường dẫn từ config
@@ -710,22 +713,25 @@ const complexFilterBlurFrame = ({ frameFile, effectFile }) => {
     idx++;
   }
   if (effectFile) {
-    if (effectKeyBlack) {
-      // 4a. Khử nền tối thành trong suốt rồi overlay: hạt hiệu ứng giữ nguyên độ
-      // đậm còn phần tối biến mất hẳn. Khác với screen — screen cộng sáng cả khung
-      // nên hạ opacity là hạt mờ theo, giữ cao thì lớp mù xám làm bạc màu toàn ảnh.
-      filters.push(
-        `[${idx}:v]scale=${BLURFRAME_BASE_W}:${BLURFRAME_BASE_H},format=yuva420p,lumakey=threshold=${effectKeyThreshold}:tolerance=0.1:softness=0.1,colorchannelmixer=aa=${effectOpacity}[bf_fx]`
-      );
-      filters.push(`${stage}[bf_fx]overlay=0:0:shortest=1[combined_video]`);
-    } else {
-      // 4b. Lớp hiệu ứng nền đen ghép bằng blend screen nên vùng đen tự biến mất.
+    if (effectBlend === "screen") {
+      // 4a. Cộng sáng: vùng đen của hiệu ứng tự mất, nhưng cả khung bị sáng lên.
       filters.push(
         `[${idx}:v]scale=${BLURFRAME_BASE_W}:${BLURFRAME_BASE_H},format=yuv420p[bf_fx]`
       );
       filters.push(
         `${stage}[bf_fx]blend=all_mode=screen:all_opacity=${effectOpacity}:shortest=1[combined_video]`
       );
+    } else {
+      // 4b. "normal" = Blend Mode Normal của Premiere: chồng thẳng với alpha, vùng
+      // tối vẫn làm tối ảnh. "lumakey" khử vùng tối trước khi chồng.
+      const key =
+        effectBlend === "lumakey"
+          ? `,lumakey=threshold=${effectKeyThreshold}:tolerance=0.1:softness=0.1`
+          : "";
+      filters.push(
+        `[${idx}:v]scale=${BLURFRAME_BASE_W}:${BLURFRAME_BASE_H},format=yuva420p${key},colorchannelmixer=aa=${effectOpacity}[bf_fx]`
+      );
+      filters.push(`${stage}[bf_fx]overlay=0:0:shortest=1[combined_video]`);
     }
     idx++;
   }

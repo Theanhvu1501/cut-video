@@ -115,18 +115,22 @@ test("parseConfigRows đọc cột blurFrame qua alias tiếng Việt", () => {
   assert.equal(out[0].cfg.effectOpacity, 0.7);
 });
 
-test("parseConfigRows đọc cột khử nền tối của hiệu ứng", () => {
-  const header = ["Tên kênh","Chế độ render","Dùng hiệu ứng","Hiệu ứng","Khử nền tối hiệu ứng","Ngưỡng khử nền tối"];
+test("parseConfigRows đọc cột cách ghép hiệu ứng", () => {
+  const header = ["Tên kênh","Chế độ render","Dùng hiệu ứng","Hiệu ứng","Cách ghép hiệu ứng","Ngưỡng khử nền tối"];
   const rows = [header,
-    ["Kênh A","blurFrame","true","D:/fx","true","0.22"],
-    ["Kênh B","blurFrame","true","D:/fx","",""],
+    ["Kênh A","blurFrame","true","D:/fx","lumakey","0.22"],
+    ["Kênh B","blurFrame","true","D:/fx","SCREEN",""],
+    ["Kênh C","blurFrame","true","D:/fx","",""],
+    ["Kênh D","blurFrame","true","D:/fx","gõ sai",""],
   ];
   const out = parseConfigRows(rows);
-  assert.equal(out[0].cfg.effectKeyBlack, true);
+  assert.equal(out[0].cfg.effectBlend, "lumakey");
   assert.equal(out[0].cfg.effectKeyThreshold, 0.22);
-  // ô trống -> không set, dùng mặc định (blend screen như cũ)
-  assert.equal("effectKeyBlack" in out[1].cfg, false);
-  assert.equal("effectKeyThreshold" in out[1].cfg, false);
+  assert.equal(out[1].cfg.effectBlend, "screen"); // chuẩn hoá chữ hoa
+  // ô trống hoặc gõ sai -> không set, dùng mặc định normal của render-core
+  assert.equal("effectBlend" in out[2].cfg, false);
+  assert.equal("effectBlend" in out[3].cfg, false);
+  assert.equal("effectKeyThreshold" in out[2].cfg, false);
 });
 
 test("parseConfigRows parses chromaPalette and chromaKeyAuto mode", () => {

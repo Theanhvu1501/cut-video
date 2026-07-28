@@ -63,13 +63,15 @@ const BF = {
   effectFile: "mua.mp4",
   bgBlurEnabled: true,
   bgBlur: 25,
+  effectBlend: "screen",
+  effectOpacity: 0.6,
 };
 
 test("blurFrame: cả 4 lớp — chỉ số input và thứ tự chồng lớp", () => {
   const f = buildComplexFilter("blurFrame", BF);
   assert.ok(f.includes("[0:v]scale=1280:720,gblur=sigma=25[bf_bg]"));
   assert.ok(
-    f.includes("[1:v]scale=1088:612,format=yuva420p,colorchannelmixer=aa=0.9[bf_main]")
+    f.includes("[1:v]scale=1088:612,format=yuva420p,colorchannelmixer=aa=0.85[bf_main]")
   );
   assert.ok(f.includes("[bf_bg][bf_main]overlay=96:54:shortest=1[bf_stage1]"));
   assert.ok(f.includes("[2:v]scale=1088:612[bf_frame]"));
@@ -143,36 +145,76 @@ test("blurFrame: mainScale/mainOpacity tuỳ chỉnh được", () => {
   assert.ok(f.includes("[bf_bg][bf_main]overlay=320:180:shortest=1[combined_video]"));
 });
 
-test("effectKeyBlack: khử nền tối rồi overlay thay vì blend screen", () => {
+test("effectBlend normal (mặc định) — chồng thẳng đúng như Premiere", () => {
+  const f = buildComplexFilter("blurFrame", { effectEnabled: true, effectFile: "fx.mp4" });
+  const joined = f.join("|");
+  assert.ok(!joined.includes("blend="), "Normal không dùng blend");
+  assert.ok(!joined.includes("lumakey"), "Normal không khử nền tối");
+  // Premiere: Opacity 15%, Blend Mode Normal
+  assert.ok(
+    f.includes("[2:v]scale=1280:720,format=yuva420p,colorchannelmixer=aa=0.15[bf_fx]")
+  );
+  assert.ok(f.includes("[bf_stage1][bf_fx]overlay=0:0:shortest=1[combined_video]"));
+});
+
+test("effectBlend screen — cộng sáng như cũ", () => {
+  const f = buildComplexFilter("blurFrame", {
+    effectEnabled: true, effectFile: "fx.mp4", effectBlend: "screen", effectOpacity: 0.6,
+  });
+  assert.ok(f.includes("[2:v]scale=1280:720,format=yuv420p[bf_fx]"));
+  assert.ok(
+    f.includes("[bf_stage1][bf_fx]blend=all_mode=screen:all_opacity=0.6:shortest=1[combined_video]")
+  );
+});
+
+test("effectBlend lumakey — khử nền tối rồi chồng", () => {
   const f = buildComplexFilter("blurFrame", {
     effectEnabled: true, effectFile: "fx.mp4",
-    effectKeyBlack: true, effectKeyThreshold: 0.2, effectOpacity: 0.8,
+    effectBlend: "lumakey", effectKeyThreshold: 0.2, effectOpacity: 0.8,
   });
-  const joined = f.join("|");
-  assert.ok(!joined.includes("blend="), "không được dùng blend nữa");
+  assert.ok(!f.join("|").includes("blend="));
   assert.ok(
     f.includes("[2:v]scale=1280:720,format=yuva420p,lumakey=threshold=0.2:tolerance=0.1:softness=0.1,colorchannelmixer=aa=0.8[bf_fx]")
   );
   assert.ok(f.includes("[bf_stage1][bf_fx]overlay=0:0:shortest=1[combined_video]"));
 });
 
-test("effectKeyBlack tắt (mặc định) vẫn giữ nguyên đường blend screen cũ", () => {
-  const f = buildComplexFilter("blurFrame", { effectEnabled: true, effectFile: "fx.mp4" });
-  assert.ok(f.includes("[2:v]scale=1280:720,format=yuv420p[bf_fx]"));
-  assert.ok(
-    f.includes("[bf_stage1][bf_fx]blend=all_mode=screen:all_opacity=0.6:shortest=1[combined_video]")
-  );
-  assert.ok(!f.join("|").includes("lumakey"));
+test("effectBlend rác rơi về normal", () => {
+  const f = buildComplexFilter("blurFrame", {
+    effectEnabled: true, effectFile: "fx.mp4", effectBlend: "hỏng",
+  });
+  const joined = f.join("|");
+  assert.ok(!joined.includes("blend="));
+  assert.ok(!joined.includes("lumakey"));
+  assert.ok(f.includes("[bf_stage1][bf_fx]overlay=0:0:shortest=1[combined_video]"));
 });
 
-test("effectKeyBlack vẫn đúng chỉ số input khi có cả khung", () => {
+test("effectBlend vẫn đúng chỉ số input khi có cả khung", () => {
+  for (const blend of ["normal", "screen", "lumakey"]) {
+    const f = buildComplexFilter("blurFrame", {
+      frameEnabled: true, frameFile: "k.png",
+      effectEnabled: true, effectFile: "fx.mp4", effectBlend: blend,
+    });
+    assert.ok(f.some((s) => s.startsWith("[2:v]") && s.includes("bf_frame")), blend);
+    assert.ok(f.some((s) => s.startsWith("[3:v]") && s.includes("bf_fx")), blend);
+    assert.equal((f.join("|").match(/\[combined_video\]/g) || []).length, 1, blend);
+  }
+});
+
+test("thông số mặc định khớp bảng Premiere của dự án", () => {
   const f = buildComplexFilter("blurFrame", {
-    frameEnabled: true, frameFile: "k.png",
-    effectEnabled: true, effectFile: "fx.mp4", effectKeyBlack: true,
+    frameEnabled: true, frameFile: "k.png", effectEnabled: true, effectFile: "fx.mp4",
+    bgBlurEnabled: true, bgBlur: 33,
   });
-  assert.ok(f.some((s) => s.startsWith("[2:v]") && s.includes("bf_frame")));
-  assert.ok(f.some((s) => s.startsWith("[3:v]") && s.includes("lumakey")));
-  assert.ok(f.includes("[bf_stage2][bf_fx]overlay=0:0:shortest=1[combined_video]"));
+  // Nền 1920x1080 fit khung + Gaussian Blur
+  assert.ok(f.includes("[0:v]scale=1280:720,gblur=sigma=33[bf_bg]"));
+  // Video gốc: Scale 85 -> 1088x612 tại (96,54), Opacity 85%
+  assert.ok(
+    f.includes("[1:v]scale=1088:612,format=yuva420p,colorchannelmixer=aa=0.85[bf_main]")
+  );
+  assert.ok(f.some((s) => s.includes("overlay=96:54")));
+  // Hiệu ứng 640x360 fit khung, Opacity 15%, Blend Normal
+  assert.ok(f.some((s) => s.includes("colorchannelmixer=aa=0.15[bf_fx]")));
 });
 
 test("frameScale mặc định 1.0 — khung phủ khít đúng vùng video", () => {

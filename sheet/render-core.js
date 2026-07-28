@@ -30,7 +30,7 @@ export const DEFAULT_RENDER_CFG = {
   bgBlurEnabled: false,
   bgBlur: 20,
   mainScale: 0.85,
-  mainOpacity: 0.9,
+  mainOpacity: 0.85,
   frameEnabled: false,
   framePath: "",
   frameFile: "",
@@ -38,10 +38,15 @@ export const DEFAULT_RENDER_CFG = {
   effectEnabled: false,
   effectPath: "",
   effectFile: "",
-  effectOpacity: 0.6,
-  effectKeyBlack: false,
+  effectOpacity: 0.15,
+  // "normal" = chồng thẳng như Blend Mode Normal của Premiere (vùng tối vẫn làm
+  // tối ảnh); "screen" = cộng sáng, vùng đen tự mất; "lumakey" = khử vùng tối
+  // thành trong suốt rồi chồng thẳng.
+  effectBlend: "normal",
   effectKeyThreshold: 0.15,
 };
+
+export const EFFECT_BLENDS = ["normal", "screen", "lumakey"];
 
 export const FRAME_EXTS = [".png", ".webp"];
 export const EFFECT_EXTS = [".mp4", ".mov", ".webm", ".mkv"];
@@ -258,19 +263,26 @@ function blurFrame(cfg) {
     idx++;
   }
   if (layers.effect) {
-    if (cfg.effectKeyBlack) {
-      // Khử nền tối thành trong suốt rồi overlay: hạt hiệu ứng giữ nguyên độ đậm
-      // còn phần tối biến mất hẳn. Khác với screen — screen cộng sáng cả khung nên
-      // hạ opacity là hạt mờ theo, giữ cao thì lớp mù xám làm bạc màu toàn ảnh.
-      filters.push(
-        `[${idx}:v]scale=${BASE_W}:${BASE_H},format=yuva420p,lumakey=threshold=${cfg.effectKeyThreshold}:tolerance=0.1:softness=0.1,colorchannelmixer=aa=${cfg.effectOpacity}[bf_fx]`
-      );
-      filters.push(`${stage}[bf_fx]overlay=0:0:shortest=1[combined_video]`);
-    } else {
+    const blend = EFFECT_BLENDS.includes(cfg.effectBlend)
+      ? cfg.effectBlend
+      : DEFAULT_RENDER_CFG.effectBlend;
+    if (blend === "screen") {
+      // Cộng sáng: vùng đen của hiệu ứng tự mất, nhưng cả khung bị sáng lên.
       filters.push(`[${idx}:v]scale=${BASE_W}:${BASE_H},format=yuv420p[bf_fx]`);
       filters.push(
         `${stage}[bf_fx]blend=all_mode=screen:all_opacity=${cfg.effectOpacity}:shortest=1[combined_video]`
       );
+    } else {
+      // "normal" = Blend Mode Normal của Premiere: chồng thẳng với alpha, vùng tối
+      // vẫn làm tối ảnh. "lumakey" chỉ khác ở chỗ khử vùng tối trước khi chồng.
+      const key =
+        blend === "lumakey"
+          ? `,lumakey=threshold=${cfg.effectKeyThreshold}:tolerance=0.1:softness=0.1`
+          : "";
+      filters.push(
+        `[${idx}:v]scale=${BASE_W}:${BASE_H},format=yuva420p${key},colorchannelmixer=aa=${cfg.effectOpacity}[bf_fx]`
+      );
+      filters.push(`${stage}[bf_fx]overlay=0:0:shortest=1[combined_video]`);
     }
     idx++;
   }

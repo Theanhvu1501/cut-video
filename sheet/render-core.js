@@ -39,6 +39,8 @@ export const DEFAULT_RENDER_CFG = {
   effectPath: "",
   effectFile: "",
   effectOpacity: 0.6,
+  effectKeyBlack: false,
+  effectKeyThreshold: 0.15,
 };
 
 export const FRAME_EXTS = [".png", ".webp"];
@@ -256,10 +258,20 @@ function blurFrame(cfg) {
     idx++;
   }
   if (layers.effect) {
-    filters.push(`[${idx}:v]scale=${BASE_W}:${BASE_H},format=yuv420p[bf_fx]`);
-    filters.push(
-      `${stage}[bf_fx]blend=all_mode=screen:all_opacity=${cfg.effectOpacity}:shortest=1[combined_video]`
-    );
+    if (cfg.effectKeyBlack) {
+      // Khử nền tối thành trong suốt rồi overlay: hạt hiệu ứng giữ nguyên độ đậm
+      // còn phần tối biến mất hẳn. Khác với screen — screen cộng sáng cả khung nên
+      // hạ opacity là hạt mờ theo, giữ cao thì lớp mù xám làm bạc màu toàn ảnh.
+      filters.push(
+        `[${idx}:v]scale=${BASE_W}:${BASE_H},format=yuva420p,lumakey=threshold=${cfg.effectKeyThreshold}:tolerance=0.1:softness=0.1,colorchannelmixer=aa=${cfg.effectOpacity}[bf_fx]`
+      );
+      filters.push(`${stage}[bf_fx]overlay=0:0:shortest=1[combined_video]`);
+    } else {
+      filters.push(`[${idx}:v]scale=${BASE_W}:${BASE_H},format=yuv420p[bf_fx]`);
+      filters.push(
+        `${stage}[bf_fx]blend=all_mode=screen:all_opacity=${cfg.effectOpacity}:shortest=1[combined_video]`
+      );
+    }
     idx++;
   }
 

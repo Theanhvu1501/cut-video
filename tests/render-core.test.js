@@ -143,6 +143,38 @@ test("blurFrame: mainScale/mainOpacity tuỳ chỉnh được", () => {
   assert.ok(f.includes("[bf_bg][bf_main]overlay=320:180:shortest=1[combined_video]"));
 });
 
+test("effectKeyBlack: khử nền tối rồi overlay thay vì blend screen", () => {
+  const f = buildComplexFilter("blurFrame", {
+    effectEnabled: true, effectFile: "fx.mp4",
+    effectKeyBlack: true, effectKeyThreshold: 0.2, effectOpacity: 0.8,
+  });
+  const joined = f.join("|");
+  assert.ok(!joined.includes("blend="), "không được dùng blend nữa");
+  assert.ok(
+    f.includes("[2:v]scale=1280:720,format=yuva420p,lumakey=threshold=0.2:tolerance=0.1:softness=0.1,colorchannelmixer=aa=0.8[bf_fx]")
+  );
+  assert.ok(f.includes("[bf_stage1][bf_fx]overlay=0:0:shortest=1[combined_video]"));
+});
+
+test("effectKeyBlack tắt (mặc định) vẫn giữ nguyên đường blend screen cũ", () => {
+  const f = buildComplexFilter("blurFrame", { effectEnabled: true, effectFile: "fx.mp4" });
+  assert.ok(f.includes("[2:v]scale=1280:720,format=yuv420p[bf_fx]"));
+  assert.ok(
+    f.includes("[bf_stage1][bf_fx]blend=all_mode=screen:all_opacity=0.6:shortest=1[combined_video]")
+  );
+  assert.ok(!f.join("|").includes("lumakey"));
+});
+
+test("effectKeyBlack vẫn đúng chỉ số input khi có cả khung", () => {
+  const f = buildComplexFilter("blurFrame", {
+    frameEnabled: true, frameFile: "k.png",
+    effectEnabled: true, effectFile: "fx.mp4", effectKeyBlack: true,
+  });
+  assert.ok(f.some((s) => s.startsWith("[2:v]") && s.includes("bf_frame")));
+  assert.ok(f.some((s) => s.startsWith("[3:v]") && s.includes("lumakey")));
+  assert.ok(f.includes("[bf_stage2][bf_fx]overlay=0:0:shortest=1[combined_video]"));
+});
+
 test("frameScale mặc định 1.0 — khung phủ khít đúng vùng video", () => {
   const f = buildComplexFilter("blurFrame", { frameEnabled: true, frameFile: "k.png" });
   assert.ok(f.includes("[2:v]scale=1088:612[bf_frame]"));

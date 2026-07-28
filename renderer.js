@@ -510,6 +510,11 @@ async function saveSettings() {
       effectPath: selectedRenderEffectPath,
       effectOpacity:
         document.getElementById("render-bf-effect-opacity")?.value || "0.6",
+      effectKeyBlack:
+        document.getElementById("render-bf-effect-key-black")?.checked || false,
+      effectKeyThreshold:
+        document.getElementById("render-bf-effect-key-threshold")?.value ||
+        "0.15",
       overlayFolder: selectedRenderOverlayFolder,
       backgroundFolder: selectedRenderBackgroundFolder,
       outputFolder: selectedRenderOutputFolder,
@@ -756,6 +761,12 @@ async function loadSettings() {
       if (settings.render.effectOpacity)
         document.getElementById("render-bf-effect-opacity").value =
           settings.render.effectOpacity;
+      if (settings.render.effectKeyBlack !== undefined)
+        document.getElementById("render-bf-effect-key-black").checked =
+          settings.render.effectKeyBlack;
+      if (settings.render.effectKeyThreshold)
+        document.getElementById("render-bf-effect-key-threshold").value =
+          settings.render.effectKeyThreshold;
       toggleBlurFrameLayers();
       if (settings.render.chromaKeyMode) {
         document.getElementById(
@@ -1789,6 +1800,12 @@ async function saveCurrentProjectSettings() {
         effectPath: selectedRenderEffectPath,
         effectOpacity:
           document.getElementById("render-bf-effect-opacity")?.value || "0.6",
+        effectKeyBlack:
+          document.getElementById("render-bf-effect-key-black")?.checked ||
+          false,
+        effectKeyThreshold:
+          document.getElementById("render-bf-effect-key-threshold")?.value ||
+          "0.15",
         overlayFolder: selectedRenderOverlayFolder,
         backgroundFolder: selectedRenderBackgroundFolder,
         outputFolder: selectedRenderOutputFolder,
@@ -2116,6 +2133,7 @@ function toggleBlurFrameLayers() {
   show("render-bf-blur-enabled", "render-bf-blur-group");
   show("render-bf-frame-enabled", "render-bf-frame-group");
   show("render-bf-effect-enabled", "render-bf-effect-group");
+  show("render-bf-effect-key-black", "render-bf-effect-key-group");
 }
 
 function toggleChromaKeyMode() {
@@ -2488,6 +2506,13 @@ async function runRender() {
   const effectPath = selectedRenderEffectPath || "";
   const effectOpacity =
     parseFloat(document.getElementById("render-bf-effect-opacity").value) || 0.6;
+  const effectKeyBlack = document.getElementById(
+    "render-bf-effect-key-black",
+  ).checked;
+  const effectKeyThreshold =
+    parseFloat(
+      document.getElementById("render-bf-effect-key-threshold").value,
+    ) || 0.15;
 
   // Chroma Key config
   let chromaKeyMode = "color";
@@ -2589,6 +2614,8 @@ async function runRender() {
         effectEnabled,
         effectPath,
         effectOpacity,
+        effectKeyBlack,
+        effectKeyThreshold,
         // Sử dụng path trực tiếp từ GUI, không copy
         overlayFolder: selectedRenderOverlayFolder || "./overlays",
         backgroundFolder: selectedRenderBackgroundFolder || "./backgrounds",

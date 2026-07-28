@@ -115,6 +115,20 @@ test("parseConfigRows đọc cột blurFrame qua alias tiếng Việt", () => {
   assert.equal(out[0].cfg.effectOpacity, 0.7);
 });
 
+test("parseConfigRows đọc cột khử nền tối của hiệu ứng", () => {
+  const header = ["Tên kênh","Chế độ render","Dùng hiệu ứng","Hiệu ứng","Khử nền tối hiệu ứng","Ngưỡng khử nền tối"];
+  const rows = [header,
+    ["Kênh A","blurFrame","true","D:/fx","true","0.22"],
+    ["Kênh B","blurFrame","true","D:/fx","",""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].cfg.effectKeyBlack, true);
+  assert.equal(out[0].cfg.effectKeyThreshold, 0.22);
+  // ô trống -> không set, dùng mặc định (blend screen như cũ)
+  assert.equal("effectKeyBlack" in out[1].cfg, false);
+  assert.equal("effectKeyThreshold" in out[1].cfg, false);
+});
+
 test("parseConfigRows parses chromaPalette and chromaKeyAuto mode", () => {
   const header = ["sheetName","enabled","videosPerDay","renderMode","chromaPalette"];
   const rows = [header,

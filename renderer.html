@@ -2783,6 +2783,42 @@
                       step="0.05"
                     />
                   </div>
+                  <label
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      font-weight: normal;
+                    "
+                  >
+                    <input
+                      type="checkbox"
+                      id="render-bf-effect-key-black"
+                      onchange="toggleBlurFrameLayers()"
+                    />
+                    <span
+                      >Khử nền tối của hiệu ứng (giữ hạt đậm, không bạc màu
+                      ảnh)</span
+                    >
+                  </label>
+                  <div
+                    id="render-bf-effect-key-group"
+                    class="form-group"
+                    style="display: none; margin-left: 20px; margin-top: 5px"
+                  >
+                    <label
+                      >Ngưỡng khử nền tối (0.05 - 0.4; cao hơn = khử mạnh
+                      hơn):</label
+                    >
+                    <input
+                      type="number"
+                      id="render-bf-effect-key-threshold"
+                      value="0.15"
+                      min="0"
+                      max="1"
+                      step="0.01"
+                    />
+                  </div>
                 </div>
               </div>
               <label

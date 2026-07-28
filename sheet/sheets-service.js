@@ -61,6 +61,8 @@ const HEADER_ALIASES = {
   effectEnabled: ["dùng hiệu ứng", "bật hiệu ứng"],
   effectPath: ["hiệu ứng", "đường dẫn hiệu ứng"],
   effectOpacity: ["độ mạnh hiệu ứng"],
+  effectKeyBlack: ["khử nền tối hiệu ứng", "khử nền đen"],
+  effectKeyThreshold: ["ngưỡng khử nền tối", "ngưỡng khử nền đen"],
   proxy: ["proxy tải", "proxy"],
   gpmProfileId: ["gpm profile id", "gpm", "profile gpm"],
   postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
@@ -157,6 +159,10 @@ export function parseConfigRows(values) {
     if (effectPath) cfg.effectPath = effectPath;
     const effectOpacity = num(col(row, "effectOpacity"));
     if (effectOpacity !== undefined) cfg.effectOpacity = effectOpacity;
+    const effectKeyBlackRaw = col(row, "effectKeyBlack");
+    if (effectKeyBlackRaw) cfg.effectKeyBlack = boolFalse(effectKeyBlackRaw);
+    const effectKeyThreshold = num(col(row, "effectKeyThreshold"));
+    if (effectKeyThreshold !== undefined) cfg.effectKeyThreshold = effectKeyThreshold;
     const chromaPalette = col(row, "chromaPalette")
       .split(",")
       .map((p) => p.trim().replace("#", "").toUpperCase())

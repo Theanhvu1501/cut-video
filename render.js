@@ -295,6 +295,8 @@ let frameScale = 1;
 let effectEnabled = false;
 let effectPath = "";
 let effectOpacity = 0.6;
+let effectKeyBlack = false;
+let effectKeyThreshold = 0.15;
 
 // Đọc config từ project JSON hoặc từ environment variable RENDER_CONFIG_JSON
 // Ưu tiên RENDER_CONFIG_JSON (từ options) nếu có, sau đó mới đọc từ project JSON
@@ -374,6 +376,10 @@ if (config) {
   if (config.effectPath) effectPath = config.effectPath;
   if (config.effectOpacity !== undefined)
     effectOpacity = parseFloat(config.effectOpacity) || 0.6;
+  if (config.effectKeyBlack !== undefined)
+    effectKeyBlack = config.effectKeyBlack;
+  if (config.effectKeyThreshold !== undefined)
+    effectKeyThreshold = parseFloat(config.effectKeyThreshold) || 0.15;
   // Đọc đường dẫn từ config
   if (config.overlayFolder) {
     // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
@@ -704,13 +710,23 @@ const complexFilterBlurFrame = ({ frameFile, effectFile }) => {
     idx++;
   }
   if (effectFile) {
-    // 4. Lớp hiệu ứng nền đen ghép bằng blend screen nên vùng đen tự biến mất.
-    filters.push(
-      `[${idx}:v]scale=${BLURFRAME_BASE_W}:${BLURFRAME_BASE_H},format=yuv420p[bf_fx]`
-    );
-    filters.push(
-      `${stage}[bf_fx]blend=all_mode=screen:all_opacity=${effectOpacity}:shortest=1[combined_video]`
-    );
+    if (effectKeyBlack) {
+      // 4a. Khử nền tối thành trong suốt rồi overlay: hạt hiệu ứng giữ nguyên độ
+      // đậm còn phần tối biến mất hẳn. Khác với screen — screen cộng sáng cả khung
+      // nên hạ opacity là hạt mờ theo, giữ cao thì lớp mù xám làm bạc màu toàn ảnh.
+      filters.push(
+        `[${idx}:v]scale=${BLURFRAME_BASE_W}:${BLURFRAME_BASE_H},format=yuva420p,lumakey=threshold=${effectKeyThreshold}:tolerance=0.1:softness=0.1,colorchannelmixer=aa=${effectOpacity}[bf_fx]`
+      );
+      filters.push(`${stage}[bf_fx]overlay=0:0:shortest=1[combined_video]`);
+    } else {
+      // 4b. Lớp hiệu ứng nền đen ghép bằng blend screen nên vùng đen tự biến mất.
+      filters.push(
+        `[${idx}:v]scale=${BLURFRAME_BASE_W}:${BLURFRAME_BASE_H},format=yuv420p[bf_fx]`
+      );
+      filters.push(
+        `${stage}[bf_fx]blend=all_mode=screen:all_opacity=${effectOpacity}:shortest=1[combined_video]`
+      );
+    }
     idx++;
   }
 

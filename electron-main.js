@@ -14,7 +14,7 @@ import { createYoutubeClient, fetchChannelStats, fetchSourceVideos, pickNewUrls,
 import { parseScheduledISO, formatStamp } from "./sheet/schedule-slots.js";
 import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
-import { sendTelegram, sendTelegramPhoto, buildDigest, buildShotCaption } from "./sheet/telegram-notify.js";
+import { sendTelegram, sendTelegramMediaGroup, buildDigest, buildShotCaption } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
@@ -1389,10 +1389,18 @@ function buildSheetRunner(win) {
     // Đọc 1 lần lúc dựng runner — đổi cấu hình khi đang chạy thì phải Dừng → Chạy lại.
     notifyShots: !(s.gpmTelegramEnabled && s.gpmTelegramPhoto) ? null : async (shots, batch) => {
       if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;
-      for (const { sheetName, image } of shots) {
-        const r = await sendTelegramPhoto(
-          s.gpmTelegramToken, s.gpmTelegramChatId, image, buildShotCaption(sheetName, batch));
-        if (!r.ok) emitEvent({ type: "log", message: `Telegram ảnh lỗi: ${r.error || "?"}` });
+      // Gửi cả lượt bằng một album thay vì bắn từng tấm: nhiều sendPhoto liên tiếp
+      // dính giới hạn ~1 tin/giây của Telegram và ảnh bị vứt không gửi lại.
+      const r = await sendTelegramMediaGroup(
+        s.gpmTelegramToken,
+        s.gpmTelegramChatId,
+        shots.map(({ sheetName, image }) => ({ photo: image, caption: buildShotCaption(sheetName, batch) })),
+      );
+      if (!r.ok) {
+        emitEvent({
+          type: "log",
+          message: `Telegram ảnh lỗi (gửi được ${r.sent}/${shots.length}): ${r.error || "?"}`,
+        });
       }
     },
   });

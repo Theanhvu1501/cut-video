@@ -2,6 +2,11 @@
 // Render xong 1 video → enqueue → (tuần tự) lấy thumb trong overlays theo title,
 // cấp giờ lịch (ngày mai), rồi upload+thumb+lịch bằng yt-upload.
 // Một kênh chỉ xử lý 1 video tại một thời điểm; video sau chờ trong hàng đợi.
+//
+// Xong một kênh (runner gọi endChannel + chuỗi của kênh cạn) → chụp trang Nội dung
+// của kênh đó và gửi MỘT tin mang cả ảnh lẫn kết quả của riêng kênh đó. Cuối lượt
+// gửi thêm digest tổng. (Trước đây gộp mọi ảnh vào một album, nhưng Telegram chỉ
+// hiển thị một caption cho cả album nên kết quả của các kênh còn lại bị ẩn.)
 
 import path from "path";
 import fs from "fs";
@@ -38,8 +43,8 @@ export function createUploadQueue({
   listFiles = (dir) => { try { return fs.readdirSync(dir); } catch { return []; } },
   log = () => {},
   emit = () => {},                     // (evt) — phát sự kiện trạng thái lên UI ({type:"upload-status",...})
-  notifyDigest = null,                 // async (results[]) — gửi digest khi hàng đợi rảnh
-  notifyShots = null,                  // async (shots[], batch[]) — shots: [{ sheetName, image: Buffer }]
+  notifyDigest = null,                 // async (results[]) — gửi digest tổng khi hàng đợi rảnh
+  notifyChannel = null,                // async (sheetName, results[], image: Buffer|null) — tin của 1 kênh
   capture = captureContentPage,        // (page, opts) → Buffer PNG (tiêm để test)
   setUploadStatus = async () => {},    // async (sheetName, rowIndex, status) — ghi ngược vào Sheet
   retries = 3,                         // số lần thử lại khi lỗi (chỉ khi CHƯA bắt đầu upload)
@@ -53,6 +58,10 @@ export function createUploadQueue({
   const channelCache = new Map(); // sheetName -> { scheduledUrls, usedSlots } (đọc từ Sheet 1 lần/lượt)
   const results = [];             // kết quả từ lượt bận hiện tại (để gộp digest)
   const lastProfile = new Map();  // sheetName -> { gpmHost, profileId } (để biết chụp bằng profile nào)
+  const pendingByChannel = new Map(); // sheetName -> số job đang chờ/chạy của kênh đó
+  const channelEnded = new Set();     // sheetName — runner đã báo lượt này hết job cho kênh
+  const reported = new Set();         // sheetName — đã gửi tin của kênh trong lượt này
+  const reportTasks = new Set();      // Promise của các tin đang chụp/gửi
   let pending = 0;                // số job đang chờ/chạy
   let flushTimer = null;
   let idleTimer = null;           // hẹn giờ đóng trình duyệt khi rảnh
@@ -86,6 +95,8 @@ export function createUploadQueue({
 
   async function closeIdleConns() {
     if (runActive || pending > 0) return; // hẹn giờ dài, lượt chạy mới có thể đã bắt đầu
+    // Còn tin nào đang chụp thì tuyệt đối không giết trình duyệt của nó — hẹn lại.
+    if (reportTasks.size) { scheduleClose(); return; }
     const entries = [...conns.entries()];
     conns.clear();                        // xoá TRƯỚC vòng await: không job nào đọc trúng browser sắp bị giết
     for (const [profileId, c] of entries) {
@@ -121,41 +132,60 @@ export function createUploadQueue({
     try { emit({ type: "upload-status", channel, status, ...extra }); } catch { /* ignore */ }
   }
 
-  // Khi hàng đợi rảnh → gửi 1 digest gộp các kết quả từ lượt bận, rồi ảnh trang Nội dung.
+  // Khi hàng đợi rảnh → gửi 1 digest gộp các kết quả từ lượt bận.
+  // Chờ các tin từng kênh gửi xong trước, để digest tổng là tin CUỐI.
   function scheduleFlush() {
     if (flushTimer) clearTimeout(flushTimer);
     flushTimer = setTimeout(async () => {
       if (runActive || pending > 0 || !results.length) return; // lượt chạy chưa xong → chưa gửi
+      await Promise.all([...reportTasks].map((p) => p.catch(() => {})));
       const batch = results.splice(0, results.length);
       if (notifyDigest) {
         try { await notifyDigest(batch); } catch (e) { log(`Lỗi gửi Telegram: ${e?.message || e}`); }
       }
-      await sendShots(batch);
     }, flushMs);
   }
 
-  // Chụp trang Nội dung Studio của từng kênh trong lượt rồi gửi kèm digest.
-  // Mọi lỗi ở đây chỉ ghi log — digest đã gửi xong trước đó, không được để ảnh làm hỏng nó.
-  async function sendShots(batch) {
-    if (!notifyShots || closing) return;
-    // Chụp mất ~20s/kênh. scheduleClose() đã chạy cùng lúc với scheduleFlush(), nên với
+  // Kênh vừa xong → gửi tin của riêng kênh đó (ảnh trang Nội dung + kết quả).
+  // Lọc `results` và ghi `reported` TRƯỚC mọi await: hai lời gọi tới cùng lúc (từ
+  // endChannel và từ job cuối) không thể gửi hai lần, và digest có splice `results`
+  // giữa chừng thì tin của kênh cũng đã giữ được bản sao của mình.
+  function maybeReportChannel(sheetName) {
+    if (!notifyChannel) return;                                  // tắt công tắc → khỏi tốn ~20s chụp
+    if (!channelEnded.has(sheetName)) return;                    // runner chưa báo hết job
+    if ((pendingByChannel.get(sheetName) ?? 0) > 0) return;       // còn video đang upload
+    if (reported.has(sheetName)) return;
+    const mine = results.filter((r) => r.sheetName === sheetName);
+    if (!mine.length) return;                                    // không có video mới → không gửi
+    reported.add(sheetName);
+
+    const task = sendChannelReport(sheetName, mine).finally(() => reportTasks.delete(task));
+    reportTasks.add(task);
+  }
+
+  // Chụp + gửi. Mọi lỗi chỉ ghi log: mất ảnh không được làm mất kết quả.
+  async function sendChannelReport(sheetName, mine) {
+    // Chụp mất ~20s. scheduleClose() vừa chạy ở finally của job cuối, nên với
     // gpmIdleCloseMin nhỏ, closeIdleConns() có thể nổ giữa lúc đang chụp và giết page.
     cancelClose();
-    const shots = [];
-    for (const sheetName of new Set(batch.map((r) => r.sheetName))) {
-      const p = lastProfile.get(sheetName);
-      const c = p && conns.get(p.profileId);
-      if (!c) { log(`[${sheetName}] không chụp được trang Nội dung — trình duyệt GPM đã đóng`); continue; }
-      try {
-        shots.push({ sheetName, image: await capture(c.page, { log }) });
-      } catch (e) {
-        log(`[${sheetName}] chụp trang Nội dung lỗi: ${e?.message || e}`);
-      }
+    let image = null;
+    const p = lastProfile.get(sheetName);
+    const c = p && conns.get(p.profileId);
+    if (!c) log(`[${sheetName}] không chụp được trang Nội dung — trình duyệt GPM đã đóng`);
+    else {
+      try { image = await capture(c.page, { log }); }
+      catch (e) { log(`[${sheetName}] chụp trang Nội dung lỗi: ${e?.message || e}`); }
     }
-    if (shots.length) {
-      try { await notifyShots(shots, batch); } catch (e) { log(`Lỗi gửi ảnh Telegram: ${e?.message || e}`); }
-    }
-    scheduleClose(); // chụp xong mới tính lại giờ đóng trình duyệt
+    try { await notifyChannel(sheetName, mine, image); }
+    catch (e) { log(`[${sheetName}] lỗi gửi Telegram: ${e?.message || e}`); }
+    scheduleClose(); // gửi xong mới tính lại giờ đóng trình duyệt
+  }
+
+  // Runner báo: lượt này hết job cho kênh này (gọi ở finally của runChannel).
+  // Đồng bộ và không bao giờ ném lỗi — runner gọi trong finally, không await.
+  function endChannel(sheetName) {
+    channelEnded.add(sheetName);
+    try { maybeReportChannel(sheetName); } catch (e) { log(`[${sheetName}] lỗi báo kênh: ${e?.message || e}`); }
   }
 
   async function runJob(job) {
@@ -232,27 +262,38 @@ export function createUploadQueue({
   function enqueue(job) {
     cancelClose(); // đồng bộ, trước mọi await: có việc mới thì đừng đóng trình duyệt
     pending++;
+    pendingByChannel.set(job.sheetName, (pendingByChannel.get(job.sheetName) ?? 0) + 1);
     const prev = chains.get(job.sheetName) || Promise.resolve();
     const next = prev
       .then(() => runJob(job))
       .catch((e) => log(`❌ [${job.sheetName}] ${e?.message || e}`))
       .finally(() => {
         pending--;
+        pendingByChannel.set(job.sheetName, (pendingByChannel.get(job.sheetName) ?? 1) - 1);
         if (pending === 0) { scheduleFlush(); scheduleClose(); } // rảnh → gửi digest + hẹn đóng
+        // Sau scheduleClose: cancelClose() bên trong sẽ huỷ đúng cái hẹn vừa đặt.
+        maybeReportChannel(job.sheetName);
       });
     chains.set(job.sheetName, next);
     return next;
   }
 
-  // Đợi mọi hàng đợi xong (test/shutdown).
+  // Đợi mọi hàng đợi + mọi tin đang gửi xong (test/shutdown).
   async function drain() {
     await Promise.all([...chains.values()].map((p) => p.catch(() => {})));
+    await Promise.all([...reportTasks].map((p) => p.catch(() => {})));
   }
 
   // Runner báo: bắt đầu 1 lượt chạy (tải+render) → tạm ngưng gửi digest + đọc lại Sheet mới.
-  function beginRun() { cancelClose(); runActive = true; channelCache.clear(); }
+  function beginRun() {
+    cancelClose();
+    runActive = true;
+    channelCache.clear();
+    channelEnded.clear();
+    reported.clear();
+  }
   // Runner báo: lượt chạy xong → cho phép gửi digest khi upload cũng rỗng.
   function endRun() { runActive = false; if (pending === 0) { scheduleFlush(); scheduleClose(); } }
 
-  return { enqueue, drain, prepareJob, beginRun, endRun };
+  return { enqueue, drain, prepareJob, beginRun, endRun, endChannel };
 }

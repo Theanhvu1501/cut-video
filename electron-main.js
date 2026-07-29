@@ -14,7 +14,7 @@ import { createYoutubeClient, fetchChannelStats, fetchSourceVideos, pickNewUrls,
 import { parseScheduledISO, formatStamp } from "./sheet/schedule-slots.js";
 import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
-import { sendTelegram, sendTelegramMediaGroup, buildDigest, buildShotCaption } from "./sheet/telegram-notify.js";
+import { sendTelegram, sendTelegramPhoto, buildDigest, buildChannelReport } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
@@ -1384,24 +1384,18 @@ function buildSheetRunner(win) {
       const r = await sendTelegram(s.gpmTelegramToken, s.gpmTelegramChatId, text);
       if (!r.ok) emitEvent({ type: "log", message: `Telegram lỗi: ${r.error || "?"}` });
     },
-    // Gửi ảnh trang Nội dung Studio của từng kênh, ngay sau digest. Phải bật RIÊNG ô
-    // "Gửi kèm ảnh…"; không bật thì để null hẳn để hàng đợi khỏi tốn công chụp.
+    // Xong một kênh → một tin mang cả ảnh trang Nội dung lẫn kết quả của riêng kênh đó.
+    // Phải bật RIÊNG ô "Gửi kèm ảnh…"; không bật thì để null hẳn để hàng đợi khỏi tốn
+    // công chụp (~20s/kênh) và chỉ còn digest tổng như trước.
     // Đọc 1 lần lúc dựng runner — đổi cấu hình khi đang chạy thì phải Dừng → Chạy lại.
-    notifyShots: !(s.gpmTelegramEnabled && s.gpmTelegramPhoto) ? null : async (shots, batch) => {
+    notifyChannel: !(s.gpmTelegramEnabled && s.gpmTelegramPhoto) ? null : async (sheetName, results, image) => {
       if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;
-      // Gửi cả lượt bằng một album thay vì bắn từng tấm: nhiều sendPhoto liên tiếp
-      // dính giới hạn ~1 tin/giây của Telegram và ảnh bị vứt không gửi lại.
-      const r = await sendTelegramMediaGroup(
-        s.gpmTelegramToken,
-        s.gpmTelegramChatId,
-        shots.map(({ sheetName, image }) => ({ photo: image, caption: buildShotCaption(sheetName, batch) })),
-      );
-      if (!r.ok) {
-        emitEvent({
-          type: "log",
-          message: `Telegram ảnh lỗi (gửi được ${r.sent}/${shots.length}): ${r.error || "?"}`,
-        });
-      }
+      const caption = buildChannelReport(sheetName, results);
+      // Mất ảnh không được làm mất kết quả: không chụp được thì gửi tin chữ.
+      const r = image
+        ? await sendTelegramPhoto(s.gpmTelegramToken, s.gpmTelegramChatId, image, caption)
+        : await sendTelegram(s.gpmTelegramToken, s.gpmTelegramChatId, caption);
+      if (!r.ok) emitEvent({ type: "log", message: `Telegram [${sheetName}] lỗi: ${r.error || "?"}` });
     },
   });
   return createSheetRunner({

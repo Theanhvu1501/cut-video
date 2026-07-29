@@ -74,6 +74,8 @@ export function createSheetRunner(deps) {
 
   async function runChannel(ch, today) {
     if (!ch.enabled) return;
+    // finally ở cuối hàm: mọi đường thoát sớm (proxy sai, không có background…) đều
+    // phải báo hàng đợi rằng lượt này hết job cho kênh, để nó chốt tin của kênh.
     try {
       // Proxy hỏng -> dừng kênh. Tải thẳng bằng IP thật là kết cục tệ nhất cho
       // người dùng đang dựa vào proxy để né bot-check.
@@ -269,6 +271,9 @@ export function createSheetRunner(deps) {
       })));
     } catch (e) {
       emit({ type: "error", channel: ch.sheetName, message: String(e?.message || e).slice(0, 200) });
+    } finally {
+      // Không await: việc chụp+gửi chạy nền để runner đi tiếp kênh sau ngay.
+      if (uploadQueue) uploadQueue.endChannel(ch.sheetName);
     }
   }
 

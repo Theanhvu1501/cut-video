@@ -4,8 +4,7 @@ import {
   buildDigest,
   sendTelegram,
   sendTelegramPhoto,
-  sendTelegramMediaGroup,
-  buildShotCaption,
+  buildChannelReport,
 } from "../sheet/telegram-notify.js";
 
 test("buildDigest gộp theo kênh + liệt kê lỗi", () => {
@@ -94,63 +93,48 @@ test("sendTelegramPhoto trả lỗi khi Telegram từ chối", async () => {
   assert.deepEqual(r, { ok: false, error: "PHOTO_INVALID_DIMENSIONS" });
 });
 
-test("buildShotCaption chỉ đếm kết quả của đúng kênh đó", () => {
+// ===== Tin báo của một kênh (ảnh + kết quả trong cùng một tin) =====
+
+test("buildChannelReport chỉ đếm kết quả của đúng kênh đó", () => {
   const batch = [
-    { sheetName: "line", title: "A", ok: true },
-    { sheetName: "line", title: "B", ok: false, error: "x" },
-    { sheetName: "truyen", title: "C", ok: true },
+    { sheetName: "line", title: "A", ok: true, scheduleISO: "2026-07-30T08:00:00" },
+    { sheetName: "line", title: "B", ok: false, error: "b4 không thấy ô giờ" },
+    { sheetName: "truyen", title: "C", ok: true, scheduleISO: "2026-07-30T18:00:00" },
   ];
-  assert.equal(buildShotCaption("line", batch), "📋 line — ✅ 1 lên lịch, ❌ 1 lỗi");
-  assert.equal(buildShotCaption("truyen", batch), "📋 truyen — ✅ 1 lên lịch, ❌ 0 lỗi");
+  const line = buildChannelReport("line", batch);
+  assert.match(line, /^📋 line — ✅ 1 lên lịch, ❌ 1 lỗi$/m);
+  assert.match(line, /• A → 30\/07\/2026 08:00/);
+  assert.match(line, /• ❌ B: b4 không thấy ô giờ/);
+  assert.doesNotMatch(line, /truyen|• C/, "không được lẫn kết quả của kênh khác");
+
+  assert.match(buildChannelReport("truyen", batch), /^📋 truyen — ✅ 1 lên lịch, ❌ 0 lỗi$/m);
 });
 
-// ===== Gửi nhiều ảnh: album + chờ đúng retry_after khi dính 429 =====
-
-const png = (n) => Buffer.from(`PNG${n}`);
-const shots = (n) => Array.from({ length: n }, (_, i) => ({ photo: png(i), caption: `kênh ${i}` }));
-const okJson = async () => ({ json: async () => ({ ok: true }) });
-
-test("sendTelegramMediaGroup: nhiều ảnh gộp thành MỘT request sendMediaGroup", async () => {
-  const calls = [];
-  const fetch = async (url, opt) => { calls.push({ url, opt }); return okJson(); };
-  const r = await sendTelegramMediaGroup("TOK", "42", shots(4), { fetch });
-
-  assert.deepEqual(r, { ok: true, sent: 4 });
-  assert.equal(calls.length, 1, "4 ảnh chỉ được tốn đúng 1 tin của Telegram");
-  assert.match(calls[0].url, /^https:\/\/api\.telegram\.org\/botTOK\/sendMediaGroup$/);
-
-  const form = calls[0].opt.body;
-  assert.equal(form.get("chat_id"), "42");
-  const media = JSON.parse(form.get("media"));
-  assert.equal(media.length, 4);
-  assert.deepEqual(media[2], { type: "photo", media: "attach://photo2", caption: "kênh 2" });
-  const photo2 = form.get("photo2");
-  assert.equal(Buffer.from(await photo2.arrayBuffer()).toString(), "PNG2");
+test("buildChannelReport: thành công mà thiếu scheduleISO thì chỉ ghi tiêu đề", () => {
+  const out = buildChannelReport("line", [{ sheetName: "line", title: "A", ok: true }]);
+  assert.match(out, /• A$/m);
+  assert.doesNotMatch(out, /→/);
 });
 
-test("sendTelegramMediaGroup: đúng 1 ảnh thì dùng sendPhoto (album cần >= 2)", async () => {
-  const calls = [];
-  const fetch = async (url, opt) => { calls.push({ url, opt }); return okJson(); };
-  const r = await sendTelegramMediaGroup("TOK", "42", shots(1), { fetch });
-
-  assert.deepEqual(r, { ok: true, sent: 1 });
-  assert.match(calls[0].url, /\/sendPhoto$/);
-  assert.equal(calls[0].opt.body.get("caption"), "kênh 0");
+test("buildChannelReport: 0 kết quả -> chuỗi rỗng", () => {
+  assert.equal(buildChannelReport("line", []), "");
+  assert.equal(buildChannelReport("line", [{ sheetName: "khac", title: "A", ok: true }]), "");
 });
 
-test("sendTelegramMediaGroup: quá 10 ảnh thì chia lô, lô lẻ 1 tấm dùng sendPhoto", async () => {
-  const calls = [];
-  const fetch = async (url, opt) => { calls.push({ url, opt }); return okJson(); };
-  const r = await sendTelegramMediaGroup("TOK", "42", shots(11), { fetch });
-
-  assert.deepEqual(r, { ok: true, sent: 11 });
-  assert.equal(calls.length, 2);
-  assert.match(calls[0].url, /\/sendMediaGroup$/);
-  assert.equal(JSON.parse(calls[0].opt.body.get("media")).length, 10);
-  assert.match(calls[1].url, /\/sendPhoto$/, "tấm thứ 11 đi một mình");
+test("buildChannelReport: caption dài bị cắt trong 1024 và ghi rõ còn bao nhiêu", () => {
+  const many = Array.from({ length: 200 }, (_, i) => ({
+    sheetName: "line", title: `Video số ${i} với tiêu đề dài dài dài`, ok: true,
+    scheduleISO: "2026-07-30T08:00:00",
+  }));
+  const out = buildChannelReport("line", many);
+  assert.ok(out.length <= 1024, `caption dài ${out.length} > 1024`);
+  assert.match(out, /\n… và \d+ video nữa$/);
+  assert.match(out, /^📋 line — ✅ 200 lên lịch, ❌ 0 lỗi$/m, "dòng tổng vẫn phải đủ số thật");
 });
 
-test("sendTelegramMediaGroup: dính 429 thì chờ retry_after rồi gửi lại", async () => {
+// ===== Retry khi dính 429 =====
+
+test("sendTelegramPhoto: dính 429 thì chờ retry_after rồi gửi lại", async () => {
   const slept = [];
   let n = 0;
   const fetch = async () => {
@@ -159,62 +143,26 @@ test("sendTelegramMediaGroup: dính 429 thì chờ retry_after rồi gửi lại
       ? { json: async () => ({ ok: false, description: "Too Many Requests", parameters: { retry_after: 5 } }) }
       : { json: async () => ({ ok: true }) };
   };
-  const r = await sendTelegramMediaGroup("TOK", "42", shots(3), {
+  const r = await sendTelegramPhoto("TOK", "42", Buffer.from("PNG"), "c", {
     fetch, sleep: async (ms) => { slept.push(ms); },
   });
 
-  assert.deepEqual(r, { ok: true, sent: 3 });
+  assert.equal(r.ok, true);
   assert.equal(n, 2, "phải gửi lại chứ không vứt ảnh");
   assert.deepEqual(slept, [6000], "chờ retry_after + 1 giây");
 });
 
-test("sendTelegramMediaGroup: hết lượt thử vẫn 429 thì báo lỗi kèm số đã gửi", async () => {
-  const fetch = async () => ({
-    json: async () => ({ ok: false, description: "Too Many Requests", parameters: { retry_after: 1 } }),
-  });
-  const r = await sendTelegramMediaGroup("TOK", "42", shots(3), { fetch, sleep: async () => {} });
-
-  assert.equal(r.ok, false);
-  assert.equal(r.sent, 0);
-  assert.match(r.error, /Too Many Requests/);
-});
-
-test("sendTelegramMediaGroup: lô đầu hỏng không kéo theo lô sau", async () => {
-  let n = 0;
-  const fetch = async () => {
-    n++;
-    return n === 1
-      ? { json: async () => ({ ok: false, description: "PHOTO_INVALID_DIMENSIONS" }) }
-      : { json: async () => ({ ok: true }) };
-  };
-  const r = await sendTelegramMediaGroup("TOK", "42", shots(11), { fetch, sleep: async () => {} });
-
-  assert.equal(r.ok, false);
-  assert.equal(r.sent, 1, "lô 10 tấm hỏng, tấm lẻ vẫn tới nơi");
-  assert.match(r.error, /PHOTO_INVALID_DIMENSIONS/);
-});
-
-test("sendTelegramMediaGroup: fetch ném lỗi mạng thì thử lại, không ném ra ngoài", async () => {
+test("sendTelegramPhoto: fetch ném lỗi mạng thì thử lại, không ném ra ngoài", async () => {
   let n = 0;
   const fetch = async () => {
     n++;
     if (n < 3) throw new Error("ECONNRESET");
-    return okJson();
+    return { json: async () => ({ ok: true }) };
   };
-  const r = await sendTelegramMediaGroup("TOK", "42", shots(2), { fetch, sleep: async () => {} });
+  const r = await sendTelegramPhoto("TOK", "42", Buffer.from("PNG"), "c", { fetch, sleep: async () => {} });
 
-  assert.deepEqual(r, { ok: true, sent: 2 });
+  assert.equal(r.ok, true);
   assert.equal(n, 3);
-});
-
-test("sendTelegramMediaGroup: không có ảnh nào thì không gọi Telegram", async () => {
-  let called = false;
-  const fetch = async () => { called = true; return okJson(); };
-  assert.deepEqual(await sendTelegramMediaGroup("TOK", "42", [], { fetch }), { ok: true, sent: 0 });
-  assert.equal(called, false);
-  assert.deepEqual(await sendTelegramMediaGroup("", "42", shots(2), { fetch }), {
-    ok: false, error: "thiếu token/chatId", sent: 0,
-  });
 });
 
 test("sendTelegram (tin chữ) cũng chờ retry_after khi bị 429", async () => {

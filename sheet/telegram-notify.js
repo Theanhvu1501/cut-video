@@ -1,7 +1,8 @@
-// Gửi thông báo Telegram (chỉ sendMessage, không cần bot polling).
+// Gửi thông báo Telegram (chỉ sendMessage/sendPhoto, không cần bot polling).
+
+import { formatSchedule } from "./schedule-slots.js";
 
 const CAPTION_MAX = 1024;
-const ALBUM_MAX = 10; // Telegram: mỗi sendMediaGroup tối đa 10 ảnh
 const SEND_ATTEMPTS = 3;
 
 const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -65,62 +66,37 @@ export async function sendTelegramPhoto(token, chatId, photo, caption, deps = {}
   );
 }
 
-// Gửi NHIỀU ảnh trong một request (album). Gửi từng tấm liên tiếp bằng sendPhoto
-// sẽ dính 429 và mất ảnh; một sendMediaGroup 10 ảnh chỉ tính là một tin.
-// items: [{ photo: Buffer, caption?: string }] → { ok, error?, sent }
-export async function sendTelegramMediaGroup(token, chatId, items, deps = {}) {
-  const fetchFn = deps.fetch || globalThis.fetch;
-  const sleep = deps.sleep || defaultSleep;
-  if (!token || !chatId) return { ok: false, error: "thiếu token/chatId", sent: 0 };
-
-  const list = (items || []).filter((it) => it && it.photo);
-  if (!list.length) return { ok: true, sent: 0 };
-
-  let sent = 0;
-  const errors = [];
-
-  for (let i = 0; i < list.length; i += ALBUM_MAX) {
-    const chunk = list.slice(i, i + ALBUM_MAX);
-
-    // Album phải có từ 2 ảnh trở lên; lẻ đúng 1 tấm thì gửi kiểu thường.
-    const r =
-      chunk.length === 1
-        ? await sendTelegramPhoto(token, chatId, chunk[0].photo, chunk[0].caption, deps)
-        : await postWithRetry(
-            `https://api.telegram.org/bot${token}/sendMediaGroup`,
-            () => {
-              const form = new FormData();
-              form.append("chat_id", chatId);
-              form.append(
-                "media",
-                JSON.stringify(
-                  chunk.map((it, n) => ({
-                    type: "photo",
-                    media: `attach://photo${n}`,
-                    ...(it.caption ? { caption: String(it.caption).slice(0, CAPTION_MAX) } : {}),
-                  })),
-                ),
-              );
-              chunk.forEach((it, n) =>
-                form.append(`photo${n}`, new Blob([it.photo], { type: "image/png" }), `photo${n}.png`),
-              );
-              return form;
-            },
-            { fetchFn, sleep },
-          );
-
-    if (r.ok) sent += chunk.length;
-    else errors.push(r.error || "?");
+// Ghép các dòng chi tiết vào sau dòng tổng, giữ tổng độ dài trong CAPTION_MAX.
+// Không cắt dở một dòng: hết chỗ thì dừng và ghi rõ còn bao nhiêu video nữa.
+function fitCaption(head, lines) {
+  let out = head;
+  for (let i = 0; i < lines.length; i++) {
+    const left = lines.length - i;
+    // Nếu thêm dòng này thì phần còn lại là left-1 dòng, cần chỗ cho dòng "… và N nữa".
+    const reserve = left > 1 ? `\n… và ${left - 1} video nữa`.length : 0;
+    const next = `${out}\n${lines[i]}`;
+    if (next.length + reserve > CAPTION_MAX) {
+      const stopped = `${out}\n… và ${left} video nữa`;
+      return stopped.length <= CAPTION_MAX ? stopped : out.slice(0, CAPTION_MAX);
+    }
+    out = next;
   }
-
-  return errors.length ? { ok: false, error: errors.join("; "), sent } : { ok: true, sent };
+  return out;
 }
 
-// Caption cho ảnh trang Nội dung của 1 kênh (hàm thuần).
-export function buildShotCaption(sheetName, results) {
+// Tin báo của MỘT kênh: dòng tổng + từng video kèm giờ lịch (hàm thuần).
+// Dùng làm caption của ảnh trang Nội dung kênh đó. Rỗng khi kênh không có kết quả.
+export function buildChannelReport(sheetName, results) {
   const mine = (results || []).filter((r) => r.sheetName === sheetName);
-  const ok = mine.filter((r) => r.ok).length;
-  return `📋 ${sheetName} — ✅ ${ok} lên lịch, ❌ ${mine.length - ok} lỗi`;
+  if (!mine.length) return "";
+  const ok = mine.filter((r) => r.ok);
+  const err = mine.filter((r) => !r.ok);
+  const head = `📋 ${sheetName} — ✅ ${ok.length} lên lịch, ❌ ${err.length} lỗi`;
+  const lines = [
+    ...ok.map((r) => `• ${r.title}${r.scheduleISO ? ` → ${formatSchedule(r.scheduleISO)}` : ""}`),
+    ...err.map((r) => `• ❌ ${r.title}: ${r.error || "?"}`),
+  ];
+  return fitCaption(head, lines);
 }
 
 // Dựng tin digest dạng bảng từ danh sách kết quả upload (hàm thuần, test được).

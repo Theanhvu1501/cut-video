@@ -577,7 +577,7 @@ test("upload-only: không tải, không render, chỉ đưa vào hàng đợi up
       setUrlStatus: async () => {},
       setUploadStatus: async () => {},
     },
-    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
   });
   deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
   await createSheetRunner(deps).runNow();
@@ -600,7 +600,7 @@ test("upload-only tăng uploadAttempts mỗi lượt", async () => {
       setUrlStatus: async () => {},
       setUploadStatus: async () => {},
     },
-    uploadQueue: { enqueue: () => {}, beginRun: () => {}, endRun: () => {} },
+    uploadQueue: { enqueue: () => {}, beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
   });
   deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 1, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
   await createSheetRunner(deps).runNow();
@@ -623,7 +623,7 @@ test("upload-only không bị quota cắt kể cả khi đã đủ video hôm na
       setUrlStatus: async () => {},
       setUploadStatus: async () => {},
     },
-    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
   });
   deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
   // Đã render 1 video hôm nay -> remaining = 0.
@@ -648,7 +648,7 @@ test("upload hết lượt thử -> ghi 'bỏ qua:' vào cột C, không enqueue
       setUrlStatus: async () => {},
       setUploadStatus: async (s, r, status) => upStatus.push(status),
     },
-    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
   });
   deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: MAX_ATTEMPTS, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
   await createSheetRunner(deps).runNow();
@@ -671,7 +671,7 @@ test("GPM tắt: upload-only không tăng uploadAttempts và không chôn video"
       setUrlStatus: async () => {},
       setUploadStatus: async (s, r, status) => upStatus.push(status),
     },
-    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
     emit: (e) => { if (e.type === "log") logs.push(e); },
   });
   deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
@@ -700,7 +700,7 @@ test("kênh thiếu gpmProfileId: upload-only không tăng uploadAttempts", asyn
       setUrlStatus: async () => {},
       setUploadStatus: async () => {},
     },
-    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
   });
   deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
   await createSheetRunner(deps).runNow();
@@ -721,7 +721,7 @@ test("GPM bật đầy đủ: upload-only vẫn tăng uploadAttempts và enqueue
       setUrlStatus: async () => {},
       setUploadStatus: async () => {},
     },
-    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
   });
   deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
   await createSheetRunner(deps).runNow();
@@ -779,10 +779,41 @@ test("video done + ❌ (upload lỗi) thì entry vẫn còn", async () => {
       setUrlStatus: async () => {},
       setUploadStatus: async () => {},
     },
-    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {} },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
   });
   deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
   await createSheetRunner(deps).runNow();
   assert.ok(getResume()["Kênh A"]?.u1, "entry u1 phải còn — nhánh upload-only không bị cướp mất");
   assert.equal(getResume()["Kênh A"].u1.uploadAttempts, 1);
+});
+
+test("endChannel: được gọi cho MỌI kênh, kể cả kênh thoát sớm vì lỗi", async () => {
+  const ended = [];
+  const { deps } = makeDeps({
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi" },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        // Kênh A: proxy sai -> runChannel return ngay ở đầu
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 1, renderMode: "topTransparent", cfg: {}, proxy: "://sai" },
+        // Kênh B: không có background -> cũng return sớm
+        { sheetName: "Kênh B", enabled: true, videosPerDay: 1, renderMode: "topTransparent", cfg: {}, proxy: "" },
+        // Kênh C: chạy bình thường
+        { sheetName: "Kênh C", enabled: true, videosPerDay: 1, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    listBackgrounds: (dir) => (dir === "/bg-B" ? [] : ["bg1.mp4"]),
+    ensureDirs: (root) => ({
+      backgroundsDir: root.includes("Kênh B") ? "/bg-B" : "/bg",
+      overlaysDir: "/ov", outputDir: "/out",
+    }),
+    uploadQueue: {
+      enqueue: () => {}, beginRun: () => {}, endRun: () => {},
+      endChannel: (name) => ended.push(name),
+    },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(ended, ["Kênh A", "Kênh B", "Kênh C"]);
 });

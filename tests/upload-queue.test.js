@@ -245,12 +245,13 @@ test("queue: gửi digest khi rảnh + ghi trạng thái vào Sheet", async () =
   assert.ok(statuses.every((s) => s[1] === 5));
 });
 
-// ─── Ảnh trang Nội dung Studio gửi kèm digest ────────────────────────────────
+// ─── Tin báo theo từng kênh (ảnh + kết quả trong cùng một tin) ────────────────
 
-// Helper: hàng đợi tối giản có bật khâu chụp ảnh.
-function shotQueue(over = {}) {
+// Helper: hàng đợi tối giản có bật khâu chụp ảnh + báo theo kênh.
+function reportQueue(over = {}) {
   const logs = [];
-  const shotsSeen = [];
+  const sent = [];      // [{ sheetName, results, image }]
+  const captured = [];  // page đã được chụp
   const closed = [];
   let connects = 0;
   const q = createUploadQueue({
@@ -262,12 +263,12 @@ function shotQueue(over = {}) {
     listFiles: () => ["v1.jpg", "v2.jpg"],
     log: (m) => logs.push(m),
     notifyDigest: async () => {},
-    notifyShots: async (shots, batch) => { shotsSeen.push({ shots, batch }); },
-    capture: async () => Buffer.from("PNG"),
+    notifyChannel: async (sheetName, results, image) => { sent.push({ sheetName, results, image }); },
+    capture: async (page) => { captured.push(page); return Buffer.from("PNG"); },
     flushMs: 1,
     ...over,
   });
-  return { q, logs, shotsSeen, closed, connects: () => connects };
+  return { q, logs, sent, captured, closed, connects: () => connects };
 }
 
 const jobOf = (sheetName, profileId, n) => ({
@@ -278,76 +279,140 @@ const jobOf = (sheetName, profileId, n) => ({
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-test("shots: 1 ảnh cho mỗi kênh có video trong lượt", async () => {
-  const { q, shotsSeen } = shotQueue();
+test("report: mỗi kênh xong -> 1 tin, mang đúng kết quả của kênh đó", async () => {
+  const { q, sent } = reportQueue();
   q.enqueue(jobOf("KenhA", "p1", 1));
   q.enqueue(jobOf("KenhA", "p1", 2));
+  q.endChannel("KenhA");
   q.enqueue(jobOf("KenhB", "p2", 1));
+  q.endChannel("KenhB");
   await q.drain();
-  await wait(60);
 
-  assert.equal(shotsSeen.length, 1, "notifyShots gọi đúng 1 lần cho cả lượt");
-  const names = shotsSeen[0].shots.map((s) => s.sheetName).sort();
-  assert.deepEqual(names, ["KenhA", "KenhB"], "mỗi kênh đúng 1 ảnh, không trùng");
-  assert.equal(shotsSeen[0].shots[0].image.toString(), "PNG");
-  assert.equal(shotsSeen[0].batch.length, 3, "batch mang đủ kết quả để dựng caption");
+  assert.equal(sent.length, 2, "2 kênh -> 2 tin");
+  const a = sent.find((s) => s.sheetName === "KenhA");
+  const b = sent.find((s) => s.sheetName === "KenhB");
+  assert.equal(a.results.length, 2);
+  assert.ok(a.results.every((r) => r.sheetName === "KenhA"), "không lẫn kết quả kênh khác");
+  assert.equal(b.results.length, 1);
+  assert.equal(a.image.toString(), "PNG");
 });
 
-test("shots: trình duyệt đã đóng -> bỏ ảnh, KHÔNG mở lại profile, digest vẫn gửi", async () => {
-  let digests = 0;
-  const { q, logs, shotsSeen, connects } = shotQueue({
-    idleCloseMs: 1,     // đóng trước khi flush
-    flushMs: 40,
-    notifyDigest: async () => { digests++; },
+test("report: kênh không có video mới -> không gửi tin, không chụp", async () => {
+  const { q, sent, captured } = reportQueue({
+    readChannelUploads: async () => ({ scheduledUrls: new Set(["http://u/KenhA/1"]), usedSlots: [] }),
+  });
+  q.enqueue(jobOf("KenhA", "p1", 1)); // Sheet báo đã lên lịch -> bỏ qua, không có kết quả
+  q.endChannel("KenhA");
+  await q.drain();
+
+  assert.deepEqual(sent, []);
+  assert.deepEqual(captured, [], "không tốn ~20s chụp cho kênh chẳng có gì báo");
+});
+
+test("report: gửi đúng 1 lần dù endChannel tới trước hay sau khi job xong", async () => {
+  const early = reportQueue();
+  early.q.enqueue(jobOf("KenhA", "p1", 1));
+  early.q.endChannel("KenhA"); // job chưa chạy xong
+  await early.q.drain();
+  assert.equal(early.sent.length, 1);
+
+  const late = reportQueue();
+  await late.q.enqueue(jobOf("KenhA", "p1", 1));
+  await late.q.drain();
+  late.q.endChannel("KenhA"); // job đã xong hẳn
+  await late.q.drain();
+  assert.equal(late.sent.length, 1);
+});
+
+test("report: digest tổng đi SAU mọi tin từng kênh và nhận đủ kết quả", async () => {
+  const order = [];
+  const { q } = reportQueue({
+    capture: async () => { await wait(30); return Buffer.from("PNG"); },
+    notifyChannel: async (sheetName) => { order.push(`ch:${sheetName}`); },
+    notifyDigest: async (batch) => { order.push(`digest:${batch.length}`); },
   });
   q.enqueue(jobOf("KenhA", "p1", 1));
+  q.endChannel("KenhA");
+  q.enqueue(jobOf("KenhB", "p2", 1));
+  q.endChannel("KenhB");
   await q.drain();
   await wait(120);
 
-  assert.equal(digests, 1, "digest vẫn phải gửi");
-  assert.equal(shotsSeen.length, 0, "không có ảnh nào");
+  assert.equal(order.at(-1), "digest:2", "digest phải là tin cuối và đủ 2 kết quả");
+  assert.deepEqual(order.slice(0, 2).sort(), ["ch:KenhA", "ch:KenhB"]);
+});
+
+test("report: chụp lỗi -> vẫn gửi tin, image null", async () => {
+  const { q, sent, logs } = reportQueue({
+    capture: async () => { throw new Error("page chết"); },
+  });
+  q.enqueue(jobOf("KenhA", "p1", 1));
+  q.endChannel("KenhA");
+  await q.drain();
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].image, null, "mất ảnh không được làm mất kết quả");
+  assert.ok(logs.some((m) => /chụp trang Nội dung lỗi: page chết/.test(m)));
+});
+
+// Đường phòng thủ: tới lúc báo mà `conns` không còn entry của profile (lượt đóng
+// đang bay đã xoá conns, hoặc trình duyệt đã bị đóng). flushMs lớn để digest chưa
+// kịp splice `results` — đúng như khi chạy thật, lúc đó runActive vẫn đang bật.
+test("report: trình duyệt đã đóng -> gửi tin không ảnh, KHÔNG mở lại profile", async () => {
+  const { q, sent, logs, connects } = reportQueue({ idleCloseMs: 1, flushMs: 5000 });
+  await q.enqueue(jobOf("KenhA", "p1", 1));
+  await q.drain();
+  await wait(40);          // hết hạn rảnh -> đóng trình duyệt
+  q.endChannel("KenhA");
+  await q.drain();
+
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].image, null);
   assert.equal(connects(), 1, "KHÔNG được mở lại profile GPM chỉ để chụp");
   assert.ok(logs.some((m) => /trình duyệt GPM đã đóng/.test(m)));
 });
 
-test("shots: chụp lỗi ở 1 kênh thì kênh còn lại vẫn có ảnh", async () => {
-  const { q, logs, shotsSeen } = shotQueue({
-    capture: async (page) => { if (page.boom) throw new Error("page chết"); return Buffer.from("PNG"); },
-    connect: async (host, id) => ({ page: { boom: id === "p1" } }),
+test("report: tắt công tắc ảnh (notifyChannel null) -> không chụp, digest vẫn gửi", async () => {
+  let digests = 0;
+  const { q, captured } = reportQueue({
+    notifyChannel: null,
+    notifyDigest: async () => { digests++; },
   });
   q.enqueue(jobOf("KenhA", "p1", 1));
-  q.enqueue(jobOf("KenhB", "p2", 1));
+  q.endChannel("KenhA");
   await q.drain();
-  await wait(60);
+  await wait(40);
 
-  assert.deepEqual(shotsSeen[0].shots.map((s) => s.sheetName), ["KenhB"]);
-  assert.ok(logs.some((m) => /chụp trang Nội dung lỗi: page chết/.test(m)));
+  assert.deepEqual(captured, []);
+  assert.equal(digests, 1);
 });
 
-test("shots: notifyShots ném lỗi thì hàng đợi không sập", async () => {
-  const { q, logs } = shotQueue({ notifyShots: async () => { throw new Error("mạng die"); } });
+test("report: notifyChannel ném lỗi thì hàng đợi không sập", async () => {
+  const { q, logs } = reportQueue({
+    notifyChannel: async () => { throw new Error("mạng die"); },
+  });
   q.enqueue(jobOf("KenhA", "p1", 1));
+  q.endChannel("KenhA");
   await q.drain();
-  await wait(60);
 
-  assert.ok(logs.some((m) => /Lỗi gửi ảnh Telegram: mạng die/.test(m)));
-  // Hàng đợi vẫn nhận job mới bình thường.
-  await q.enqueue(jobOf("KenhA", "p1", 2));
+  assert.ok(logs.some((m) => /lỗi gửi Telegram: mạng die/.test(m)));
+  await q.enqueue(jobOf("KenhA", "p1", 2)); // vẫn nhận job mới bình thường
 });
 
-test("shots: hẹn giờ đóng trình duyệt bị huỷ trong lúc đang chụp", async () => {
+test("report: hẹn giờ đóng trình duyệt bị huỷ trong lúc đang chụp", async () => {
   let release;
   const held = new Promise((r) => { release = r; });
-  const { q, closed } = shotQueue({
+  const { q, closed } = reportQueue({
     idleCloseMs: 5,
     capture: async () => { await held; return Buffer.from("PNG"); },
   });
   q.enqueue(jobOf("KenhA", "p1", 1));
-  await q.drain();
+  q.endChannel("KenhA");
   await wait(60);
 
   assert.deepEqual(closed, [], "đang chụp thì tuyệt đối không được đóng trình duyệt");
   release();
+  await q.drain();
   await wait(60);
   assert.deepEqual(closed, ["p1"], "chụp xong mới hẹn lại giờ đóng");
 });

@@ -23,13 +23,18 @@ export function createSheetRunner(deps) {
   const {
     config, sheetsApi, downloader, copyLocalOverlay, listLocalInputs, renderer, listBackgrounds,
     ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma, sleep,
-    uploadQueue, refreshStats, resumeStore, fileExists,
+    uploadQueue, refreshStats, resumeStore, fileExists, checkGpm,
   } = deps;
   let timer = null;
   let running = false;
+  // Kết quả preflight GPM của lượt hiện tại: null = chưa hỏi/không cần hỏi,
+  // chuỗi = lý do GPM không dùng được (dùng luôn làm nội dung ghi vào cột C).
+  let gpmDownReason = null;
 
+  // "enqueued" | "skipped" (kênh/cấu hình không đủ) | "gpm-down" (hạ tầng chết).
   function enqueueUpload(ch, item, info, overlaysDir) {
-    if (!(uploadQueue && config.gpmEnabled && ch.gpmProfileId && ch.postTimes)) return false;
+    if (!(uploadQueue && config.gpmEnabled && ch.gpmProfileId && ch.postTimes)) return "skipped";
+    if (gpmDownReason) return "gpm-down";
     uploadQueue.enqueue({
       sheetName: ch.sheetName,
       gpmHost: config.gpmHost,
@@ -42,7 +47,16 @@ export function createSheetRunner(deps) {
       rowIndex: item.rowIndex,
       sourceUrl: item.url,
     });
-    return true;
+    return "enqueued";
+  }
+
+  // Video đã render xong nhưng chưa upload được vì lý do ngoài nó (GPM chưa mở…).
+  // Bắt buộc phải ghi dấu vào cột C: để trống thì decideAction trả "skip" và video
+  // biến mất khỏi mọi lượt sau, dù file output vẫn còn nguyên.
+  async function markUploadWaiting(sheetName, rowIndex, reason) {
+    try {
+      await sheetsApi.setUploadStatus(sheetName, rowIndex, `${ST.WAIT_UPLOAD} ${reason}`);
+    } catch { /* ignore */ }
   }
 
   // yt-dlp lưu thumb cùng basename với video: <title>.mp4 -> <title>.jpg
@@ -165,11 +179,15 @@ export function createSheetRunner(deps) {
           emit({ type: "log", message: `[${ch.sheetName}] bỏ upload sau ${MAX_ATTEMPTS} lần: ${entry?.title ?? item.url}` });
           continue;
         }
-        if (action !== "upload-only") continue;
-        const enqueued = enqueueUpload(ch, item, { outputPath: entry.outputPath, title: entry.title }, overlaysDir);
-        if (enqueued) {
-          bumpAttempts(ch.sheetName, item.url, "uploadAttempts");
+        if (action !== "upload-only" && action !== "upload-wait") continue;
+        const res = enqueueUpload(ch, item, { outputPath: entry.outputPath, title: entry.title }, overlaysDir);
+        if (res === "enqueued") {
+          // upload-wait = lỗi hạ tầng lượt trước, không phải lỗi của video này → không tính lượt.
+          if (action === "upload-only") bumpAttempts(ch.sheetName, item.url, "uploadAttempts");
           emit({ type: "channel-status", channel: ch.sheetName, status: "thử lại upload", url: item.url });
+        } else if (res === "gpm-down") {
+          await markUploadWaiting(ch.sheetName, item.rowIndex, gpmDownReason);
+          emit({ type: "log", message: `[${ch.sheetName}] hoãn upload lại (${gpmDownReason}): ${entry?.title ?? item.url}` });
         } else {
           emit({ type: "log", message: `[${ch.sheetName}] bỏ qua upload lại (GPM tắt hoặc kênh thiếu profile/giờ đăng): ${entry?.title ?? item.url}` });
         }
@@ -246,7 +264,9 @@ export function createSheetRunner(deps) {
           patchEntry(ch.sheetName, item.url, { stage: "rendered", outputPath, title: dl.title });
           try { unlink(dl.filePath); } catch { /* ignore */ }
           emit({ type: "video-rendered", channel: ch.sheetName, outputPath, sourceUrl: item.url, title: dl.title });
-          enqueueUpload(ch, item, { outputPath, title: dl.title }, overlaysDir);
+          if (enqueueUpload(ch, item, { outputPath, title: dl.title }, overlaysDir) === "gpm-down") {
+            await markUploadWaiting(ch.sheetName, item.rowIndex, gpmDownReason);
+          }
         } catch (e) {
           const msg = String(e?.message || e).slice(0, 200);
           const attempts = bumpAttempts(ch.sheetName, item.url, "attempts");
@@ -286,6 +306,18 @@ export function createSheetRunner(deps) {
     if (uploadQueue) uploadQueue.beginRun(); // tạm ngưng gửi digest trong lúc chạy
     try {
       const today = todayStr(now());
+      // Hỏi GPM MỘT lần cho cả lượt. GPM chết mà cứ enqueue thì mỗi video phải chờ
+      // 10 lần thử CDP × 1s rồi mới hỏng — và người dùng nhận N thông báo lỗi giống
+      // nhau thay vì một câu "chưa mở GPM".
+      gpmDownReason = null;
+      if (config.gpmEnabled && checkGpm) {
+        try {
+          if ((await checkGpm()) === false) gpmDownReason = "chưa kết nối được GPM";
+        } catch (e) {
+          gpmDownReason = `chưa kết nối được GPM (${String(e?.message || e).slice(0, 120)})`;
+        }
+        if (gpmDownReason) emit({ type: "error", message: `${gpmDownReason} — video sẽ render bình thường và tự upload ở lượt sau.` });
+      }
       let channels = await sheetsApi.readConfigSheet();
       if (sheetName) channels = channels.filter((c) => c.sheetName === sheetName);
       for (const ch of channels) await runChannel(ch, today);

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { prepareJob, createUploadQueue } from "../sheet/upload-queue.js";
+import { ST } from "../sheet/resume-plan.js";
 
 const NOW = new Date(2026, 6, 8, 15, 0, 0); // 2026-07-08 15:00
 
@@ -113,6 +114,81 @@ test("queue: KHÔNG retry sau khi đã bắt đầu upload (tránh trùng)", asy
   assert.equal(attempts, 1);
   assert.ok(statuses.some((s) => s.startsWith("❌")));
   assert.ok(!statuses.some((s) => /lên lịch/.test(s)));
+});
+
+// ---- Lỗi TRƯỚC khi upload bắt đầu: phải ghi ⏸ vào cột C để lượt sau làm lại ----
+
+// Hàng đợi tối giản chỉ để soi cột C được ghi gì.
+function statusQueue(over = {}) {
+  const statuses = [];
+  const logs = [];
+  const q = createUploadQueue({
+    readChannelUploads: emptyUploads,
+    connect: async () => ({ page: {} }),
+    runUpload: async () => {},
+    now: () => NOW, listFiles: () => ["v1.jpg"],
+    retries: 1, sleepFn: () => Promise.resolve(), flushMs: 5000,
+    setUploadStatus: async (ch, row, st) => { statuses.push(st); },
+    log: (m) => logs.push(m),
+    ...over,
+  });
+  const run = () => q.enqueue({
+    sheetName: "K", gpmHost: "h", profileId: "p", videoPath: "/o/v1.mp4",
+    overlaysDir: "/ov", title: "v1", postTimes: "8:00", rowIndex: 2, sourceUrl: "http://u/1",
+  });
+  return { q, run, statuses, logs };
+}
+
+test("chưa mở GPM (connect ném lỗi) -> cột C thành ⏸, không kẹt ở ⏳", async () => {
+  const { q, run, statuses, logs } = statusQueue({
+    connect: async () => { throw new Error("fetch failed"); },
+  });
+  await run();
+  await q.drain();
+
+  assert.equal(statuses.at(-1), `${ST.WAIT_UPLOAD} fetch failed`);
+  assert.ok(!statuses.at(-1).startsWith("⏳"), "không được để cột C kẹt ở '⏳ đang upload'");
+  assert.ok(logs.some((m) => /fetch failed/.test(m)));
+});
+
+test("đọc Sheet lỗi trước cả khi chuẩn bị job -> cột C thành ⏸", async () => {
+  const { q, run, statuses } = statusQueue({
+    readChannelUploads: async () => { throw new Error("Sheets 503"); },
+  });
+  await run();
+  await q.drain();
+  assert.equal(statuses.at(-1), `${ST.WAIT_UPLOAD} Sheets 503`);
+});
+
+test("hết slot ngày mai -> cột C thành ⏸ để lượt sau lấy slot mới", async () => {
+  const { q, run, statuses } = statusQueue({
+    readChannelUploads: async () => ({ scheduledUrls: new Set(), usedSlots: ["2026-07-09T08:00:00"] }),
+  });
+  await run();
+  await q.drain();
+  assert.equal(statuses.at(-1), `${ST.WAIT_UPLOAD} hết slot ngày mai`);
+});
+
+test("lỗi SAU khi upload đã bắt đầu vẫn là ❌ (tính lượt, không thử lại vô hạn)", async () => {
+  const { q, run, statuses } = statusQueue({
+    runUpload: async ({ onUploaded }) => { onUploaded(); throw new Error("YouTube đơ"); },
+  });
+  await run();
+  await q.drain();
+  assert.ok(statuses.at(-1).startsWith("❌"), `cột C = ${statuses.at(-1)}`);
+});
+
+test("lỗi trước upload vẫn vào digest và không làm sập hàng đợi", async () => {
+  let digest = null;
+  const { q, run } = statusQueue({
+    connect: async () => { throw new Error("GPM chưa chạy"); },
+    flushMs: 5, notifyDigest: async (batch) => { digest = batch; },
+  });
+  await run();
+  await q.drain();
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(digest?.length, 1);
+  assert.equal(digest[0].ok, false);
 });
 
 // ---- Đóng trình duyệt GPM khi hàng đợi rảnh ----

@@ -9,6 +9,10 @@ export const ST = {
   ERR_DL: "lỗi tải:",
   ERR_RENDER: "lỗi render:",
   SKIP: "bỏ qua:",
+  // Cột C: upload chưa chạy được vì lý do ngoài video (GPM chưa mở, hết slot…).
+  // Chỉ được ghi khi CHẮC CHẮN chưa gửi byte nào lên YouTube -> lượt sau thử lại
+  // an toàn, và không tính vào uploadAttempts.
+  WAIT_UPLOAD: "⏸ chờ:",
 };
 
 export function skipText(msg) {
@@ -26,8 +30,12 @@ export function decideAction({
   if (b.startsWith(ST.SKIP)) return "skip";
 
   if (b === ST.DONE) {
-    if (!c.startsWith("❌")) return "skip";       // chưa upload, đang upload, hoặc đã xong
+    const failed = c.startsWith("❌");
+    const waiting = c.startsWith(ST.WAIT_UPLOAD);
+    // Còn lại: chưa upload, ĐANG upload (⏳ — thử lại sẽ tạo video trùng), hoặc đã xong.
+    if (!failed && !waiting) return "skip";
     if (!outputExists) return "skip";             // mất file render -> không upload lại được
+    if (waiting) return "upload-wait";            // lỗi hạ tầng: thử lại mãi, không tính lượt
     return uploadAttempts >= MAX_ATTEMPTS ? "upload-exhausted" : "upload-only";
   }
 

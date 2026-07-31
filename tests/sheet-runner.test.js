@@ -729,6 +729,162 @@ test("GPM bật đầy đủ: upload-only vẫn tăng uploadAttempts và enqueue
   assert.equal(getResume()["Kênh A"].u1.uploadAttempts, 1);
 });
 
+// ── Lỗi hạ tầng (quên mở GPM, GPM đang mở tay, hết slot) ────────────────────
+// Cột C = "⏸ chờ:" → thử lại mãi nhưng KHÔNG tính uploadAttempts, để một sự cố
+// ngoài video không chôn video sau 3 lượt.
+
+const gpmChannel = {
+  sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "topTransparent",
+  cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "07:00",
+};
+const gpmConfig = {
+  spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json",
+  renderConcurrency: 2, gpmEnabled: true, gpmHost: "h", gpmLocale: "vi",
+};
+
+test("cột C = ⏸ chờ -> upload lại nhưng KHÔNG tăng uploadAttempts", async () => {
+  const enqueued = [];
+  const { deps, calls, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: gpmConfig,
+    sheetsApi: {
+      readConfigSheet: async () => [gpmChannel],
+      readChannelUrls: async () => [
+        { rowIndex: 2, url: "u1", status: "done", uploadStatus: `${ST.WAIT_UPLOAD} chưa kết nối được GPM` },
+      ],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
+  });
+  // uploadAttempts đã chạm trần: nếu bị tính lượt thì video này đã bị chôn.
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: MAX_ATTEMPTS, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+
+  assert.equal(enqueued.length, 1, "phải upload lại");
+  assert.equal(getResume()["Kênh A"].u1.uploadAttempts, MAX_ATTEMPTS, "không được tăng");
+  assert.deepEqual(calls.rendered, [], "không render lại");
+  assert.ok(!calls.status.some((s) => /bỏ qua/.test(s.status)), "không được đánh dấu bỏ qua");
+});
+
+test("GPM chưa mở (preflight hỏng) -> không enqueue, ghi ⏸ vào cột C cho video vừa render", async () => {
+  const enqueued = [];
+  const { deps, calls } = makeDeps({
+    config: gpmConfig,
+    sheetsApi: {
+      readConfigSheet: async () => [gpmChannel],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async (n, r, s) => calls.status.push({ rowIndex: r, status: s }),
+      setUploadStatus: async (n, r, s) => calls.status.push({ rowIndex: r, status: s, col: "C" }),
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
+    checkGpm: async () => { throw new Error("fetch failed"); },
+  });
+  await createSheetRunner(deps).runNow();
+
+  assert.equal(calls.rendered.length, 1, "render vẫn phải chạy bình thường");
+  assert.deepEqual(enqueued, [], "GPM chết thì đừng phí 10s CDP cho từng video");
+  const c = calls.status.filter((s) => s.col === "C");
+  assert.equal(c.length, 1);
+  assert.ok(c[0].status.startsWith(ST.WAIT_UPLOAD), `cột C = ${c[0].status}`);
+  assert.ok(/fetch failed/.test(c[0].status), "phải nói rõ lý do");
+});
+
+test("GPM chưa mở: video đang chờ upload lại cũng chỉ ghi ⏸, không tính lượt", async () => {
+  const { deps, calls, getResume } = makeDeps({
+    existingFiles: ["/out/u1.mp4"],
+    config: gpmConfig,
+    sheetsApi: {
+      readConfigSheet: async () => [gpmChannel],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "❌ lỗi: x" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async (n, r, s) => calls.status.push({ rowIndex: r, status: s, col: "C" }),
+    },
+    uploadQueue: { enqueue: () => {}, beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
+    checkGpm: async () => false,
+  });
+  deps.resumeStore.save({ "Kênh A": { u1: { attempts: 0, uploadAttempts: 0, stage: "rendered", outputPath: "/out/u1.mp4", title: "u1" } } });
+  await createSheetRunner(deps).runNow();
+
+  assert.equal(getResume()["Kênh A"].u1.uploadAttempts, 0);
+  assert.ok(calls.status.some((s) => s.col === "C" && s.status.startsWith(ST.WAIT_UPLOAD)));
+});
+
+test("preflight chỉ chạy 1 lần cho cả lượt, và bỏ qua khi GPM tắt trong cấu hình", async () => {
+  let checks = 0;
+  const { deps } = makeDeps({
+    config: gpmConfig,
+    sheetsApi: {
+      readConfigSheet: async () => [gpmChannel, { ...gpmChannel, sheetName: "Kênh B" }],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    uploadQueue: { enqueue: () => {}, beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
+    checkGpm: async () => { checks++; return true; },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.equal(checks, 1, "2 kênh nhưng chỉ hỏi GPM 1 lần");
+
+  checks = 0;
+  const off = makeDeps({
+    config: { ...gpmConfig, gpmEnabled: false },
+    sheetsApi: {
+      readConfigSheet: async () => [gpmChannel],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+      setUploadStatus: async () => {},
+    },
+    checkGpm: async () => { checks++; return true; },
+  });
+  await createSheetRunner(off.deps).runNow();
+  assert.equal(checks, 0, "GPM tắt trong cấu hình thì khỏi hỏi");
+});
+
+// Kịch bản thật: quên mở phần mềm GPM → lượt 1 render xong nhưng không upload được.
+// Mở GPM lên → lượt sau (hẹn giờ pollSec) phải TỰ upload, không cần đụng tay vào Sheet.
+test("quên mở GPM: lượt sau mở lên thì tự upload lại", async () => {
+  const enqueued = [];
+  const colC = new Map();          // rowIndex -> nội dung cột C, giữ giữa 2 lượt
+  const colB = new Map();
+  let gpmUp = false;
+
+  const { deps, calls, getResume, files } = makeDeps({
+    config: gpmConfig,
+    sheetsApi: {
+      readConfigSheet: async () => [gpmChannel],
+      // Đọc lại Sheet mỗi lượt, phản ánh đúng những gì lượt trước đã ghi.
+      readChannelUrls: async () => [
+        { rowIndex: 2, url: "u1", status: colB.get(2) ?? "", uploadStatus: colC.get(2) ?? "" },
+      ],
+      setUrlStatus: async (n, r, s) => colB.set(r, s),
+      setUploadStatus: async (n, r, s) => colC.set(r, s),
+    },
+    uploadQueue: { enqueue: (j) => enqueued.push(j), beginRun: () => {}, endRun: () => {}, endChannel: () => {} },
+    checkGpm: async () => { if (!gpmUp) throw new Error("fetch failed"); return true; },
+  });
+  const runner = createSheetRunner(deps);
+
+  // ── Lượt 1: chưa mở GPM ────────────────────────────────────────────────────
+  await runner.runNow();
+  assert.equal(calls.rendered.length, 1, "render vẫn chạy dù GPM chưa mở");
+  assert.deepEqual(enqueued, []);
+  assert.equal(colB.get(2), ST.DONE);
+  assert.ok(colC.get(2).startsWith(ST.WAIT_UPLOAD), `cột C = ${colC.get(2)}`);
+
+  // ── Lượt 2: người dùng đã mở GPM, không sửa gì trong Sheet ─────────────────
+  gpmUp = true;
+  files.add("/out/u1.mp4"); // file render của lượt 1 vẫn nằm đó
+  await runner.runNow();
+
+  assert.equal(enqueued.length, 1, "phải tự upload lại");
+  assert.equal(enqueued[0].videoPath, "/out/u1.mp4");
+  assert.equal(enqueued[0].sourceUrl, "u1");
+  assert.equal(calls.rendered.length, 1, "KHÔNG được render lại");
+  assert.deepEqual(calls.downloaded, ["u1"], "KHÔNG được tải lại");
+  assert.equal(getResume()["Kênh A"].u1.uploadAttempts, 0, "quên mở GPM không phải lỗi của video");
+});
+
 test("video hoàn tất (done + ✅) thì entry resume bị xoá", async () => {
   const { deps, calls, getResume } = makeDeps({
     existingFiles: ["/out/u1.mp4"],

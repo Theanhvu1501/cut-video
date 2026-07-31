@@ -46,6 +46,33 @@ test("render xong, upload lỗi, file output đã bị xoá -> bỏ qua", () => 
   assert.equal(d({ statusB: ST.DONE, statusC: "❌ lỗi: x", outputExists: false }), "skip");
 });
 
+test("chưa upload được vì hạ tầng (⏸ chờ) -> upload lại, KHÔNG tính lượt", () => {
+  const c = `${ST.WAIT_UPLOAD} chưa kết nối được GPM`;
+  assert.equal(d({ statusB: ST.DONE, statusC: c, outputExists: true }), "upload-wait");
+  // Không tính vào uploadAttempts: quên mở GPM 99 lượt cũng không bị chôn.
+  assert.equal(
+    d({ statusB: ST.DONE, statusC: c, outputExists: true, uploadAttempts: 99 }),
+    "upload-wait",
+  );
+});
+
+test("⏸ chờ nhưng mất file output -> bỏ qua", () => {
+  assert.equal(
+    d({ statusB: ST.DONE, statusC: `${ST.WAIT_UPLOAD} hết slot ngày mai`, outputExists: true }),
+    "upload-wait",
+  );
+  assert.equal(
+    d({ statusB: ST.DONE, statusC: `${ST.WAIT_UPLOAD} hết slot ngày mai`, outputExists: false }),
+    "skip",
+  );
+});
+
+// "⏳ đang upload" nghĩa là upload CÓ THỂ đã bắt đầu (app bị tắt giữa chừng).
+// Thử lại là tạo video trùng trên YouTube -> phải bỏ qua, chờ người dùng xử lý tay.
+test("kẹt ở ⏳ đang upload -> KHÔNG tự upload lại", () => {
+  assert.equal(d({ statusB: ST.DONE, statusC: "⏳ đang upload", outputExists: true }), "skip");
+});
+
 test("render xong và upload xong -> bỏ qua", () => {
   assert.equal(d({ statusB: ST.DONE, statusC: "✅ lên lịch 10/07 07:00", outputExists: true }), "skip");
 });

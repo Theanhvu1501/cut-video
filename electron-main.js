@@ -1421,6 +1421,8 @@ function buildSheetRunner(win) {
       setUploadStatus: (name, row, status) => setUploadStatus(sheets, s.spreadsheetId, name, row, status),
       appendUrls: (name, urls) => appendUrls(sheets, s.spreadsheetId, name, urls),
     },
+    // Preflight đầu lượt: GPM có đang chạy không. Ném lỗi = chưa mở GPM.
+    checkGpm: async () => { await testGpmConnection(s.gpmHost || "127.0.0.1:19995"); return true; },
     downloader: (url, dir, opts) => downloadOne(url, dir, { ...opts, ytdlpPath: YTDLP_PATH }),
     copyLocalOverlay,
     listLocalInputs: (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".mp4")).sort() : []),

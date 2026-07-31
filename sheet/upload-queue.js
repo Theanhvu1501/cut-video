@@ -15,6 +15,7 @@ import { findThumbnailForVideo } from "./thumb-match.js";
 import { assignTomorrowSlots, formatSchedule } from "./schedule-slots.js";
 import { uploadAndSchedule } from "./yt-upload.js";
 import { captureContentPage } from "./yt-capture.js";
+import { ST } from "./resume-plan.js";
 
 /**
  * Chuẩn bị 1 job (thuần, test được): tìm thumbnail trong overlays theo title + cấp slot lịch.
@@ -188,32 +189,57 @@ export function createUploadQueue({
     try { maybeReportChannel(sheetName); } catch (e) { log(`[${sheetName}] lỗi báo kênh: ${e?.message || e}`); }
   }
 
+  // Đánh dấu "chưa upload được, lượt sau làm lại" — CHỈ gọi ở những đường chắc chắn
+  // chưa gửi byte nào lên YouTube. Ghi ⏸ vào cột C thay vì để nguyên "⏳ đang upload":
+  // decideAction coi ⏳ là "có thể đã upload dở" nên sẽ bỏ qua vĩnh viễn, còn ⏸ thì
+  // lượt sau nhặt lại qua nhánh upload-wait mà không tính vào uploadAttempts.
+  async function markWaiting(sheetName, rowIndex, title, sourceUrl, msg) {
+    const text = `${ST.WAIT_UPLOAD} ${msg}`;
+    results.push({ sheetName, title, ok: false, error: msg, waiting: true });
+    emitUpload(sheetName, text, { title, ok: false, url: sourceUrl });
+    await writeStatus(sheetName, rowIndex, text);
+    log(`⏸ [${sheetName}] ${title}: ${msg}`);
+  }
+
   async function runJob(job) {
     const { sheetName, gpmHost, profileId, videoPath, overlaysDir, title, postTimes, locale, rowIndex, sourceUrl } = job;
     lastProfile.set(sheetName, { gpmHost, profileId });
-    // Nguồn sự thật = Sheet cột C (đọc 1 lần/lượt, cache).
-    const ch = await getChannelUploads(sheetName);
 
-    // Đã lên lịch rồi (cột C của URL này là "✅ lên lịch…") → bỏ qua (tránh up trùng).
-    if (sourceUrl && ch.scheduledUrls.has(sourceUrl)) {
-      log(`[${sheetName}] bỏ qua (Sheet báo đã lên lịch): ${title}`);
+    // ── Giai đoạn CHUẨN BỊ ────────────────────────────────────────────────────
+    // Mọi lỗi ở đây (Sheet lỗi, GPM chưa mở, profile đang mở tay, CDP không nối
+    // được…) đều xảy ra TRƯỚC khi runUpload chạy → an toàn để lượt sau thử lại.
+    let ch, thumbnailPath, scheduleISO, page;
+    try {
+      // Nguồn sự thật = Sheet cột C (đọc 1 lần/lượt, cache).
+      ch = await getChannelUploads(sheetName);
+
+      // Đã lên lịch rồi (cột C của URL này là "✅ lên lịch…") → bỏ qua (tránh up trùng).
+      if (sourceUrl && ch.scheduledUrls.has(sourceUrl)) {
+        log(`[${sheetName}] bỏ qua (Sheet báo đã lên lịch): ${title}`);
+        return;
+      }
+
+      ({ thumbnailPath, scheduleISO } = prepareJob({
+        videoPath, overlaysDir, postTimes, usedSlots: ch.usedSlots, now: now(), listFiles,
+      }));
+
+      // Hết slot ngày mai → để video chờ lượt sau. Phải ghi ⏸, không thì cột C rỗng
+      // và decideAction trả "skip" — video bị bỏ quên chứ không hề "chờ lượt sau".
+      if (!scheduleISO) {
+        log(`[${sheetName}] hết slot ngày mai — để chờ: ${title}`);
+        await markWaiting(sheetName, rowIndex, title, sourceUrl, "hết slot ngày mai");
+        return;
+      }
+
+      log(`[${sheetName}] upload "${title}" → lịch ${scheduleISO}${thumbnailPath ? "" : " (⚠ không thấy thumb)"}`);
+      emitUpload(sheetName, "⏳ đang upload", { title, url: sourceUrl });
+      await writeStatus(sheetName, rowIndex, "⏳ đang upload");
+      ({ page } = await getConn(gpmHost, profileId));
+    } catch (e) {
+      await markWaiting(sheetName, rowIndex, title, sourceUrl, String(e?.message || e).slice(0, 200));
       return;
     }
 
-    const { thumbnailPath, scheduleISO } = prepareJob({
-      videoPath, overlaysDir, postTimes, usedSlots: ch.usedSlots, now: now(), listFiles,
-    });
-
-    // Hết slot ngày mai → để video chờ lượt sau (không đánh dấu, không tính vào digest).
-    if (!scheduleISO) {
-      log(`[${sheetName}] hết slot ngày mai — để chờ: ${title}`);
-      return;
-    }
-
-    log(`[${sheetName}] upload "${title}" → lịch ${scheduleISO}${thumbnailPath ? "" : " (⚠ không thấy thumb)"}`);
-    emitUpload(sheetName, "⏳ đang upload", { title, url: sourceUrl });
-    await writeStatus(sheetName, rowIndex, "⏳ đang upload");
-    const { page } = await getConn(gpmHost, profileId);
     // Mỗi bước: cập nhật cả bảng UI lẫn Sheet.
     const onStep = (msg) => { emitUpload(sheetName, msg, { title, url: sourceUrl }); return writeStatus(sheetName, rowIndex, msg); };
 

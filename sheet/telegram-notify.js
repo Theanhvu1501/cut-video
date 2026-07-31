@@ -10,13 +10,15 @@ const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // Telegram giới hạn ~1 tin/giây cho mỗi chat. Gửi liên tiếp nhiều ảnh là dính
 // 429 kèm parameters.retry_after — trước đây ảnh bị vứt luôn. Chờ đúng số giây
 // Telegram yêu cầu rồi gửi lại. buildBody là hàm vì FormData không dùng lại được.
-async function postWithRetry(url, buildBody, { fetchFn, sleep, attempts = SEND_ATTEMPTS }) {
+// headers: chỉ truyền cho body dạng chuỗi (JSON). Với FormData thì để undefined —
+// fetch phải tự sinh Content-Type kèm boundary, đặt tay là hỏng multipart.
+async function postWithRetry(url, buildBody, { fetchFn, sleep, headers, attempts = SEND_ATTEMPTS }) {
   let last = { ok: false, error: "không gửi được" };
 
   for (let i = 1; i <= attempts; i++) {
     let data;
     try {
-      const res = await fetchFn(url, { method: "POST", body: buildBody() });
+      const res = await fetchFn(url, { method: "POST", body: buildBody(), ...(headers ? { headers } : {}) });
       data = await res.json().catch(() => ({}));
     } catch (e) {
       // Lỗi mạng: thử lại chứ không để exception thoát ra giết cả lượt gửi.
@@ -44,7 +46,7 @@ export async function sendTelegram(token, chatId, text, deps = {}) {
   return postWithRetry(
     `https://api.telegram.org/bot${token}/sendMessage`,
     () => JSON.stringify({ chat_id: chatId, text }),
-    { fetchFn, sleep },
+    { fetchFn, sleep, headers: { "Content-Type": "application/json" } },
   );
 }
 

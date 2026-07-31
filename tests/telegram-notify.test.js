@@ -53,6 +53,25 @@ test("sendTelegram gọi đúng URL + body, báo lỗi thiếu token", async () 
   assert.deepEqual(calledBody, { chat_id: "42", text: "hello" });
 });
 
+// Thiếu header này thì fetch tự gán "text/plain;charset=UTF-8", Telegram không
+// đọc nổi body và trả "Bad Request: request body is empty" — nút "gửi thử" chết.
+test("sendTelegram khai báo Content-Type: application/json", async () => {
+  let headers;
+  const fetch = async (url, opt) => { headers = opt.headers; return { json: async () => ({ ok: true }) }; };
+  await sendTelegram("TOK", "42", "hello", { fetch });
+  const ct = new Headers(headers).get("content-type");
+  assert.equal(ct, "application/json");
+});
+
+// Ngược lại với sendMessage: multipart PHẢI để fetch tự sinh boundary.
+test("sendTelegramPhoto KHÔNG tự đặt Content-Type", async () => {
+  let opt;
+  const fetch = async (u, o) => { opt = o; return { json: async () => ({ ok: true }) }; };
+  await sendTelegramPhoto("TOK", "42", Buffer.from("x"), "c", { fetch });
+  const ct = opt.headers ? new Headers(opt.headers).get("content-type") : null;
+  assert.equal(ct, null, "đặt tay là hỏng boundary của multipart");
+});
+
 test("sendTelegramPhoto gửi multipart đúng field, báo lỗi thiếu token", async () => {
   assert.deepEqual(
     await sendTelegramPhoto("", "1", Buffer.from("x"), "c"),

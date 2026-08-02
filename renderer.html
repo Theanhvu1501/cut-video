@@ -1564,18 +1564,29 @@
         display: flex;
         gap: 8px;
       }
+      /* width:auto huỷ luật `select { width: 100% }` toàn cục — không có nó thì
+         ô chọn chiếm trọn bề ngang card và đẩy nút ra ngoài. min-width:0 cho
+         phép nó co lại khi card hẹp thay vì tràn. */
       .sw-sort-select {
-        flex: 0 0 auto;
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
         padding: 6px 8px;
         border: 1px solid #cbd5e1;
         border-radius: 6px;
         background: #fff;
         font-size: 13px;
         color: #334155;
+        box-shadow: none;
       }
       .sw-sort-select:disabled {
         background: #f1f5f9;
         color: #94a3b8;
+      }
+      /* Nút giữ nguyên bề ngang, không bị ô chọn ép cho xuống dòng. */
+      .sw-card-actions .btn {
+        flex: 0 0 auto;
+        white-space: nowrap;
       }
       .sw-cfg-group {
         margin: 22px 0 10px;

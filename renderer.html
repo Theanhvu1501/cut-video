@@ -2491,6 +2491,86 @@
                     min="0"
                   />
                 </div>
+                <div class="form-group">
+                  <label
+                    style="
+                      display: flex;
+                      align-items: center;
+                      gap: 8px;
+                      font-weight: normal;
+                    "
+                  >
+                    <input
+                      type="checkbox"
+                      id="render-person-enabled"
+                      onchange="togglePersonGroup()"
+                    />
+                    <span>Chèn ảnh người phía trên dải crop</span>
+                  </label>
+                </div>
+                <div id="render-person-group" style="display: none">
+                  <div class="form-group">
+                    <label>Ảnh người (PNG nền trong suốt, hoặc thư mục):</label>
+                    <div class="folder-select">
+                      <div class="folder-input-wrap">
+                        <input
+                          type="text"
+                          id="render-person-path"
+                          placeholder="Chọn file ảnh hoặc thư mục ảnh"
+                          readonly
+                        />
+                        <button
+                          class="folder-clear"
+                          type="button"
+                          title="Xóa đường dẫn đã chọn"
+                          onclick="clearPersonPath()"
+                        >
+                          ×
+                        </button>
+                      </div>
+                      <button
+                        class="btn btn-secondary"
+                        onclick="selectPersonFile()"
+                      >
+                        Chọn File
+                      </button>
+                      <button
+                        class="btn btn-secondary"
+                        onclick="selectPersonFolder()"
+                      >
+                        Chọn Folder
+                      </button>
+                    </div>
+                    <small style="color: #666"
+                      >Chọn thư mục thì mỗi video bốc ngẫu nhiên một ảnh trong
+                      đó.</small
+                    >
+                  </div>
+                  <div class="form-group">
+                    <label>Vị trí ngang:</label>
+                    <select id="render-person-pos">
+                      <option value="center">Giữa</option>
+                      <option value="left">Trái</option>
+                      <option value="right">Phải</option>
+                      <option value="random">Ngẫu nhiên</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label>Cỡ ảnh (0.1 – 1.0):</label>
+                    <input
+                      type="number"
+                      id="render-person-scale"
+                      value="0.9"
+                      min="0.1"
+                      max="1"
+                      step="0.05"
+                    />
+                    <small style="color: #666"
+                      >Tỉ lệ so với phần khung phía trên dải crop. 1.0 =
+                      kịch trần.</small
+                    >
+                  </div>
+                </div>
               </div>
               <label
                 style="

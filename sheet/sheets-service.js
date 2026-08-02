@@ -51,6 +51,10 @@ const HEADER_ALIASES = {
   keepAddDarkLayer: ["lớp nền tối"],
   cropHeight: ["chiều cao cắt"],
   cropYOffset: ["vị trí y cắt"],
+  personEnabled: ["dùng ảnh người", "bật ảnh người"],
+  personPath: ["ảnh người", "đường dẫn ảnh người"],
+  personPos: ["vị trí ảnh người"],
+  personScale: ["phóng ảnh người", "tỉ lệ ảnh người"],
   bgBlurEnabled: ["làm mờ nền", "bật làm mờ nền"],
   bgBlur: ["độ mờ nền"],
   mainScale: ["tỉ lệ video", "tỷ lệ video"],
@@ -138,6 +142,16 @@ export function parseConfigRows(values) {
     if (cropHeight !== undefined) cfg.cropHeight = cropHeight;
     const cropYOffset = num(col(row, "cropYOffset"));
     if (cropYOffset !== undefined) cfg.cropYOffset = cropYOffset;
+
+    // Mode crop: lớp ảnh người đứng sát mép trên dải crop.
+    const personEnabledRaw = col(row, "personEnabled");
+    if (personEnabledRaw) cfg.personEnabled = boolFalse(personEnabledRaw);
+    const personPath = col(row, "personPath");
+    if (personPath) cfg.personPath = personPath;
+    const personPos = norm(col(row, "personPos"));
+    if (["left", "center", "right", "random"].includes(personPos)) cfg.personPos = personPos;
+    const personScale = num(col(row, "personScale"));
+    if (personScale !== undefined) cfg.personScale = personScale;
     // Mode blurFrame: 3 công tắc + tham số của từng lớp
     const bgBlurEnabledRaw = col(row, "bgBlurEnabled");
     if (bgBlurEnabledRaw) cfg.bgBlurEnabled = boolFalse(bgBlurEnabledRaw);

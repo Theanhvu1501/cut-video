@@ -311,6 +311,12 @@ let keepColorAddDarkLayer = false; // Thêm lớp đen mờ khi có crop
 // Chế độ crop
 let height = 220;
 let y_offset = 490;
+// Lớp ảnh người đứng sát mép trên dải crop. Công tắc tách khỏi đường dẫn để tắt
+// tạm mà không mất đường dẫn đã chọn.
+let personEnabled = false;
+let personPath = "";
+let personPos = "center"; // left | center | right | random
+let personScale = 0.9;
 
 // Chế độ nền mờ + khung (blurFrame): 3 công tắc độc lập, mỗi công tắc tách khỏi
 // giá trị của nó để tắt tạm một lớp mà không mất đường dẫn đã chọn.
@@ -394,6 +400,12 @@ if (config) {
     keepColorAddDarkLayer = config.keepColorAddDarkLayer;
   if (config.height !== undefined) height = config.height;
   if (config.y_offset !== undefined) y_offset = config.y_offset;
+  if (config.personEnabled !== undefined) personEnabled = config.personEnabled;
+  if (config.personPath) personPath = config.personPath;
+  if (["left", "center", "right", "random"].includes(config.personPos))
+    personPos = config.personPos;
+  if (config.personScale !== undefined)
+    personScale = parseFloat(config.personScale) || 0.9;
   if (config.bgBlurEnabled !== undefined) bgBlurEnabled = config.bgBlurEnabled;
   if (config.bgBlur !== undefined) bgBlur = parseFloat(config.bgBlur) || 20;
   if (config.mainScale !== undefined)
@@ -578,16 +590,66 @@ const complexFilterChromaKey = (inputOverlay) => {
   ];
 };
 
-const complexFilterCrop = () => {
+// Bật công tắc mà đường dẫn hỏng thì bỏ qua lớp đó chứ không cho job chết.
+const resolvePersonAsset = () => {
+  if (!personEnabled) return "";
+  const personFile = pickAsset(personPath, FRAME_EXTS);
+  if (!personFile)
+    log(
+      `⚠️ Bật ảnh người nhưng không tìm được ảnh hợp lệ tại: ${personPath || "(trống)"} — bỏ qua lớp ảnh người`,
+      LOG_LEVEL.WARN
+    );
+  return personFile;
+};
+
+// "random" bốc một trong ba vị trí; giá trị lạ rơi về giữa.
+const pickPersonPos = (pos) => {
+  const p = String(pos ?? "").trim().toLowerCase();
+  if (["left", "center", "right"].includes(p)) return p;
+  if (p !== "random") return "center";
+  const all = ["left", "center", "right"];
+  return all[Math.min(2, Math.floor(Math.random() * 3))];
+};
+
+// Chiều cao ảnh và toạ độ y sao cho ĐÁY ảnh trùng mép trên dải crop.
+const personGeometry = () => {
+  const cropH = parseInt(height) || 0;
+  const above = Math.max(2, BLURFRAME_BASE_H - cropH);
+  const raw = Number(personScale);
+  const ratio = raw > 0 && raw <= 1 ? raw : 0.9;
+  const h = Math.max(2, evenDown(above * ratio));
+  return { h, y: BLURFRAME_BASE_H - cropH - h };
+};
+
+const personOverlayX = (pos) =>
+  pos === "left" ? "0" : pos === "right" ? "W-w" : "(W-w)/2";
+
+const complexFilterCrop = (personFile) => {
   const filter = [
     `[1:v]scale=1280:720,crop=1280:${height}:0:${y_offset}[cropped]`,
     "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]",
     "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]",
   ];
 
+  if (!personFile) {
+    return [
+      filter.join(";"),
+      "[0:v][overlay_video]overlay=0:H-h[combined_video]",
+      "[1:a]volume=1.0[overlay_audio]",
+    ];
+  }
+
+  // scale=-2:h giữ nguyên tỉ lệ gốc; x là biểu thức của ffmpeg nên không cần
+  // biết trước chiều rộng ảnh.
+  const { h, y } = personGeometry();
+  const x = personOverlayX(pickPersonPos(personPos));
+  filter.push(`[2:v]scale=-2:${h}[person]`);
+  filter.push(`[0:v][person]overlay=${x}:${y}[with_person]`);
+
+  // Dải crop là lớp CUỐI: nó chứa phụ đề nên không được để ảnh che.
   return [
     filter.join(";"),
-    "[0:v][overlay_video]overlay=0:H-h[combined_video]",
+    "[with_person][overlay_video]overlay=0:H-h[combined_video]",
     "[1:a]volume=1.0[overlay_audio]",
   ];
 };
@@ -920,7 +982,12 @@ const processVideo = async (
           `✂️ Sử dụng chế độ Crop cho ${path.basename(outputPath)}`,
           LOG_LEVEL.DEBUG
         );
-        filterConfig = complexFilterCrop();
+        // Chốt ảnh một lần rồi mới dựng filter: filter và danh sách input phải
+        // khớp nhau về chỉ số [2:v].
+        const personFile = resolvePersonAsset();
+        filterConfig = complexFilterCrop(personFile);
+        if (personFile)
+          studioInputs = [{ file: personFile, inputOptions: ["-loop", "1"] }];
       } else {
         // Default to topTransparent if mode is invalid
         log(

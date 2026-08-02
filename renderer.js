@@ -495,6 +495,12 @@ async function saveSettings() {
         document.getElementById("render-gpu-codec")?.value || "h264_nvenc",
       height: document.getElementById("render-height")?.value || "220",
       y_offset: document.getElementById("render-y-offset")?.value || "490",
+      personEnabled:
+        document.getElementById("render-person-enabled")?.checked || false,
+      personPath: selectedRenderPersonPath,
+      personPos: document.getElementById("render-person-pos")?.value || "center",
+      personScale:
+        document.getElementById("render-person-scale")?.value || "0.9",
       bgBlurEnabled:
         document.getElementById("render-bf-blur-enabled")?.checked || false,
       bgBlur: document.getElementById("render-bf-blur")?.value || "20",
@@ -820,6 +826,22 @@ async function loadSettings() {
       if (settings.render.y_offset)
         document.getElementById("render-y-offset").value =
           settings.render.y_offset;
+
+      if (settings.render.personEnabled !== undefined)
+        document.getElementById("render-person-enabled").checked =
+          settings.render.personEnabled;
+      if (settings.render.personPath) {
+        selectedRenderPersonPath = settings.render.personPath;
+        document.getElementById("render-person-path").value =
+          settings.render.personPath;
+      }
+      if (settings.render.personPos)
+        document.getElementById("render-person-pos").value =
+          settings.render.personPos;
+      if (settings.render.personScale)
+        document.getElementById("render-person-scale").value =
+          settings.render.personScale;
+      updatePersonGroupVisibility();
 
       if (settings.render.overlayFolder) {
         selectedRenderOverlayFolder = settings.render.overlayFolder;
@@ -1783,6 +1805,13 @@ async function saveCurrentProjectSettings() {
           document.getElementById("render-gpu-codec")?.value || "h264_nvenc",
         height: document.getElementById("render-height")?.value || "220",
         y_offset: document.getElementById("render-y-offset")?.value || "490",
+        personEnabled:
+          document.getElementById("render-person-enabled")?.checked || false,
+        personPath: selectedRenderPersonPath,
+        personPos:
+          document.getElementById("render-person-pos")?.value || "center",
+        personScale:
+          document.getElementById("render-person-scale")?.value || "0.9",
         bgBlurEnabled:
           document.getElementById("render-bf-blur-enabled")?.checked || false,
         bgBlur: document.getElementById("render-bf-blur")?.value || "20",
@@ -1986,6 +2015,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     "render-keepcolor-y-offset",
     "render-height",
     "render-y-offset",
+    "render-person-pos",
+    "render-person-scale",
     "render-max-concurrent",
     "render-gpu-codec",
     "bg-count",
@@ -2091,6 +2122,7 @@ let selectedRenderOutputFolder = null;
 let selectedRenderChromaKeyFile = null;
 let selectedRenderFramePath = null;
 let selectedRenderEffectPath = null;
+let selectedRenderPersonPath = null;
 
 // Toggle functions for render options
 function toggleRenderMode() {
@@ -2221,6 +2253,57 @@ function clearRenderFramePath() {
   selectedRenderFramePath = null;
   const input = document.getElementById("render-bf-frame-path");
   if (input) input.value = "";
+  saveSettings();
+}
+
+// Ảnh người của mode crop: trỏ vào file thì dùng đúng ảnh đó, trỏ vào thư mục
+// thì mỗi video bốc ngẫu nhiên một ảnh trong đó.
+async function selectPersonFile() {
+  if (!checkElectronAPI()) return;
+  try {
+    const filePath = await window.electronAPI.selectFile({
+      filters: [
+        { name: "Ảnh người", extensions: ["png", "webp"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (filePath) setPersonPath(filePath);
+  } catch (error) {
+    console.error("Error selecting person image:", error);
+    alert("Lỗi khi chọn ảnh người: " + error.message);
+  }
+}
+
+async function selectPersonFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) setPersonPath(folder);
+}
+
+function setPersonPath(value) {
+  selectedRenderPersonPath = value;
+  const input = document.getElementById("render-person-path");
+  if (input) input.value = value;
+  saveSettings();
+}
+
+function clearPersonPath() {
+  selectedRenderPersonPath = null;
+  const input = document.getElementById("render-person-path");
+  if (input) input.value = "";
+  saveSettings();
+}
+
+// Chỉ đổi hiển thị, KHÔNG lưu — lúc khôi phục cấu hình cũng gọi hàm này, lưu ở
+// đó là ghi đè settings bằng giá trị chưa nạp xong.
+function updatePersonGroupVisibility() {
+  const on = document.getElementById("render-person-enabled")?.checked;
+  const group = document.getElementById("render-person-group");
+  if (group) group.style.display = on ? "block" : "none";
+}
+
+function togglePersonGroup() {
+  updatePersonGroupVisibility();
   saveSettings();
 }
 
@@ -2489,6 +2572,13 @@ async function runRender() {
     parseInt(document.getElementById("render-height").value) || 220;
   const y_offset =
     parseInt(document.getElementById("render-y-offset").value) || 490;
+  const personEnabled =
+    document.getElementById("render-person-enabled")?.checked || false;
+  const personPath = selectedRenderPersonPath || "";
+  const personPos =
+    document.getElementById("render-person-pos")?.value || "center";
+  const personScale =
+    parseFloat(document.getElementById("render-person-scale")?.value) || 0.9;
 
   // Nền mờ + Khung config
   const bgBlurEnabled = document.getElementById("render-bf-blur-enabled").checked;
@@ -2607,6 +2697,10 @@ async function runRender() {
         opacity,
         height,
         y_offset,
+        personEnabled,
+        personPath,
+        personPos,
+        personScale,
         bgBlurEnabled,
         bgBlur,
         mainScale,

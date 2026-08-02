@@ -14,6 +14,11 @@ import {
   resolveBlurFrameAssets,
   encoderSettings,
   extractFfmpegError,
+  pickPersonPos,
+  personGeometry,
+  personOverlayX,
+  cropPersonLayer,
+  resolvePersonAsset,
 } from "../sheet/render-core.js";
 
 test("topTransparent uses opacity and overlay at 0:0", () => {
@@ -34,6 +39,122 @@ test("crop uses cropHeight/cropYOffset", () => {
   const f = buildComplexFilter("crop", { cropHeight: 150, cropYOffset: 550 });
   assert.match(f.join("|"), /crop=1280:150:0:550\[cropped\]/);
   assert.ok(f.includes("[0:v][overlay_video]overlay=0:H-h[combined_video]"));
+});
+
+// ===== Mode crop: lớp ảnh người phía trên dải crop =====
+
+const personCfg = (over = {}) => ({
+  cropHeight: 220, cropYOffset: 490,
+  personEnabled: true, personFile: "/img/co-gai.png", personPos: "center", personScale: 0.9,
+  ...over,
+});
+
+test("pickPersonPos: random bốc một trong ba, giá trị lạ về center", () => {
+  assert.equal(pickPersonPos("left"), "left");
+  assert.equal(pickPersonPos("right"), "right");
+  assert.equal(pickPersonPos("center"), "center");
+  assert.equal(pickPersonPos("lung tung"), "center");
+  assert.equal(pickPersonPos(undefined), "center");
+  // rand cố định -> chốt được từng nhánh của "random".
+  assert.equal(pickPersonPos("random", () => 0), "left");
+  assert.equal(pickPersonPos("random", () => 0.5), "center");
+  assert.equal(pickPersonPos("random", () => 0.99), "right");
+});
+
+test("personGeometry: cao theo personScale, đáy sát mép trên dải crop", () => {
+  // Phần khung trên dải crop = 720 - 220 = 500; 500 * 0.9 = 450
+  assert.deepEqual(personGeometry(personCfg()), { h: 450, y: 720 - 220 - 450 });
+  // Kịch trần: cao đúng bằng phần khung còn lại, y = 0
+  assert.deepEqual(personGeometry(personCfg({ personScale: 1 })), { h: 500, y: 0 });
+});
+
+test("personGeometry: chiều cao luôn chẵn (yuv420p) và personScale lạ về mặc định", () => {
+  // 720-150=570; 570*0.9=513 -> phải làm tròn xuống 512
+  assert.equal(personGeometry(personCfg({ cropHeight: 150 })).h, 512);
+  const fallback = personGeometry(personCfg({ personScale: 0.9 })).h;
+  for (const bad of [0, -1, 5, "abc", undefined]) {
+    assert.equal(personGeometry(personCfg({ personScale: bad })).h, fallback, `hỏng với ${bad}`);
+  }
+});
+
+test("personOverlayX: trái/phải sát mép, giữa căn giữa", () => {
+  assert.equal(personOverlayX("left"), "0");
+  assert.equal(personOverlayX("center"), "(W-w)/2");
+  assert.equal(personOverlayX("right"), "W-w");
+});
+
+test("cropPersonLayer: cần cả công tắc lẫn file đã chốt", () => {
+  assert.equal(cropPersonLayer(personCfg()), true);
+  assert.equal(cropPersonLayer(personCfg({ personEnabled: false })), false);
+  assert.equal(cropPersonLayer(personCfg({ personFile: "" })), false);
+});
+
+test("crop: lớp người tắt -> graph y hệt trước đây (chống hồi quy)", () => {
+  const truoc = [
+    "[1:v]scale=1280:720,crop=1280:150:0:550[cropped];" +
+      "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered];" +
+      "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]",
+    "[0:v][overlay_video]overlay=0:H-h[combined_video]",
+    "[1:a]volume=1.0[overlay_audio]",
+  ];
+  assert.deepEqual(buildComplexFilter("crop", { cropHeight: 150, cropYOffset: 550 }), truoc);
+  // Có đường dẫn nhưng chưa bật công tắc thì cũng không đổi gì.
+  assert.deepEqual(
+    buildComplexFilter("crop", { cropHeight: 150, cropYOffset: 550, personFile: "/img/a.png" }),
+    truoc,
+  );
+});
+
+test("crop: lớp người bật -> scale giữ tỉ lệ, dải crop đè LÊN TRÊN người", () => {
+  const f = buildComplexFilter("crop", personCfg({ personPos: "right" }));
+  const joined = f.join("|");
+
+  assert.match(joined, /\[2:v\]scale=-2:450\[person\]/, "giữ tỉ lệ gốc, cao 450");
+  assert.match(joined, /\[0:v\]\[person\]overlay=W-w:50\[with_person\]/, "người nằm trên nền");
+  assert.ok(
+    f.includes("[with_person][overlay_video]overlay=0:H-h[combined_video]"),
+    "dải crop phải là lớp cuối, không được để ảnh che phụ đề",
+  );
+  assert.ok(f.includes("[1:a]volume=1.0[overlay_audio]"));
+});
+
+test("buildStudioInputs: crop nạp ảnh người bằng -loop 1", () => {
+  assert.deepEqual(buildStudioInputs("crop", personCfg()), [
+    { file: "/img/co-gai.png", inputOptions: ["-loop", "1"] },
+  ]);
+  assert.deepEqual(buildStudioInputs("crop", personCfg({ personEnabled: false })), []);
+  // Mode khác không được ăn theo lớp người.
+  assert.deepEqual(buildStudioInputs("topTransparent", personCfg()), []);
+});
+
+test("resolvePersonAsset: đường dẫn hỏng -> cảnh báo, KHÔNG ném lỗi", () => {
+  const r = resolvePersonAsset({ personEnabled: true, personPath: "/khong/co/that" });
+  assert.equal(r.personFile, "");
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /ảnh người/i);
+
+  // Tắt công tắc thì không kiểm tra gì, không cảnh báo.
+  assert.deepEqual(resolvePersonAsset({ personEnabled: false, personPath: "/khong/co/that" }), {
+    personFile: "", warnings: [],
+  });
+});
+
+test("resolvePersonAsset: trỏ vào thư mục thì bốc một ảnh trong đó", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "person-"));
+  fs.writeFileSync(path.join(dir, "a.png"), "x");
+  fs.writeFileSync(path.join(dir, "b.png"), "x");
+  fs.writeFileSync(path.join(dir, "bo-qua.txt"), "x");
+  try {
+    const r = resolvePersonAsset({ personEnabled: true, personPath: dir }, () => 0);
+    assert.equal(r.personFile, path.join(dir, "a.png"));
+    assert.deepEqual(r.warnings, []);
+    assert.equal(
+      resolvePersonAsset({ personEnabled: true, personPath: dir }, () => 0.99).personFile,
+      path.join(dir, "b.png"),
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("keepColor builds per-color masks and alphamerge", () => {

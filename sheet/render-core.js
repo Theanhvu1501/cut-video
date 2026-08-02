@@ -24,6 +24,13 @@ export const DEFAULT_RENDER_CFG = {
   keepAddDarkLayer: false,
   cropHeight: 220,
   cropYOffset: 490,
+  // Mode crop: lớp ảnh người đứng sát mép trên dải crop. Công tắc tách khỏi
+  // đường dẫn để tắt tạm mà không mất đường dẫn đã chọn (giống blurFrame).
+  personEnabled: false,
+  personPath: "",
+  personFile: "",
+  personPos: "center", // left | center | right | random
+  personScale: 0.9,
   videoSpeed: 0.95,
   // Mode blurFrame: 3 công tắc độc lập, mỗi công tắc tách khỏi giá trị của nó
   // để tắt tạm một lớp mà không mất đường dẫn đã chọn.
@@ -81,9 +88,27 @@ function crop(cfg) {
     "[cropped]eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0[filtered]",
     "[filtered]format=yuva420p,colorchannelmixer=aa=0.8[overlay_video]",
   ];
+
+  if (!cropPersonLayer(cfg)) {
+    return [
+      filter.join(";"),
+      "[0:v][overlay_video]overlay=0:H-h[combined_video]",
+      "[1:a]volume=1.0[overlay_audio]",
+    ];
+  }
+
+  // scale=-2:h giữ nguyên tỉ lệ gốc, chiều rộng tự suy ra và làm tròn về số chẵn.
+  // Toạ độ x là biểu thức của ffmpeg nên không cần biết trước chiều rộng ảnh.
+  const { h, y } = personGeometry(cfg);
+  const x = personOverlayX(pickPersonPos(cfg.personPos));
+  filter.push(`[2:v]scale=-2:${h}[person]`);
+  filter.push(`[0:v][person]overlay=${x}:${y}[with_person]`);
+
+  // Dải crop là lớp CUỐI: nó chứa phụ đề nên không bao giờ được để ảnh che, và
+  // phần ảnh lòi xuống dưới bị nó cắt gọn đúng ở mép.
   return [
     filter.join(";"),
-    "[0:v][overlay_video]overlay=0:H-h[combined_video]",
+    "[with_person][overlay_video]overlay=0:H-h[combined_video]",
     "[1:a]volume=1.0[overlay_audio]",
   ];
 }
@@ -168,6 +193,59 @@ export function frameOverlayGeometry(mainScale, frameScale) {
   return { w: fw, h: fh, x: Math.round((BASE_W - fw) / 2), y: Math.round((BASE_H - fh) / 2) };
 }
 
+// ── Mode crop: lớp ảnh người ────────────────────────────────────────────────
+export const PERSON_POSITIONS = ["left", "center", "right"];
+
+// "random" bốc một trong ba vị trí; giá trị lạ rơi về giữa. Phải chốt MỘT LẦN ở
+// renderOne trước khi dựng filter — lần render lại bằng CPU (khi GPU lỗi) mà bốc
+// lại sẽ cho ra vị trí khác với lần đầu.
+export function pickPersonPos(personPos, rand = Math.random) {
+  const p = String(personPos ?? "").trim().toLowerCase();
+  if (PERSON_POSITIONS.includes(p)) return p;
+  if (p !== "random") return "center";
+  const i = Math.min(PERSON_POSITIONS.length - 1, Math.floor(rand() * PERSON_POSITIONS.length));
+  return PERSON_POSITIONS[i];
+}
+
+// Chiều cao ảnh người và toạ độ y sao cho ĐÁY ảnh trùng mép trên dải crop.
+export function personGeometry(cfgIn = {}) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  const above = Math.max(2, BASE_H - Number(cfg.cropHeight || 0));
+  const raw = Number(cfg.personScale);
+  const ratio = raw > 0 && raw <= 1 ? raw : DEFAULT_RENDER_CFG.personScale;
+  const h = Math.max(2, evenDown(above * ratio));
+  return { h, y: BASE_H - Number(cfg.cropHeight || 0) - h };
+}
+
+// Biểu thức toạ độ x của overlay. Trái/phải dán sát mép khung, không chừa lề.
+export function personOverlayX(pos) {
+  if (pos === "left") return "0";
+  if (pos === "right") return "W-w";
+  return "(W-w)/2";
+}
+
+// Nguồn sự thật duy nhất về "lớp người có bật không" — buildStudioInputs và crop
+// đều hỏi hàm này, nên chỉ số input [2:v] không bao giờ lệch.
+export function cropPersonLayer(cfgIn = {}) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  return Boolean(cfg.personEnabled) && Boolean(cfg.personFile);
+}
+
+// Biến personPath (file hoặc thư mục) thành file cụ thể cho lần render này.
+// Bật công tắc mà đường dẫn hỏng thì cảnh báo và bỏ qua lớp, không ném lỗi:
+// luồng sheet chạy không người trông, một ô gõ sai không đáng làm hỏng cả mẻ video.
+export function resolvePersonAsset(cfgIn = {}, rand = Math.random) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  if (!cfg.personEnabled) return { personFile: "", warnings: [] };
+  const personFile = pickAsset(cfg.personPath, FRAME_EXTS, rand);
+  return {
+    personFile,
+    warnings: personFile
+      ? []
+      : [`⚠️ Bật ảnh người nhưng không tìm được ảnh hợp lệ tại: ${cfg.personPath || "(trống)"} — bỏ qua lớp ảnh người`],
+  };
+}
+
 // Nguồn sự thật duy nhất về "lớp nào đang bật". buildStudioInputs và blurFrame
 // đều hỏi hàm này, nên thứ tự input và chỉ số [n:v] trong filter không bao giờ lệch.
 export function blurFrameLayers(cfgIn = {}) {
@@ -225,6 +303,12 @@ export function resolveBlurFrameAssets(cfgIn = {}, rand = Math.random) {
 
 // Các input phụ (sau nền [0] và video gốc [1]) mà mode cần, đúng thứ tự filter giả định.
 export function buildStudioInputs(renderMode, cfgIn = {}) {
+  if (renderMode === "crop") {
+    // Ảnh tĩnh phải -loop 1, nếu không chỉ khung hình đầu tiên có ảnh người.
+    return cropPersonLayer(cfgIn)
+      ? [{ file: { ...DEFAULT_RENDER_CFG, ...cfgIn }.personFile, inputOptions: ["-loop", "1"] }]
+      : [];
+  }
   if (renderMode !== "blurFrame") return [];
   const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
   const layers = blurFrameLayers(cfg);
@@ -375,6 +459,14 @@ export function renderOne({
     const { frameFile, effectFile, warnings } = resolveBlurFrameAssets(cfg);
     cfg.frameFile = frameFile;
     cfg.effectFile = effectFile;
+    if (onProgress) warnings.forEach((w) => onProgress(w));
+  }
+  if (renderMode === "crop") {
+    // Chốt ảnh và vị trí NGAY TẠI ĐÂY, trước khi dựng filter: run() được gọi lại
+    // lần hai khi GPU lỗi phải lùi về CPU, chốt muộn hơn sẽ ra ảnh/vị trí khác.
+    const { personFile, warnings } = resolvePersonAsset(cfg);
+    cfg.personFile = personFile;
+    cfg.personPos = pickPersonPos(cfg.personPos);
     if (onProgress) warnings.forEach((w) => onProgress(w));
   }
   const { ffmpegPath, ffprobePath } = resolveFfmpegPaths();

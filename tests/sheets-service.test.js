@@ -25,6 +25,26 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
   assert.deepEqual(out[2].cfg, { keepColors: ["F6FF00", "FBFF02"], cropHeight: 150, cropYOffset: 550 });
 });
 
+test("parseConfigRows đọc 4 cột ảnh người của mode crop", () => {
+  const header = ["Tên kênh","Bật","Video mỗi ngày","Kiểu render","Chiều cao cắt","Bật ảnh người","Ảnh người","Vị trí ảnh người","Phóng ảnh người"];
+  const rows = [header,
+    ["Kênh A","","3","crop","220","TRUE","D:\\anh\\nguoi","random","0.8"],
+    ["Kênh B","","3","crop","220","FALSE","D:\\anh\\b.png","left",""],
+    // Vị trí lạ -> bỏ qua, giữ mặc định; không cột nào thì cfg không có khoá nào.
+    ["Kênh C","","3","crop","220","TRUE","D:\\anh\\c.png","lung tung",""],
+    ["Kênh D","","3","crop","220","","","",""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.deepEqual(out[0].cfg, {
+    cropHeight: 220, personEnabled: true, personPath: "D:\\anh\\nguoi",
+    personPos: "random", personScale: 0.8,
+  });
+  assert.equal(out[1].cfg.personEnabled, false);
+  assert.equal(out[1].cfg.personPos, "left");
+  assert.equal(out[2].cfg.personPos, undefined, "giá trị lạ không được ghi đè mặc định");
+  assert.deepEqual(out[3].cfg, { cropHeight: 220 }, "để trống thì không đụng tới cfg");
+});
+
 test("parseConfigRows accepts Vietnamese header names (with/without accents)", () => {
   const header = ["Tên kênh","Bật","Video mỗi ngày","Kiểu render","Bảng màu tự dò","Màu phông","Độ nhạy chroma","Độ mờ","Màu giữ lại","Bật cắt (giữ màu)","Chiều cao cắt (giữ màu)","Vị trí Y (giữ màu)","Độ nhạy giữ màu","Lớp nền tối","Chiều cao cắt","Vị trí Y cắt","Proxy tải"];
   const rows = [header,

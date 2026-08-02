@@ -35,15 +35,15 @@ if (fs.existsSync(projectConfigPath)) {
   }
 }
 
-async function getVideoUrls(handle) {
+async function getVideoUrls(handle, sortBy) {
   const youtube = createYoutubeClient(apiKey);
 
   const directoryPath = path.join(outputBaseFolder, handle.replace(/^@/, ""));
   if (!fs.existsSync(directoryPath)) fs.mkdirSync(directoryPath, { recursive: true });
   const filePath = path.join(directoryPath, "youtube.xlsx");
 
-  console.log("Đang lấy dữ liệu video...");
-  const videosData = await fetchSourceVideos(youtube, handle, { minSeconds });
+  console.log(`Đang lấy dữ liệu video (sắp xếp: ${sortBy === "newest" ? "mới nhất" : "view cao nhất"})...`);
+  const videosData = await fetchSourceVideos(youtube, handle, { minSeconds, sortBy });
 
   // === B4: Ghi file Excel với các cột: url, title, viewCount, date publish ===
   if (videosData.length > 0) {
@@ -95,11 +95,13 @@ async function getVideoUrls(handle) {
 }
 
 // === MAIN ===
+// argv[3] = kiểu sắp xếp: "views" (mặc định) hoặc "newest".
 const handle = process.argv[2];
+const sortBy = process.argv[3] === "newest" ? "newest" : "views";
 if (!handle) {
   console.error("Vui lòng nhập tên channel handle, ví dụ:");
-  console.error("   node index.js @GoogleDevelopers");
+  console.error("   node get-url.js @GoogleDevelopers [views|newest]");
   process.exit(1);
 }
 
-getVideoUrls(handle).catch(console.error);
+getVideoUrls(handle, sortBy).catch(console.error);

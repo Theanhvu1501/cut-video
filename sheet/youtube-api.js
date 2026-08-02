@@ -129,10 +129,14 @@ export async function fetchChannelStats(yt, refs) {
   return (refs || []).map((ref) => results.get(ref));
 }
 
+export const SORT_MODES = ["views", "newest"];
+
 // Lấy mọi video của kênh nguồn qua playlist uploads, lọc theo thời lượng.
 // minSeconds = 600 -> chỉ giữ video dài hơn 10 phút (giống hành vi get-url.js cũ).
-// Kết quả sắp xếp view giảm dần; video cùng view giữ thứ tự playlist (mới nhất trước).
-export async function fetchSourceVideos(yt, handle, { minSeconds = 600 } = {}) {
+// sortBy: "views" (mặc định — giữ nguyên hành vi cũ) xếp view giảm dần;
+//         "newest" xếp theo ngày đăng, mới nhất trước.
+// Giá trị lạ được coi như "views" để chỗ gọi cũ không bao giờ đổi nghĩa.
+export async function fetchSourceVideos(yt, handle, { minSeconds = 600, sortBy = "views" } = {}) {
   const ref = parseChannelRef(handle);
   if (!ref) throw new Error("@handle nguồn không hợp lệ");
 
@@ -165,6 +169,10 @@ export async function fetchSourceVideos(yt, handle, { minSeconds = 600 } = {}) {
     }
     pageToken = pl.data.nextPageToken;
   } while (pageToken);
-  out.sort((a, b) => b.viewCount - a.viewCount);
+  if (sortBy === "newest") {
+    out.sort((a, b) => Date.parse(b.publishedAt || 0) - Date.parse(a.publishedAt || 0));
+  } else {
+    out.sort((a, b) => b.viewCount - a.viewCount);
+  }
   return out;
 }

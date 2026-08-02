@@ -1,7 +1,5 @@
 // Gửi thông báo Telegram (chỉ sendMessage/sendPhoto, không cần bot polling).
 
-import { formatSchedule } from "./schedule-slots.js";
-
 const CAPTION_MAX = 1024;
 const SEND_ATTEMPTS = 3;
 
@@ -68,37 +66,15 @@ export async function sendTelegramPhoto(token, chatId, photo, caption, deps = {}
   );
 }
 
-// Ghép các dòng chi tiết vào sau dòng tổng, giữ tổng độ dài trong CAPTION_MAX.
-// Không cắt dở một dòng: hết chỗ thì dừng và ghi rõ còn bao nhiêu video nữa.
-function fitCaption(head, lines) {
-  let out = head;
-  for (let i = 0; i < lines.length; i++) {
-    const left = lines.length - i;
-    // Nếu thêm dòng này thì phần còn lại là left-1 dòng, cần chỗ cho dòng "… và N nữa".
-    const reserve = left > 1 ? `\n… và ${left - 1} video nữa`.length : 0;
-    const next = `${out}\n${lines[i]}`;
-    if (next.length + reserve > CAPTION_MAX) {
-      const stopped = `${out}\n… và ${left} video nữa`;
-      return stopped.length <= CAPTION_MAX ? stopped : out.slice(0, CAPTION_MAX);
-    }
-    out = next;
-  }
-  return out;
-}
-
-// Tin báo của MỘT kênh: dòng tổng + từng video kèm giờ lịch (hàm thuần).
-// Dùng làm caption của ảnh trang Nội dung kênh đó. Rỗng khi kênh không có kết quả.
+// Tin báo của MỘT kênh: đúng một dòng đếm, dùng làm caption cho ảnh trang Nội
+// dung của kênh đó. Không liệt kê từng video — tiêu đề, giờ lịch và lý do lỗi
+// đều đã nằm ở cột C của tab kênh, nhắc lại chỉ làm tin dài.
+// Rỗng khi kênh không có kết quả nào.
 export function buildChannelReport(sheetName, results) {
   const mine = (results || []).filter((r) => r.sheetName === sheetName);
   if (!mine.length) return "";
-  const ok = mine.filter((r) => r.ok);
-  const err = mine.filter((r) => !r.ok);
-  const head = `📋 ${sheetName} — ✅ ${ok.length} lên lịch, ❌ ${err.length} lỗi`;
-  const lines = [
-    ...ok.map((r) => `• ${r.title}${r.scheduleISO ? ` → ${formatSchedule(r.scheduleISO)}` : ""}`),
-    ...err.map((r) => `• ❌ ${r.title}: ${r.error || "?"}`),
-  ];
-  return fitCaption(head, lines);
+  const ok = mine.filter((r) => r.ok).length;
+  return `📋 ${sheetName} — ✅ ${ok} lên lịch, ❌ ${mine.length - ok} lỗi`;
 }
 
 // Dựng tin digest dạng bảng từ danh sách kết quả upload (hàm thuần, test được).
@@ -119,14 +95,7 @@ export function buildDigest(results) {
   for (const [ch, c] of byChannel) {
     lines.push(`• ${ch}: ✅ ${c.ok} | ❌ ${c.err}`);
   }
-  // Không liệt kê chi tiết video đã lên lịch — số đếm theo kênh ở trên là đủ,
-  // và giờ lịch của từng video đã có ở cột C của tab kênh.
-  const errors = results.filter((r) => !r.ok);
-  if (errors.length) {
-    lines.push("", "❌ Chi tiết lỗi:");
-    for (const e of errors) {
-      lines.push(`— ${e.sheetName} · ${e.title}: ${e.error || "?"}`);
-    }
-  }
+  // Không liệt kê chi tiết video nào — kể cả video lỗi. Số đếm theo kênh ở trên
+  // là đủ; tiêu đề và lý do lỗi của từng video đã có ở cột C của tab kênh.
   return lines.join("\n");
 }

@@ -3570,6 +3570,8 @@ function clearGetUrlOutputFolder() {
 
 async function runGetUrl() {
   const handle = document.getElementById("channel-handle").value.trim();
+  const sortBy = document.getElementById("get-url-sort")?.value === "newest" ? "newest" : "views";
+  const sortLabel = sortBy === "newest" ? "mới nhất" : "view cao nhất";
 
   if (!handle) {
     alert("Vui lòng nhập channel handle!");
@@ -3579,7 +3581,7 @@ async function runGetUrl() {
   if (!checkElectronAPI()) return;
 
   clearOutput("get-url");
-  showOutput("get-url", `🚀 Đang lấy URL từ channel ${handle}...\n\n`);
+  showOutput("get-url", `🚀 Đang lấy URL từ channel ${handle} (${sortLabel})...\n\n`);
 
   try {
     window.electronAPI.removeScriptOutputListener();
@@ -3590,7 +3592,7 @@ async function runGetUrl() {
     // Không cần truyền getUrlConfig nữa - script sẽ đọc trực tiếp từ project JSON
     const options = {};
 
-    await window.electronAPI.runScript("get-url.js", [handle], options);
+    await window.electronAPI.runScript("get-url.js", [handle, sortBy], options);
     showOutput("get-url", "\n\n✅ Hoàn thành!");
   } catch (error) {
     showOutput("get-url", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
@@ -4512,27 +4514,46 @@ async function runConcat() {
 
     const actions = document.createElement("div");
     actions.className = "sw-card-actions";
+    const handle = c.stats?.sourceHandle;
+
+    // Kiểu sắp xếp khi lấy URL nguồn. Chọn tại chỗ, không lưu vào Sheet —
+    // mỗi kênh mỗi lần bấm chọn khác nhau được.
+    const sortSel = document.createElement("select");
+    sortSel.className = "sw-sort-select";
+    sortSel.title = "Thứ tự lấy video từ kênh nguồn";
+    for (const [value, label] of [["views", "View cao nhất"], ["newest", "Mới nhất"]]) {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.textContent = label;
+      sortSel.appendChild(opt);
+    }
+    sortSel.disabled = !handle;
+
     const btn = document.createElement("button");
     btn.className = "btn btn-secondary";
     btn.textContent = "Lấy URL nguồn";
-    const handle = c.stats?.sourceHandle;
     btn.disabled = !handle;
     btn.title = handle ? `Lấy video từ ${handle}` : "Kênh chưa điền cột @handle nguồn";
     btn.addEventListener("click", async () => {
       btn.disabled = true;
+      sortSel.disabled = true;
       const old = btn.textContent;
       btn.textContent = "⏳ đang lấy…";
+      const sortBy = sortSel.value;
+      const sortLabel = sortBy === "newest" ? "mới nhất" : "view cao nhất";
       try {
-        const out = await api.fetchSourceUrls(c.name);
-        if (out?.ok) log(`[${c.name}] ✅ Đã thêm ${out.added} URL, bỏ qua ${out.skipped} trùng.`);
+        const out = await api.fetchSourceUrls(c.name, sortBy);
+        if (out?.ok) log(`[${c.name}] ✅ Đã thêm ${out.added} URL (${sortLabel}), bỏ qua ${out.skipped} trùng.`);
         else log(`[${c.name}] ❌ ${out?.error || "lấy URL thất bại"}`);
       } catch (err) {
         log(`[${c.name}] ❌ Lỗi khi lấy URL: ${err.message}`);
       } finally {
         btn.textContent = old;
         btn.disabled = false;
+        sortSel.disabled = false;
       }
     });
+    actions.appendChild(sortSel);
     actions.appendChild(btn);
     body.appendChild(actions);
   }

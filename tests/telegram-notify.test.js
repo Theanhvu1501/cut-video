@@ -7,7 +7,7 @@ import {
   buildChannelReport,
 } from "../sheet/telegram-notify.js";
 
-test("buildDigest gộp theo kênh + liệt kê lỗi", () => {
+test("buildDigest gộp theo kênh, chỉ đếm số", () => {
   const out = buildDigest([
     { sheetName: "line", title: "A", ok: true, scheduleISO: "2026-07-09T08:00:00" },
     { sheetName: "line", title: "B", ok: false, error: "b4 không thấy ô giờ" },
@@ -16,22 +16,23 @@ test("buildDigest gộp theo kênh + liệt kê lỗi", () => {
   assert.match(out, /✅ 2 lên lịch, ❌ 1 lỗi/);
   assert.match(out, /line: ✅ 1 \| ❌ 1/);
   assert.match(out, /truyen: ✅ 1 \| ❌ 0/);
-  assert.match(out, /line · B: b4 không thấy ô giờ/);
 });
 
-test("buildDigest không liệt kê chi tiết các video đã lên lịch", () => {
+// Tiêu đề video, giờ lịch và lý do lỗi đều đã nằm ở cột C của tab kênh.
+// Tin Telegram chỉ cần con số; chi tiết từng video làm tin dài mà không thêm gì.
+test("buildDigest không liệt kê chi tiết từng video, kể cả video lỗi", () => {
   const out = buildDigest([
     { sheetName: "line", title: "Video A", ok: true, scheduleISO: "2026-07-09T08:00:00" },
     { sheetName: "line", title: "Video B", ok: false, error: "b4 không thấy ô giờ" },
   ]);
-  assert.doesNotMatch(out, /Đã lên lịch:/);
   assert.doesNotMatch(out, /Video A/, "tiêu đề video thành công không được liệt kê");
+  assert.doesNotMatch(out, /Video B/, "tiêu đề video lỗi cũng không được liệt kê");
   assert.doesNotMatch(out, /09\/07\/2026/, "giờ lịch không được liệt kê");
-  // Phần tổng kết và phần lỗi vẫn giữ nguyên.
+  assert.doesNotMatch(out, /Chi tiết lỗi/);
+  assert.doesNotMatch(out, /b4 không thấy ô giờ/, "lý do lỗi đã có ở cột C");
+  // Phần đếm vẫn giữ nguyên.
   assert.match(out, /✅ 1 lên lịch, ❌ 1 lỗi/);
   assert.match(out, /line: ✅ 1 \| ❌ 1/);
-  assert.match(out, /❌ Chi tiết lỗi:/);
-  assert.match(out, /line · Video B: b4 không thấy ô giờ/);
 });
 
 test("buildDigest rỗng khi không có kết quả", () => {
@@ -120,19 +121,20 @@ test("buildChannelReport chỉ đếm kết quả của đúng kênh đó", () =
     { sheetName: "line", title: "B", ok: false, error: "b4 không thấy ô giờ" },
     { sheetName: "truyen", title: "C", ok: true, scheduleISO: "2026-07-30T18:00:00" },
   ];
-  const line = buildChannelReport("line", batch);
-  assert.match(line, /^📋 line — ✅ 1 lên lịch, ❌ 1 lỗi$/m);
-  assert.match(line, /• A → 30\/07\/2026 08:00/);
-  assert.match(line, /• ❌ B: b4 không thấy ô giờ/);
-  assert.doesNotMatch(line, /truyen|• C/, "không được lẫn kết quả của kênh khác");
-
-  assert.match(buildChannelReport("truyen", batch), /^📋 truyen — ✅ 1 lên lịch, ❌ 0 lỗi$/m);
+  assert.equal(buildChannelReport("line", batch), "📋 line — ✅ 1 lên lịch, ❌ 1 lỗi");
+  assert.equal(buildChannelReport("truyen", batch), "📋 truyen — ✅ 1 lên lịch, ❌ 0 lỗi");
 });
 
-test("buildChannelReport: thành công mà thiếu scheduleISO thì chỉ ghi tiêu đề", () => {
-  const out = buildChannelReport("line", [{ sheetName: "line", title: "A", ok: true }]);
-  assert.match(out, /• A$/m);
-  assert.doesNotMatch(out, /→/);
+// Caption của ảnh chỉ còn đúng một dòng đếm — không liệt kê video nào nữa.
+test("buildChannelReport: đúng một dòng, không có tiêu đề/giờ/lý do lỗi", () => {
+  const out = buildChannelReport("line", [
+    { sheetName: "line", title: "Video A", ok: true, scheduleISO: "2026-07-30T08:00:00" },
+    { sheetName: "line", title: "Video B", ok: false, error: "b4 không thấy ô giờ" },
+  ]);
+  assert.equal(out.split("\n").length, 1, `phải đúng 1 dòng, đang là:\n${out}`);
+  assert.doesNotMatch(out, /Video A|Video B/);
+  assert.doesNotMatch(out, /30\/07\/2026/);
+  assert.doesNotMatch(out, /b4 không thấy ô giờ/);
 });
 
 test("buildChannelReport: 0 kết quả -> chuỗi rỗng", () => {
@@ -140,15 +142,14 @@ test("buildChannelReport: 0 kết quả -> chuỗi rỗng", () => {
   assert.equal(buildChannelReport("line", [{ sheetName: "khac", title: "A", ok: true }]), "");
 });
 
-test("buildChannelReport: caption dài bị cắt trong 1024 và ghi rõ còn bao nhiêu", () => {
+test("buildChannelReport: nhiều video vẫn gọn trong giới hạn caption 1024", () => {
   const many = Array.from({ length: 200 }, (_, i) => ({
     sheetName: "line", title: `Video số ${i} với tiêu đề dài dài dài`, ok: true,
     scheduleISO: "2026-07-30T08:00:00",
   }));
   const out = buildChannelReport("line", many);
   assert.ok(out.length <= 1024, `caption dài ${out.length} > 1024`);
-  assert.match(out, /\n… và \d+ video nữa$/);
-  assert.match(out, /^📋 line — ✅ 200 lên lịch, ❌ 0 lỗi$/m, "dòng tổng vẫn phải đủ số thật");
+  assert.equal(out, "📋 line — ✅ 200 lên lịch, ❌ 0 lỗi");
 });
 
 // ===== Retry khi dính 429 =====

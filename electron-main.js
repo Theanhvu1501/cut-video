@@ -1545,7 +1545,9 @@ async function listStatsChannels() {
   };
 }
 
-async function fetchSourceUrlsFor(sheetName) {
+// sortBy: "views" (view cao nhất) | "newest" (mới nhất). Người dùng chọn ngay
+// cạnh nút "Lấy URL nguồn" trên card kênh, không lưu vào Sheet.
+async function fetchSourceUrlsFor(sheetName, sortBy = "views") {
   const st = loadSheetSettings();
   const bad = requireSheetSettings(st);
   if (bad) return { ok: false, error: bad };
@@ -1556,7 +1558,7 @@ async function fetchSourceUrlsFor(sheetName) {
   if (!ch) return { ok: false, error: `Không thấy kênh "${sheetName}" trong ⚙config.` };
   if (!ch.sourceHandle) return { ok: false, error: "Kênh chưa điền cột @handle nguồn." };
 
-  const videos = await fetchSourceVideos(ytClientFrom(st), ch.sourceHandle);
+  const videos = await fetchSourceVideos(ytClientFrom(st), ch.sourceHandle, { sortBy });
   const existing = (await readChannelUrls(sheets, st.spreadsheetId, sheetName)).map((r) => r.url);
   const fresh = pickNewUrls(existing, videos.map((v) => v.url));
   await appendUrls(sheets, st.spreadsheetId, sheetName, fresh);
@@ -1611,8 +1613,8 @@ ipcMain.handle("yt:refresh-stats", async () => {
   catch (err) { return { ok: false, error: String(err?.message || err) }; }
 });
 
-ipcMain.handle("yt:fetch-source-urls", async (e, { sheetName } = {}) => {
-  try { return await fetchSourceUrlsFor((sheetName || "").trim()); }
+ipcMain.handle("yt:fetch-source-urls", async (e, { sheetName, sortBy } = {}) => {
+  try { return await fetchSourceUrlsFor((sheetName || "").trim(), sortBy === "newest" ? "newest" : "views"); }
   catch (err) { return { ok: false, error: String(err?.message || err) }; }
 });
 

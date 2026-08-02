@@ -136,7 +136,7 @@ test("fetchChannelStats: API ném lỗi thì mọi ref trong lô đó nhận err
 import { fetchSourceVideos } from "../sheet/youtube-api.js";
 
 // Client giả có đủ channels/playlistItems/videos, hỗ trợ 2 trang.
-function fakeSourceYt(views = {}) {
+function fakeSourceYt(views = {}, dates = {}) {
   return {
     channels: {
       list: async () => ({ data: { items: [{ contentDetails: { relatedPlaylists: { uploads: "UUxxx" } } }] } }),
@@ -163,7 +163,7 @@ function fakeSourceYt(views = {}) {
             // "bbbbbbbbbbb" ngắn hơn 10 phút -> phải bị lọc bỏ
             contentDetails: { duration: vid === "bbbbbbbbbbb" ? "PT5M0S" : "PT12M0S" },
             statistics: { viewCount: String(views[vid] ?? 1234) },
-            snippet: { title: `Video ${vid}`, publishedAt: "2026-07-01T00:00:00Z" },
+            snippet: { title: `Video ${vid}`, publishedAt: dates[vid] ?? "2026-07-01T00:00:00Z" },
           })),
         },
       }),
@@ -186,6 +186,30 @@ test("fetchSourceVideos sắp xếp view giảm dần", async () => {
   const out = await fetchSourceVideos(fakeSourceYt({ aaaaaaaaaaa: 10, ccccccccccc: 9999 }), "@line4091");
   assert.deepEqual(out.map((v) => v.viewCount), [9999, 10]);
   assert.equal(out[0].url, "https://www.youtube.com/watch?v=ccccccccccc");
+});
+
+// Mặc định giữ nguyên hành vi cũ (view cao nhất) để chỗ gọi cũ không đổi nghĩa.
+test("fetchSourceVideos: sortBy 'newest' xếp theo ngày đăng mới nhất trước", async () => {
+  const yt = fakeSourceYt(
+    { aaaaaaaaaaa: 9999, ccccccccccc: 10 },            // view ngược với ngày
+    { aaaaaaaaaaa: "2026-01-01T00:00:00Z", ccccccccccc: "2026-07-01T00:00:00Z" },
+  );
+  const newest = await fetchSourceVideos(yt, "@line4091", { sortBy: "newest" });
+  assert.deepEqual(newest.map((v) => v.publishedAt), [
+    "2026-07-01T00:00:00Z",
+    "2026-01-01T00:00:00Z",
+  ]);
+
+  const views = await fetchSourceVideos(yt, "@line4091", { sortBy: "views" });
+  assert.deepEqual(views.map((v) => v.viewCount), [9999, 10]);
+});
+
+test("fetchSourceVideos: sortBy thiếu hoặc lạ -> vẫn xếp theo view (mặc định cũ)", async () => {
+  const yt = fakeSourceYt({ aaaaaaaaaaa: 10, ccccccccccc: 9999 });
+  for (const opts of [{}, { sortBy: "linh tinh" }, { sortBy: "" }]) {
+    const out = await fetchSourceVideos(yt, "@line4091", opts);
+    assert.deepEqual(out.map((v) => v.viewCount), [9999, 10], `hỏng với ${JSON.stringify(opts)}`);
+  }
 });
 
 test("fetchSourceVideos tôn trọng minSeconds", async () => {

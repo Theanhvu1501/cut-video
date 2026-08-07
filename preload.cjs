@@ -66,6 +66,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     gpmTest: (gpmHost) => ipcRenderer.invoke("gpm:test", { gpmHost }),
     gpmListChannels: () => ipcRenderer.invoke("gpm:list-channels"),
     gpmConnect: (args) => ipcRenderer.invoke("gpm:connect", args),
-    gpmTestTelegram: (token, chatId) => ipcRenderer.invoke("gpm:test-telegram", { token, chatId }),
+    gpmTestTelegram: (token, chatId, topicId) => ipcRenderer.invoke("gpm:test-telegram", { token, chatId, topicId }),
   },
 });

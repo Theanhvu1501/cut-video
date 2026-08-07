@@ -37,27 +37,46 @@ async function postWithRetry(url, buildBody, { fetchFn, sleep, headers, attempts
   return last;
 }
 
-export async function sendTelegram(token, chatId, text, deps = {}) {
-  const fetchFn = deps.fetch || globalThis.fetch;
-  const sleep = deps.sleep || defaultSleep;
+// Topic ID của group có bật Topics. Người dùng lấy bằng cách chuột phải topic →
+// Copy Link, nên nhận cả link lẫn số trần. Không hợp lệ → undefined, và khi đó
+// tin gửi thẳng vào General y như trước khi có tính năng này.
+export function parseTopicId(value) {
+  // Số phải đứng đầu chuỗi, sau "/" (link t.me) hoặc sau khoảng trắng — nếu bắt
+  // chữ số cuối bất kể ký tự trước thì "-5" hoá thành topic 5.
+  const m = String(value ?? "").trim().match(/(?:^|[/\s])(\d+)$/);
+  if (!m) return undefined;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined;
+}
+
+export async function sendTelegram(token, chatId, text, opts = {}) {
+  const fetchFn = opts.fetch || globalThis.fetch;
+  const sleep = opts.sleep || defaultSleep;
   if (!token || !chatId) return { ok: false, error: "thiếu token/chatId" };
+  const threadId = parseTopicId(opts.threadId);
   return postWithRetry(
     `https://api.telegram.org/bot${token}/sendMessage`,
-    () => JSON.stringify({ chat_id: chatId, text }),
+    () => JSON.stringify({
+      chat_id: chatId,
+      text,
+      ...(threadId ? { message_thread_id: threadId } : {}),
+    }),
     { fetchFn, sleep, headers: { "Content-Type": "application/json" } },
   );
 }
 
 // Gửi ảnh (multipart). Telegram giới hạn caption 1024 ký tự.
-export async function sendTelegramPhoto(token, chatId, photo, caption, deps = {}) {
-  const fetchFn = deps.fetch || globalThis.fetch;
-  const sleep = deps.sleep || defaultSleep;
+export async function sendTelegramPhoto(token, chatId, photo, caption, opts = {}) {
+  const fetchFn = opts.fetch || globalThis.fetch;
+  const sleep = opts.sleep || defaultSleep;
   if (!token || !chatId) return { ok: false, error: "thiếu token/chatId" };
+  const threadId = parseTopicId(opts.threadId);
   return postWithRetry(
     `https://api.telegram.org/bot${token}/sendPhoto`,
     () => {
       const form = new FormData();
       form.append("chat_id", chatId);
+      if (threadId) form.append("message_thread_id", String(threadId));
       if (caption) form.append("caption", caption.slice(0, CAPTION_MAX));
       form.append("photo", new Blob([photo], { type: "image/png" }), "content.png");
       return form;

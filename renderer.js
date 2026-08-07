@@ -4885,6 +4885,7 @@ async function runConcat() {
     $("sw-gpm-tg-enabled").checked = !!s.gpmTelegramEnabled;
     $("sw-gpm-tg-token").value = s.gpmTelegramToken || "";
     $("sw-gpm-tg-chat").value = s.gpmTelegramChatId || "";
+    $("sw-gpm-tg-topic").value = s.gpmTelegramTopicId || "";
     $("sw-gpm-tg-photo").checked = !!s.gpmTelegramPhoto;
     $("sw-gpm-tg-fields").style.display = s.gpmTelegramEnabled ? "" : "none";
     $("sw-yt-api-key").value = s.ytApiKey || "";
@@ -4905,6 +4906,7 @@ async function runConcat() {
       gpmTelegramEnabled: $("sw-gpm-tg-enabled").checked,
       gpmTelegramToken: $("sw-gpm-tg-token").value.trim(),
       gpmTelegramChatId: $("sw-gpm-tg-chat").value.trim(),
+      gpmTelegramTopicId: $("sw-gpm-tg-topic").value.trim(),
       gpmTelegramPhoto: $("sw-gpm-tg-photo").checked,
       ytApiKey: $("sw-yt-api-key").value.trim(),
     };
@@ -4918,7 +4920,7 @@ async function runConcat() {
     $(id)?.addEventListener("input", saveDebounced));
   ["sw-auto-open", "sw-use-gpu", "sw-gpm-enabled", "sw-gpm-tg-photo"].forEach((id) =>
     $(id)?.addEventListener("change", saveNow));
-  ["sw-gpm-host", "sw-gpm-tg-token", "sw-gpm-tg-chat"].forEach((id) =>
+  ["sw-gpm-host", "sw-gpm-tg-token", "sw-gpm-tg-chat", "sw-gpm-tg-topic"].forEach((id) =>
     $(id)?.addEventListener("input", saveDebounced));
   $("sw-gpm-enabled")?.addEventListener("change", syncGpmVisibility);
   $("sw-gpm-tg-enabled")?.addEventListener("change", () => {
@@ -4969,10 +4971,11 @@ async function runConcat() {
     const statusEl = $("sw-gpm-tg-status");
     const token = $("sw-gpm-tg-token").value.trim();
     const chatId = $("sw-gpm-tg-chat").value.trim();
+    const topicId = $("sw-gpm-tg-topic").value.trim(); // trống = gửi vào General
     if (!token || !chatId) { statusEl.textContent = "❌ thiếu token/chat ID"; statusEl.style.color = "#c00"; return; }
     statusEl.textContent = "⏳ đang gửi…"; statusEl.style.color = "#666";
     await saveNow();
-    const r = await api.gpmTestTelegram(token, chatId);
+    const r = await api.gpmTestTelegram(token, chatId, topicId);
     if (r?.ok) { statusEl.textContent = "✅ đã gửi — kiểm tra Telegram"; statusEl.style.color = "#1a7f37"; }
     else { statusEl.textContent = `❌ ${r?.error || "lỗi"}`; statusEl.style.color = "#c00"; }
   });

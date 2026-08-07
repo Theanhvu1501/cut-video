@@ -14,7 +14,7 @@ import { createYoutubeClient, fetchChannelStats, fetchSourceVideos, pickNewUrls,
 import { parseScheduledISO, formatStamp } from "./sheet/schedule-slots.js";
 import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
-import { sendTelegram, sendTelegramPhoto, buildDigest, buildChannelReport } from "./sheet/telegram-notify.js";
+import { sendTelegram, sendTelegramPhoto, buildDigest, buildChannelReport, parseTopicId } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
@@ -1353,6 +1353,9 @@ function buildSheetRunner(win) {
   const statePath = path.join(s.channelsRoot, "runner-state.json");
   const resumePath = path.join(s.channelsRoot, "resume-state.json");
   const emitEvent = (evt) => { if (win && !win.isDestroyed()) win.webContents.send("sheet:event", evt); };
+  // Topic của group Telegram: nhiều máy chung 1 group thì mỗi máy một topic.
+  // Bỏ trống → undefined → tin vào General như trước.
+  const tgTopicId = parseTopicId(s.gpmTelegramTopicId);
   // Hàng đợi upload GPM (state riêng, log ra cùng luồng sự kiện Sheet).
   const uploadQueue = createUploadQueue({
     // Nguồn sự thật = Sheet cột C: đọc trạng thái upload của kênh → slot đã dùng + url đã lên lịch.
@@ -1381,7 +1384,7 @@ function buildSheetRunner(win) {
       const text = buildDigest(results);
       if (!text) return;
       if (!s.gpmTelegramToken || !s.gpmTelegramChatId) return;
-      const r = await sendTelegram(s.gpmTelegramToken, s.gpmTelegramChatId, text);
+      const r = await sendTelegram(s.gpmTelegramToken, s.gpmTelegramChatId, text, { threadId: tgTopicId });
       if (!r.ok) emitEvent({ type: "log", message: `Telegram lỗi: ${r.error || "?"}` });
     },
     // Xong một kênh → một tin mang cả ảnh trang Nội dung lẫn kết quả của riêng kênh đó.
@@ -1393,8 +1396,8 @@ function buildSheetRunner(win) {
       const caption = buildChannelReport(sheetName, results);
       // Mất ảnh không được làm mất kết quả: không chụp được thì gửi tin chữ.
       const r = image
-        ? await sendTelegramPhoto(s.gpmTelegramToken, s.gpmTelegramChatId, image, caption)
-        : await sendTelegram(s.gpmTelegramToken, s.gpmTelegramChatId, caption);
+        ? await sendTelegramPhoto(s.gpmTelegramToken, s.gpmTelegramChatId, image, caption, { threadId: tgTopicId })
+        : await sendTelegram(s.gpmTelegramToken, s.gpmTelegramChatId, caption, { threadId: tgTopicId });
       if (!r.ok) emitEvent({ type: "log", message: `Telegram [${sheetName}] lỗi: ${r.error || "?"}` });
     },
   });
@@ -1657,10 +1660,10 @@ ipcMain.handle("gpm:list-channels", async () => {
   }
 });
 
-ipcMain.handle("gpm:test-telegram", async (e, { token, chatId } = {}) => {
+ipcMain.handle("gpm:test-telegram", async (e, { token, chatId, topicId } = {}) => {
   try {
     const r = await sendTelegram((token || "").trim(), (chatId || "").trim(),
-      "✅ VidMaster: test thông báo Telegram thành công.");
+      "✅ VidMaster: test thông báo Telegram thành công.", { threadId: topicId });
     return r.ok ? { ok: true } : { ok: false, error: r.error || "gửi thất bại" };
   } catch (err) {
     return { ok: false, error: String(err?.message || err) };

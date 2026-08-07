@@ -5,6 +5,7 @@ import {
   sendTelegram,
   sendTelegramPhoto,
   buildChannelReport,
+  parseTopicId,
 } from "../sheet/telegram-notify.js";
 
 test("buildDigest gộp theo kênh, chỉ đếm số", () => {
@@ -111,6 +112,54 @@ test("sendTelegramPhoto trả lỗi khi Telegram từ chối", async () => {
   const fetch = async () => ({ json: async () => ({ ok: false, description: "PHOTO_INVALID_DIMENSIONS" }) });
   const r = await sendTelegramPhoto("TOK", "42", Buffer.from("x"), "c", { fetch });
   assert.deepEqual(r, { ok: false, error: "PHOTO_INVALID_DIMENSIONS" });
+});
+
+// ===== Topic của group (nhiều máy chung 1 group, mỗi máy 1 topic) =====
+
+test("parseTopicId nhận số trần lẫn link topic, bỏ qua giá trị rác", () => {
+  assert.equal(parseTopicId("45"), 45);
+  assert.equal(parseTopicId(" 45 "), 45);
+  assert.equal(parseTopicId(45), 45);
+  // Chuột phải topic → Copy Link ra dạng này, người dùng dán thẳng vào ô.
+  assert.equal(parseTopicId("https://t.me/c/1234567890/45"), 45);
+  assert.equal(parseTopicId(""), undefined);
+  assert.equal(parseTopicId(null), undefined);
+  assert.equal(parseTopicId(undefined), undefined);
+  assert.equal(parseTopicId("abc"), undefined);
+  assert.equal(parseTopicId("0"), undefined);
+  assert.equal(parseTopicId("-5"), undefined);
+});
+
+test("sendTelegram kèm message_thread_id khi có topic", async () => {
+  let body;
+  const fetch = async (u, o) => { body = JSON.parse(o.body); return { json: async () => ({ ok: true }) }; };
+  await sendTelegram("TOK", "-1001234567890", "hello", { fetch, threadId: "45" });
+  assert.deepEqual(body, { chat_id: "-1001234567890", text: "hello", message_thread_id: 45 });
+});
+
+// Bỏ trống ô Topic ID thì request phải giống hệt trước khi có tính năng này —
+// kèm message_thread_id vào group chưa bật Topics là Telegram từ chối, mất tin.
+test("sendTelegram không kèm message_thread_id khi topic trống/rác", async () => {
+  const bodies = [];
+  const fetch = async (u, o) => { bodies.push(JSON.parse(o.body)); return { json: async () => ({ ok: true }) }; };
+  for (const threadId of ["", null, undefined, "abc"]) {
+    await sendTelegram("TOK", "42", "hello", { fetch, threadId });
+  }
+  for (const b of bodies) assert.ok(!("message_thread_id" in b), `dư field với ${JSON.stringify(b)}`);
+});
+
+test("sendTelegramPhoto kèm message_thread_id khi có topic", async () => {
+  let opt;
+  const fetch = async (u, o) => { opt = o; return { json: async () => ({ ok: true }) }; };
+  await sendTelegramPhoto("TOK", "42", Buffer.from("x"), "c", { fetch, threadId: "https://t.me/c/999/45" });
+  assert.equal(opt.body.get("message_thread_id"), "45");
+});
+
+test("sendTelegramPhoto không kèm message_thread_id khi topic trống", async () => {
+  let opt;
+  const fetch = async (u, o) => { opt = o; return { json: async () => ({ ok: true }) }; };
+  await sendTelegramPhoto("TOK", "42", Buffer.from("x"), "c", { fetch });
+  assert.equal(opt.body.get("message_thread_id"), null);
 });
 
 // ===== Tin báo của một kênh (ảnh + kết quả trong cùng một tin) =====

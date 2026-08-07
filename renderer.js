@@ -4963,7 +4963,11 @@ async function runConcat() {
     const statusEl = $("sw-gpm-test-status");
     statusEl.textContent = "⏳ đang kiểm tra…"; statusEl.style.color = "#666";
     const r = await api.gpmTest($("sw-gpm-host").value.trim());
-    if (r?.ok) { statusEl.textContent = `✅ ${r.profiles.length} profiles`; statusEl.style.color = "#1a7f37"; }
+    if (r?.ok) {
+      // Kèm version API đã dò được (v3 = GPM bản cũ, v1 = bản mới) cho dễ soi máy nào chạy bản nào.
+      const ver = r.apiVersion ? ` (API ${r.apiVersion})` : "";
+      statusEl.textContent = `✅ ${r.profiles.length} profiles${ver}`; statusEl.style.color = "#1a7f37";
+    }
     else { statusEl.textContent = `❌ ${r?.error || "lỗi"}`; statusEl.style.color = "#c00"; }
     probeGpm(); // đổi host xong bấm Test — soi lại chấm trạng thái trên card luôn.
   });

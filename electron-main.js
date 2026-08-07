@@ -12,7 +12,7 @@ import { createSheetRunner } from "./sheet/sheet-runner.js";
 import { createSheetsClient, readConfigSheet, readConfigValues, parseConfigRows, findStatsColumns, STATS_KEYS, writeChannelStats, appendUrls, readChannelUrls, setUrlStatus, setUploadStatus, readUploadStatuses, testSheetConnection } from "./sheet/sheets-service.js";
 import { createYoutubeClient, fetchChannelStats, fetchSourceVideos, pickNewUrls, DEFAULT_YT_API_KEY } from "./sheet/youtube-api.js";
 import { parseScheduledISO, formatStamp } from "./sheet/schedule-slots.js";
-import { testGpmConnection, connectAndOpenStudio } from "./sheet/gpm-client.js";
+import { testGpmConnection, connectAndOpenStudio, getGpmApiVersion } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
 import { sendTelegram, sendTelegramPhoto, buildDigest, buildChannelReport, parseTopicId } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
@@ -1625,7 +1625,7 @@ ipcMain.handle("gpm:test", async (e, { gpmHost } = {}) => {
   try {
     const host = (gpmHost || "").trim() || "127.0.0.1:19995";
     const profiles = await testGpmConnection(host);
-    return { ok: true, profiles };
+    return { ok: true, profiles, apiVersion: getGpmApiVersion(host) };
   } catch (err) {
     return { ok: false, error: String(err?.message || err) };
   }

@@ -17,6 +17,14 @@ const sameGraph = (a, b) => {
   assert.equal(canonicalGraph(a, opts), canonicalGraph(b, opts));
 };
 
+// evenDown cục bộ, khớp evenDown trong layer-compiler.js/render-core.js (round rồi làm
+// tròn xuống số chẵn) — dùng để kiểm công thức personGeometry cũ mà không cần import hàm
+// private của 2 module đó.
+const evenDown = (value) => {
+  const n = Math.round(value);
+  return n % 2 === 0 ? n : n - 1;
+};
+
 test("cả 5 preset dựng sẵn đều hợp lệ", () => {
   for (const n of ["topTransparent", "chromaKey", "crop", "keepColor", "blurFrame"]) {
     const r = validatePreset(load(n));
@@ -25,12 +33,13 @@ test("cả 5 preset dựng sẵn đều hợp lệ", () => {
 });
 
 test("preset topTransparent tương đương mode topTransparent", () => {
-  const cfg = { opacity: 0.7 };
   const p = load("topTransparent");
-  p.layers.find((l) => l.source.type === "background").treatments = [
-    { kind: "opacity", value: cfg.opacity },
-  ];
-  sameGraph(compilePreset(p).filterGraph, buildComplexFilter("topTransparent", cfg));
+  const op = p.layers.find((l) => l.source.type === "background").treatments.find((t) => t.kind === "opacity");
+  // Pin giá trị ship: 0.9 là con số preset THẬT dùng, không phải test tự chọn. sameGraph ở
+  // dưới chỉ so CẤU TRÚC nên không tự bắt được việc opacity ship bị sửa sai số — phải ghim
+  // tường minh ở đây, rồi mới suy cfg TỪ chính giá trị đã ghim để feed cho code cũ.
+  assert.equal(op.value, 0.9, "opacity của lớp nền trong preset ship phải là 0.9");
+  sameGraph(compilePreset(p).filterGraph, buildComplexFilter("topTransparent", { opacity: op.value }));
 });
 
 test("preset topTransparent giữ đúng thứ tự đảo: nền nằm TRÊN video gốc", () => {
@@ -40,34 +49,47 @@ test("preset topTransparent giữ đúng thứ tự đảo: nền nằm TRÊN vi
 });
 
 test("preset chromaKey tương đương mode chromaKey", () => {
-  const cfg = { chromaColor: "D4F9D7", chromaSimilarity: 0.3 };
   const p = load("chromaKey");
   const ck = p.layers.find((l) => l.source.type === "overlay").treatments.find((t) => t.kind === "chromakey");
-  ck.color = cfg.chromaColor;
-  ck.similarity = cfg.chromaSimilarity;
+  // Pin giá trị ship — lý do xem comment ở test topTransparent.
+  assert.equal(ck.color, "D4F9D7", "color chromakey trong preset ship phải là D4F9D7");
+  assert.equal(ck.similarity, 0.3, "similarity chromakey trong preset ship phải là 0.3");
+  const cfg = { chromaColor: ck.color, chromaSimilarity: ck.similarity };
   sameGraph(compilePreset(p).filterGraph, buildComplexFilter("chromaKey", cfg));
 });
 
 test("preset crop tương đương mode crop (không có ảnh người)", () => {
-  const cfg = { cropHeight: 220, cropYOffset: 490 };
   const p = load("crop");
   p.layers = p.layers.filter((l) => l.source.type !== "image");
   const strip = p.layers.find((l) => l.source.type === "overlay").treatments.find((t) => t.kind === "cropStrip");
-  strip.height = cfg.cropHeight;
-  strip.yOffset = cfg.cropYOffset;
+  // Pin giá trị ship — lý do xem comment ở test topTransparent.
+  assert.equal(strip.height, 220, "cropStrip.height trong preset ship phải là 220");
+  assert.equal(strip.yOffset, 490, "cropStrip.yOffset trong preset ship phải là 490");
+  // Suy cfg TỪ preset ship, không ghi đè preset cho khớp cfg: giá trị ship chính là thứ
+  // được thi hành qua compilePreset lẫn buildComplexFilter.
+  const cfg = { cropHeight: strip.height, cropYOffset: strip.yOffset };
   sameGraph(compilePreset(p).filterGraph, buildComplexFilter("crop", cfg));
 });
 
 test("preset crop tương đương mode crop (CÓ ảnh người)", () => {
-  const cfg = { cropHeight: 220, cropYOffset: 490, personEnabled: true, personFile: "ng.png", personPos: "center", personScale: 0.9 };
   const p = load("crop");
   const strip = p.layers.find((l) => l.source.type === "overlay").treatments.find((t) => t.kind === "cropStrip");
-  strip.height = cfg.cropHeight;
-  strip.yOffset = cfg.cropYOffset;
+  const cfg = {
+    cropHeight: strip.height, cropYOffset: strip.yOffset,
+    personEnabled: true, personFile: "ng.png", personPos: "center", personScale: 0.9,
+  };
   const person = p.layers.find((l) => l.source.type === "image");
   person.source.path = cfg.personFile;
-  // personGeometry cũ: h = evenDown(0.9 * (720-220)) = 450, y = 720-220-450 = 50
-  person.geometry = { fit: "box", w: -2, h: 450, anchor: "bottom-left", dx: 0, dy: -cfg.cropHeight };
+  // anchor "bottom-center" phải khớp personPos "center" (personOverlayX("center") cũng ra
+  // "(W-w)/2") — đây là giá trị THẬT preset ship, không ghi đè, không tự mâu thuẫn với cfg
+  // như bản trước (anchor bottom-left + personPos center).
+  assert.equal(person.geometry.anchor, "bottom-center");
+  // h/dy là 2 giá trị DUY NHẤT được phép suy ra từ cfg thay vì đọc thẳng từ ship, vì chúng
+  // phụ thuộc cropHeight/personScale. Trước khi dùng, assert số ship khớp ĐÚNG công thức
+  // personGeometry cũ — nếu không, JSON và công thức có thể lệch nhau mà không ai biết.
+  const expectH = evenDown(cfg.personScale * (720 - cfg.cropHeight));
+  assert.equal(person.geometry.h, expectH, "h của lớp người trong preset ship phải khớp personGeometry cũ");
+  assert.equal(person.geometry.dy, -cfg.cropHeight, "dy của lớp người trong preset ship phải khớp personGeometry cũ");
   sameGraph(compilePreset(p).filterGraph, buildComplexFilter("crop", cfg));
 });
 
@@ -86,9 +108,45 @@ test("toạ độ ảnh người: biểu thức của compiler bằng số của
   assert.match(now, /overlay=0:H-h-220:shortest=1/);
   // 720 - 450 - 220 = 50 — bằng nhau về số.
   assert.equal(720 - 450 - 220, 50);
+
+  // personPos: "center" khớp đúng anchor "bottom-center" mà preset THẬT đang ship — dùng
+  // NGUYÊN geometry ship (không ghi đè gì ngoài đường dẫn ảnh), nên phần x khớp NGUYÊN VĂN
+  // với code cũ ("(W-w)/2" cả hai bên), chỉ phần y khác dạng (biểu thức so với số).
+  const cfgCenter = { ...cfg, personPos: "center" };
+  const oldCenter = buildComplexFilter("crop", cfgCenter).join("|");
+  assert.match(oldCenter, /overlay=\(W-w\)\/2:50/);
+
+  const pCenter = load("crop");
+  pCenter.layers.find((l) => l.source.type === "image").source.path = "ng.png";
+  const nowCenter = compilePreset(pCenter).filterGraph.join("|");
+  assert.match(nowCenter, /overlay=\(W-w\)\/2:H-h-220:shortest=1/);
 });
 
 test("preset keepColor tương đương mode keepColor (không bật lớp nền tối)", () => {
+  const p = load("keepColor");
+  p.layers = p.layers.filter((l) => l.source.type !== "solid");
+  const ovl = p.layers.find((l) => l.source.type === "overlay");
+  const strip = ovl.treatments.find((t) => t.kind === "cropStrip");
+  const keep = ovl.treatments.find((t) => t.kind === "keepColors");
+  // Pin giá trị ship: cấu hình 1 màu FBFF02 là thứ preset THẬT đang chạy, không phải kịch
+  // bản test tự dựng. Xem comment ở test topTransparent về lý do cần pin song song sameGraph.
+  assert.deepEqual(keep.colors, ["FBFF02"], "colors của keepColor trong preset ship phải là [FBFF02]");
+  assert.equal(keep.similarity, 0.2, "similarity của keepColor trong preset ship phải là 0.2");
+  assert.equal(strip.height, 220, "cropStrip.height trong preset ship phải là 220");
+  assert.equal(strip.yOffset, 490, "cropStrip.yOffset trong preset ship phải là 490");
+  // Suy cfg TỪ preset ship — không thay cả mảng treatments bằng kịch bản khác như trước.
+  const cfg = {
+    keepColors: keep.colors, keepSimilarity: keep.similarity,
+    keepCrop: true, keepHeight: strip.height, keepYOffset: strip.yOffset,
+    keepAddDarkLayer: false,
+  };
+  sameGraph(compilePreset(p).filterGraph, buildComplexFilter("keepColor", cfg));
+});
+
+test("keepColor 2 màu (kịch bản dựng RIÊNG cho test, không phải preset ship) vẫn tương đương code cũ", () => {
+  // Preset ship chỉ có 1 màu nên không bao giờ chạm nhánh blend=all_expr='max(A,B)' (chỉ
+  // xuất hiện khi có từ 2 màu trở lên). Dựng riêng một biến thể 2 màu ở đây để phủ nhánh
+  // đó — đây KHÔNG phải giá trị ship, chỉ là ca kiểm thêm cho compiler.
   const cfg = { keepColors: ["FBFF02", "FF0000"], keepSimilarity: 0.2, keepCrop: true, keepHeight: 150, keepYOffset: 550, keepAddDarkLayer: false };
   const p = load("keepColor");
   p.layers = p.layers.filter((l) => l.source.type !== "solid");
@@ -120,6 +178,30 @@ test("preset blurFrame tương đương mode blurFrame (đủ 3 lớp)", () => {
   p.layers.find((l) => l.source.type === "image").source.path = cfg.frameFile;
   p.layers.find((l) => l.source.type === "video").source.path = cfg.effectFile;
   sameGraph(compilePreset(p).filterGraph, buildComplexFilter("blurFrame", cfg));
+});
+
+test("toạ độ blurFrame: biểu thức của compiler bằng số của code cũ", () => {
+  // frameGeometry(0.85): w = evenDown(1280*0.85) = 1088, h = evenDown(720*0.85) = 612
+  //                      x = round((1280-1088)/2) = 96, y = round((720-612)/2) = 54
+  // frameOverlayGeometry(0.85, 1) cho cùng kích thước nên cùng toạ độ.
+  const cfg = {
+    bgBlurEnabled: true, bgBlur: 20, mainScale: 0.85, mainOpacity: 0.85,
+    frameEnabled: true, frameFile: "khung.png", frameScale: 1,
+    effectEnabled: true, effectFile: "fx.mp4", effectOpacity: 0.15, effectBlend: "screen",
+  };
+  const old = buildComplexFilter("blurFrame", cfg).join("|");
+  // Code cũ đặt cả lớp video gốc và lớp khung ở đúng toạ độ số này.
+  assert.equal((old.match(/overlay=96:54/g) || []).length, 2);
+
+  const p = load("blurFrame");
+  p.layers.find((l) => l.source.type === "image").source.path = cfg.frameFile;
+  p.layers.find((l) => l.source.type === "video").source.path = cfg.effectFile;
+  const now = compilePreset(p).filterGraph.join("|");
+  assert.equal((now.match(/overlay=\(W-w\)\/2:\(H-h\)\/2/g) || []).length, 2);
+
+  // Bằng nhau về số: đây là toàn bộ lý do được phép bỏ qua toạ độ khi so DAG.
+  assert.equal((1280 - 1088) / 2, 96);
+  assert.equal((720 - 612) / 2, 54);
 });
 
 test("preset blurFrame: extraInputs khớp buildStudioInputs cũ về thứ tự và cờ", () => {

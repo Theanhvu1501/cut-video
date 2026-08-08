@@ -65,3 +65,130 @@ export function scaleFilter(geometry = {}) {
   }
   return { filter: `scale=${BASE_W}:${BASE_H}`, w: BASE_W, h: BASE_H };
 }
+
+export const TREATMENT_KINDS = [
+  "cropStrip", "grayContrast", "blur", "chromakey", "lumakey", "opacity", "keepColors",
+];
+
+// Chuỗi đi qua NGUYÊN VẸN, chỉ số mới bị Number() nắn lại.
+// Lý do: String(Number("-1.0")) cho ra "-1", mà code cũ ghi cứng "brightness=-1.0" trong
+// chuỗi template. Preset giữ được "-1.0" dạng chuỗi thì sinh ra đúng chuỗi cũ; còn người
+// dùng gõ số trong UI thì ra "3" — ffmpeg nhận cả hai như nhau.
+const numStr = (v, fallback) => {
+  if (typeof v === "string" && v.trim() !== "") return v.trim();
+  return String(v === undefined || v === null || v === "" ? fallback : Number(v));
+};
+
+// Nối chuỗi filter của MỘT lớp: scale trước, rồi các treatment theo thứ tự khai báo.
+// keepColors là treatment duy nhất phải cắt chuỗi ra thành nhiều câu lệnh (nó cần split
+// nguồn thành nhiều nhánh), nên hàm này trả về mảng câu lệnh chứ không phải một chuỗi.
+export function buildLayerChain(layer, inLabel, nextLabel) {
+  const l = layer || {};
+  const geo = scaleFilter(l.geometry);
+  let w = geo.w;
+  let h = geo.h;
+  const screen = l.blend === "screen";
+
+  const statements = [];
+  let chain = geo.filter;
+  let source = inLabel;
+  let hasAlpha = false;
+
+  // Đóng chuỗi đang dựng thành một câu lệnh có nhãn ra, để bước sau nối tiếp từ nhãn đó.
+  const flush = () => {
+    const out = nextLabel();
+    statements.push(`[${source}]${chain}[${out}]`);
+    source = out;
+    chain = "";
+    return out;
+  };
+  const push = (frag) => { chain = chain ? `${chain},${frag}` : frag; };
+  // Treatment cần alpha (lumakey, opacity) thì format phải nằm TRƯỚC nó; treatment sinh
+  // ra alpha (chromakey, keepColors) thì nằm SAU. Chèn đúng một lần.
+  const ensureAlpha = () => {
+    if (hasAlpha) return;
+    push("format=yuva420p");
+    hasAlpha = true;
+  };
+
+  for (const t of l.treatments || []) {
+    switch (t?.kind) {
+      case "cropStrip": {
+        const ch = Math.max(2, Number(t.height) || BASE_H);
+        push(`crop=${BASE_W}:${ch}:0:${numStr(t.yOffset, 0)}`);
+        w = BASE_W;
+        h = ch;
+        break;
+      }
+      case "grayContrast":
+        push(
+          `eq=brightness=${numStr(t.brightness, 0)}:contrast=${numStr(t.contrast, 1)}` +
+            `:gamma=${numStr(t.gamma, 1)}:saturation=${numStr(t.saturation, 1)}`
+        );
+        break;
+      case "blur":
+        push(`gblur=sigma=${numStr(t.sigma, 20)}`);
+        break;
+      case "chromakey":
+        push(
+          `colorkey=0x${String(t.color || "").replace("#", "")}` +
+            `:${numStr(t.similarity, 0.3)}:${numStr(t.blend, 0.1)}`
+        );
+        ensureAlpha();
+        break;
+      case "lumakey":
+        ensureAlpha();
+        push(
+          `lumakey=threshold=${numStr(t.threshold, 0.15)}` +
+            `:tolerance=${numStr(t.tolerance, 0.1)}:softness=${numStr(t.softness, 0.1)}`
+        );
+        break;
+      case "opacity":
+        // blend=screen không dùng alpha: giá trị opacity chuyển thành all_opacity của
+        // bước chồng (compilePreset đọc trực tiếp từ layer), nên ở đây bỏ qua.
+        if (screen) break;
+        ensureAlpha();
+        push(`colorchannelmixer=aa=${numStr(t.value, 1)}`);
+        break;
+      case "keepColors": {
+        const colors = (t.colors || []).map((c) => String(c).replace("#", "")).filter(Boolean);
+        if (!colors.length) break;
+        const sim = numStr(t.similarity, 0.1);
+        // split=N+1: một nhánh giữ ảnh gốc, N nhánh để dò từng màu.
+        nextLabel(); // Để trống nhãn cho internal labelling của split
+        const mainLabel = nextLabel();
+        const detectLabels = colors.map(() => nextLabel());
+        statements.push(
+          `[${source}]${chain}${chain ? "," : ""}split=${colors.length + 1}` +
+            `[${mainLabel}]${detectLabels.map((d) => `[${d}]`).join("")}`
+        );
+        chain = "";
+        const masks = colors.map((hex, i) => {
+          const m = nextLabel();
+          statements.push(`[${detectLabels[i]}]colorkey=0x${hex}:${sim}:0.1,alphaextract,negate[${m}]`);
+          return m;
+        });
+        let mask = masks[0];
+        for (let i = 1; i < masks.length; i++) {
+          const merged = nextLabel();
+          statements.push(`[${mask}][${masks[i]}]blend=all_expr='max(A,B)'[${merged}]`);
+          mask = merged;
+        }
+        const merged = nextLabel();
+        statements.push(`[${mainLabel}][${mask}]alphamerge[${merged}]`);
+        source = merged;
+        hasAlpha = true;
+        break;
+      }
+      default:
+        // Kind lạ: bỏ qua chứ không ném — preset gõ sai một dòng không đáng làm chết mẻ.
+        break;
+    }
+  }
+
+  // blend=screen cần yuv420p (không alpha) ở cuối chuỗi, đúng cách blurFrame đang làm.
+  if (screen && !hasAlpha) push("format=yuv420p");
+
+  const outLabel = chain ? flush() : source;
+  return { statements, outLabel, w, h };
+}

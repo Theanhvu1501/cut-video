@@ -352,13 +352,25 @@ const bg = { id: "bg", source: { type: "background" }, geometry: { fit: "full" }
 const ov = { id: "ov", source: { type: "overlay" }, geometry: { fit: "full" } };
 
 test("compilePreset: nền dưới, video gốc trên, không input phụ", () => {
-  const r = compilePreset({ layers: [bg, { ...ov, geometry: { fit: "full" } }] });
+  // anchor khai TƯỜNG MINH: test này nói về thứ tự lớp, không được ngầm phụ thuộc giá trị
+  // mặc định của anchor (có test riêng bên dưới lo việc đó).
+  const r = compilePreset({
+    layers: [bg, { ...ov, geometry: { fit: "full", anchor: "top-left" } }],
+  });
   assert.deepEqual(r.extraInputs, []);
   const joined = r.filterGraph.join("|");
   assert.match(joined, /\[0:v\]scale=1280:720/);
   assert.match(joined, /\[1:v\]scale=1280:720/);
   assert.match(joined, /overlay=0:0:shortest=1\[combined_video\]/);
   assert.ok(r.filterGraph.includes("[1:a]volume=1.0[overlay_audio]"));
+});
+
+test("compilePreset: lớp không khai anchor thì rơi về center, đúng như anchorExpr", () => {
+  // anchorExpr coi mọi giá trị ngoài 9 điểm neo (kể cả undefined) là center — hành vi đã
+  // chốt ở Task 2. Với lớp phủ kín khung thì (W-w)/2 = 0 nên kết quả SỐ vẫn là 0:0, chỉ
+  // khác chuỗi; preset nào cần đúng chuỗi "0:0" thì khai anchor: "top-left".
+  const r = compilePreset({ layers: [bg, { ...ov, geometry: { fit: "full" } }] });
+  assert.match(r.filterGraph.join("|"), /overlay=\(W-w\)\/2:\(H-h\)\/2:shortest=1/);
 });
 
 test("compilePreset: lớp dưới cùng KHÔNG có bước chồng, nó là nền của chuỗi", () => {

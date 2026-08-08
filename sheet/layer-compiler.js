@@ -155,7 +155,6 @@ export function buildLayerChain(layer, inLabel, nextLabel) {
         if (!colors.length) break;
         const sim = numStr(t.similarity, 0.1);
         // split=N+1: một nhánh giữ ảnh gốc, N nhánh để dò từng màu.
-        nextLabel(); // Để trống nhãn cho internal labelling của split
         const mainLabel = nextLabel();
         const detectLabels = colors.map(() => nextLabel());
         statements.push(

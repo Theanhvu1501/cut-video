@@ -170,13 +170,13 @@ test("keepColors sinh nhiều câu lệnh, đúng chuỗi của keepColor cũ", 
     "1:v", labeller()
   );
   assert.deepEqual(r.statements, [
-    "[1:v]scale=1280:720,split=3[t1][t2][t3]",
-    "[t2]colorkey=0xFBFF02:0.2:0.1,alphaextract,negate[t4]",
-    "[t3]colorkey=0xFF0000:0.2:0.1,alphaextract,negate[t5]",
-    "[t4][t5]blend=all_expr='max(A,B)'[t6]",
-    "[t1][t6]alphamerge[t7]",
+    "[1:v]scale=1280:720,split=3[t0][t1][t2]",
+    "[t1]colorkey=0xFBFF02:0.2:0.1,alphaextract,negate[t3]",
+    "[t2]colorkey=0xFF0000:0.2:0.1,alphaextract,negate[t4]",
+    "[t3][t4]blend=all_expr='max(A,B)'[t5]",
+    "[t0][t5]alphamerge[t6]",
   ]);
-  assert.equal(r.outLabel, "t7");
+  assert.equal(r.outLabel, "t6");
 });
 
 test("keepColors một màu không có bước blend", () => {
@@ -188,9 +188,9 @@ test("keepColors một màu không có bước blend", () => {
     "1:v", labeller()
   );
   assert.deepEqual(r.statements, [
-    "[1:v]scale=1280:720,split=2[t1][t2]",
-    "[t2]colorkey=0xFBFF02:0.2:0.1,alphaextract,negate[t3]",
-    "[t1][t3]alphamerge[t4]",
+    "[1:v]scale=1280:720,split=2[t0][t1]",
+    "[t1]colorkey=0xFBFF02:0.2:0.1,alphaextract,negate[t2]",
+    "[t0][t2]alphamerge[t3]",
   ]);
 });
 

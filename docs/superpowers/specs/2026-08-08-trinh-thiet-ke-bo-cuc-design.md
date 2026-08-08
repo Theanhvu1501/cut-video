@@ -186,6 +186,32 @@ khung, không có toạ độ.
 nguồn vô hạn thì `shortest=1` vẫn cho ra vô hạn (vô hại); bước nào đã có lớp `overlay`
 thì nó kết thúc đúng chỗ. `blurFrame` đã làm vậy và chạy tốt.
 
+Nhưng **3 mode cũ không có `shortest=1`**: `topTransparent` (`overlay=0:0`), `chromaKey`
+và `crop` (`overlay=0:H-h`) chỉ dựa vào `-t newDuration` để cắt. Nên preset dựng sẵn của
+3 mode đó **khác bản gốc đúng ở chỗ thêm `:shortest=1`** — khác biệt cố ý, không phải
+lỗi. Kiểm lại từng bước thì việc thêm là an toàn và chặt hơn: `topTransparent` có base là
+lớp `overlay` hữu hạn nên `shortest=1` kết thúc đúng; `crop` có lớp ảnh người `-loop 1`
+vô hạn nhưng bước chồng cuối đã có dải crop hữu hạn.
+
+### Toạ độ: luôn dùng biểu thức, không dùng số
+
+Compiler **luôn** sinh biểu thức anchor (`0`, `(W-w)/2`, `W-w`, `H-h`, …), không bao giờ
+tính sẵn thành số. Lý do: chỉ biểu thức mới giữ được hành vi "dán sát đáy bất kể lớp cao
+bao nhiêu", và lớp `w: -2` có chiều rộng không biết trước nên bắt buộc phải là biểu thức.
+
+Hệ quả: **3 bước chồng của mode cũ khác textually nhưng bằng nhau về số**, vì code cũ
+tính sẵn thành số ở những chỗ nó biết trước kích thước:
+
+| Bước | Code cũ | Compiler |
+|---|---|---|
+| `crop` — ảnh người | `overlay={x}:{720-cropHeight-h}` | `overlay={x}:H-h-{cropHeight}` |
+| `blurFrame` — video gốc | `overlay={x}:{y}` (số, từ `frameGeometry`) | `overlay=(W-w)/2:(H-h)/2` |
+| `blurFrame` — khung | `overlay={x}:{y}` (số) | `overlay=(W-w)/2:(H-h)/2` |
+
+Vì vậy test so DAG phải **bỏ qua toạ độ overlay**, và toạ độ được kiểm riêng bằng những
+assert tường minh cho từng preset. Hai lớp test cộng lại mới phủ đủ: DAG lo topology +
+chuỗi filter, assert riêng lo toạ độ.
+
 ### Waveform
 
 Loại nguồn duy nhất động tới phần **audio** của graph: tiếng vừa ra loa vừa vẽ hình.
@@ -400,8 +426,15 @@ Không tình huống nào được ném lỗi làm chết cả mẻ.
 - **Test then chốt**: 5 preset dựng sẵn qua compiler, so với **DAG** của chuỗi filter
   hiện tại. So theo đồ thị — chuẩn hoá tên nhãn theo thứ tự duyệt topo — chứ không so
   chuỗi thô, vì thứ tự câu lệnh trong `filter_complex` không ảnh hưởng ffmpeg (nhãn ràng
-  buộc chúng). Chuỗi hiện tại đóng băng thành fixture, sinh một lần từ code hôm nay.
-  Ngoại lệ đã biết: `keepColor` khác ở lớp `solid` (xem phần Compiler).
+  buộc chúng).
+
+  **Không cần đóng băng fixture**: 5 builder cũ vẫn còn nguyên trong code (đây là chức
+  năng tách hẳn), nên test gọi thẳng `buildComplexFilter("crop", cfg)` để so. So sống như
+  vậy còn tốt hơn fixture — ai sửa builder cũ là test bắt được ngay.
+
+  Ba khác biệt **cố ý**, phải khai báo tường minh trong test chứ không được nới lỏng
+  chung: (1) `:shortest=1` thêm vào 3 mode cũ chưa có; (2) toạ độ overlay dạng biểu thức
+  thay vì số ở 3 bước; (3) `keepColor` dùng lớp `solid` thay `geq`.
 - Luật `format=yuva420p`: cả 3 thứ tự trong bảng đối chiếu ra đúng chuỗi.
 - Chỉ số input `[n:v]` khớp đúng số `extraInputs`, với mọi tổ hợp bật/tắt lớp.
 - `shortest=1` có ở **mọi** bước chồng.

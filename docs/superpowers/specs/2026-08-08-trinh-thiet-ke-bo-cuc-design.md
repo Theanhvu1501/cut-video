@@ -113,9 +113,24 @@ Từ `overlay` dùng đúng nghĩa sẵn có trong codebase: **video nguồn đa
 | `full` | `scale=1280:720` |
 | `scale` + `value` | `scale={evenDown(1280*value)}:{evenDown(720*value)}` |
 | `box` + `w`,`h` | `scale={w}:{h}`. `w: -2` = giữ tỉ lệ gốc, chiều rộng suy từ `h` |
+| `none` | **không sinh gì** — dùng nguồn y nguyên |
 
 `evenDown` làm tròn **xuống** số chẵn (yuv420p yêu cầu kích thước chẵn) — dùng lại đúng
 công thức `render-core.js:168`.
+
+`fit: "none"` là **khác biệt thứ 4** so với code cũ, phát hiện khi triển khai và **đã khép
+lại** bằng cách bổ sung năng lực chứ không bằng cách nới lỏng phép so:
+
+`chromaKey` (`render-core.js:80`), `crop` (`render-core.js:95`) và `keepColor`
+(`render-core.js:159`) chồng thẳng lên `[0:v]` — **không scale lớp nền**. Chỉ
+`topTransparent` (`render-core.js:63`) và `blurFrame` (`render-core.js:328`) scale nó. Nếu
+compiler luôn sinh `scale=1280:720` cho mọi lớp thì graph của 3 mode kia có thêm một node,
+và phép so theo đồ thị báo khác nhau — đúng như vậy đã xảy ra khi làm Task 6.
+
+`fit: "none"` cho preset **khai tường minh** rằng lớp này dùng nguồn y nguyên. Ngoài chuyện
+khớp graph cũ, nó còn bỏ được một bước scale vô ích trên từng khung hình của cả mẻ 60 video.
+Không đặt vào `buildLayerChain` dạng suy đoán "khi nào thì bỏ scale" — suy đoán ngầm sẽ
+thành cái bẫy cho preset mới.
 
 Vị trí là **điểm neo + phần lệch**, không phải toạ độ tuyệt đối. Lý do cụ thể:
 `chromaKey` dùng `overlay=0:H-h` — dán sát đáy *bất kể lớp cao bao nhiêu*; chuyển sang

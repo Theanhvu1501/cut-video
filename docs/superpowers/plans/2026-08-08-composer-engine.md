@@ -383,7 +383,7 @@ git commit -m "test(composer): công cụ so sánh filter graph theo đồ thị
   - `BASE_W = 1280`, `BASE_H = 720`
   - `ANCHORS: Record<string, { x: string, y: string }>` — 9 khoá
   - `anchorExpr(anchor: string, dx?: number, dy?: number) -> { x: string, y: string }`
-  - `scaleFilter(geometry: object) -> { filter: string, w: number|null, h: number|null }` — `filter` là đoạn `scale=…`; `w`/`h` là kích thước sau scale, `null` khi không biết trước (ví dụ `w: -2`)
+  - `scaleFilter(geometry: object) -> { filter: string, w: number|null, h: number|null }` — `filter` là đoạn `scale=…`; `w`/`h` là kích thước sau scale, `null` khi không biết trước (ví dụ `w: -2`). `fit: "none"` trả `filter: ""` — dùng nguồn y nguyên, không sinh bước scale nào
 
 - [ ] **Step 1: Viết test thất bại**
 
@@ -459,6 +459,24 @@ test("scaleFilter fit=box với w=-2 giữ tỉ lệ gốc, chiều rộng khôn
 test("scaleFilter fit lạ rơi về full", () => {
   assert.equal(scaleFilter({ fit: "khong-ton-tai" }).filter, "scale=1280:720");
 });
+
+test("scaleFilter fit=none không sinh bước scale nào", () => {
+  // Cần cho lớp nền của chromaKey/crop/keepColor: code cũ chồng thẳng lên [0:v].
+  assert.deepEqual(scaleFilter({ fit: "none" }), { filter: "", w: null, h: null });
+});
+
+test("buildLayerChain với fit=none và không treatment thì không sinh câu lệnh nào", () => {
+  const r = buildLayerChain({ geometry: { fit: "none" }, treatments: [] }, "0:v", labeller());
+  assert.deepEqual(r.statements, []);
+  assert.equal(r.outLabel, "0:v");
+});
+
+test("buildLayerChain với fit=none vẫn áp được treatment", () => {
+  const r = buildLayerChain(
+    { geometry: { fit: "none" }, treatments: [{ kind: "blur", sigma: 20 }] }, "0:v", labeller()
+  );
+  assert.deepEqual(r.statements, ["[0:v]gblur=sigma=20[t0]"]);
+});
 ```
 
 - [ ] **Step 2: Chạy test để chắc chắn nó thất bại**
@@ -519,6 +537,12 @@ export function anchorExpr(anchor, dx = 0, dy = 0) {
 // kích thước để sinh nguồn, và w=null báo "không biết trước" (scale=-2).
 export function scaleFilter(geometry = {}) {
   const g = geometry || {};
+  // "none" = dùng nguồn y nguyên, KHÔNG sinh bước scale nào. Cần cho lớp nền của
+  // chromaKey/crop/keepColor: code cũ chồng thẳng lên [0:v] chứ không scale nó, nên preset
+  // muốn ra đúng graph cũ thì phải bỏ được bước scale. Ngoài chuyện khớp graph, đây còn
+  // tránh một bước scale vô ích trên từng khung hình của cả mẻ 60 video.
+  // buildLayerChain đã xử lý được chuỗi rỗng sẵn (outLabel = nhãn nguồn, 0 câu lệnh).
+  if (g.fit === "none") return { filter: "", w: null, h: null };
   if (g.fit === "scale") {
     const raw = Number(g.value);
     const ratio = raw > 0 && raw <= 1 ? raw : DEFAULT_SCALE;
@@ -1074,13 +1098,25 @@ const bg = { id: "bg", source: { type: "background" }, geometry: { fit: "full" }
 const ov = { id: "ov", source: { type: "overlay" }, geometry: { fit: "full" } };
 
 test("compilePreset: nền dưới, video gốc trên, không input phụ", () => {
-  const r = compilePreset({ layers: [bg, { ...ov, geometry: { fit: "full" } }] });
+  // anchor khai TƯỜNG MINH: test này nói về thứ tự lớp, không được ngầm phụ thuộc giá trị
+  // mặc định của anchor (có test riêng bên dưới lo việc đó).
+  const r = compilePreset({
+    layers: [bg, { ...ov, geometry: { fit: "full", anchor: "top-left" } }],
+  });
   assert.deepEqual(r.extraInputs, []);
   const joined = r.filterGraph.join("|");
   assert.match(joined, /\[0:v\]scale=1280:720/);
   assert.match(joined, /\[1:v\]scale=1280:720/);
   assert.match(joined, /overlay=0:0:shortest=1\[combined_video\]/);
   assert.ok(r.filterGraph.includes("[1:a]volume=1.0[overlay_audio]"));
+});
+
+test("compilePreset: lớp không khai anchor thì rơi về center, đúng như anchorExpr", () => {
+  // anchorExpr coi mọi giá trị ngoài 9 điểm neo (kể cả undefined) là center — hành vi đã
+  // chốt ở Task 2. Với lớp phủ kín khung thì (W-w)/2 = 0 nên kết quả SỐ vẫn là 0:0, chỉ
+  // khác chuỗi; preset nào cần đúng chuỗi "0:0" thì khai anchor: "top-left".
+  const r = compilePreset({ layers: [bg, { ...ov, geometry: { fit: "full" } }] });
+  assert.match(r.filterGraph.join("|"), /overlay=\(W-w\)\/2:\(H-h\)\/2:shortest=1/);
 });
 
 test("compilePreset: lớp dưới cùng KHÔNG có bước chồng, nó là nền của chuỗi", () => {
@@ -1305,8 +1341,11 @@ export function compilePreset(preset) {
     const inLabel = sourceLabel(layer);
     if (!inLabel) continue;
 
-    // Lớp waveform và solid đã có kích thước đúng từ nguồn; các lớp khác đi qua chuỗi
-    // scale + treatment bình thường.
+    // Chỉ waveform đi đường riêng: câu lệnh showwaves của nó đã được đẩy vào filterGraph
+    // ngay lúc cấp nguồn, và nó đã có đúng kích thước nên không cần scale nữa.
+    // Lớp solid thì KHÔNG đi đường riêng dù nguồn color= cũng đã đúng kích thước: cho nó
+    // qua buildLayerChain thì treatment (opacity, blur…) mới áp được lên nó. Bước scale
+    // lặp lại là vô hại vì cùng kích thước.
     const built =
       layer?.source?.type === "waveform"
         ? { statements: [], outLabel: inLabel, ...scaleFilter(layer.geometry) }
@@ -1335,6 +1374,22 @@ export function compilePreset(preset) {
     stage = out;
   }
 
+  // Lớp waveform đẩy câu lệnh thẳng vào filterGraph chứ không qua pending. Nếu nó là lớp
+  // duy nhất còn sống thì pending rỗng, bước đổi tên bên dưới không có gì để đổi, và graph
+  // ra THIẾU HẲN [combined_video] — ffmpeg chết với lỗi khó hiểu thay vì báo sai preset.
+  // Chèn một bước copy để hợp đồng đúng về cấu trúc, không phụ thuộc loại lớp nào đi
+  // đường riêng.
+  if (stage !== null && !pending.length) {
+    const out = nextLabel();
+    pending.push(`[${stage}]copy[${out}]`);
+    stage = out;
+  }
+  // Không lớp nào dựng được hình: graph không dùng được. validatePreset đã chặn trường hợp
+  // này, nhưng compilePreset phải tự nói ra khi bị gọi mà bỏ qua bước kiểm.
+  if (stage === null) {
+    warnings.push("⚠️ Preset không có lớp nào dựng được hình — graph không dùng được");
+  }
+
   // Nhãn cuối cùng phải là [combined_video] — hợp đồng với renderOne. Đổi tên ở bước cuối
   // thay vì đoán trước lớp nào là lớp cuối.
   const rewritten = pending.map((s, i) =>
@@ -1349,7 +1404,7 @@ export function compilePreset(preset) {
 - [ ] **Step 4: Chạy test để chắc chắn nó xanh**
 
 Run: `node --test tests/layer-compiler.test.js`
-Expected: PASS — 44 test
+Expected: PASS — 46 test (34 của Task 2-4 + 12 mới)
 
 Nếu test "lớp dưới cùng KHÔNG có bước chồng" thất bại vì graph chỉ có 2 lớp mà `pending` rỗng ở nhánh `stage === null`, kiểm lại: lớp đầu tiên chỉ đóng góp `statements`, không đóng góp bước `overlay=`.
 
@@ -1371,6 +1426,17 @@ Ba khác biệt **cố ý**, khai báo tường minh chứ không nới lỏng c
 1. `:shortest=1` thêm vào 3 mode cũ chưa có → so bằng `{ ignoreShortest: true }`, kèm assert riêng rằng preset có `shortest=1`.
 2. Toạ độ overlay dạng biểu thức thay vì số → so bằng `{ ignoreOverlayCoords: true }`, kèm assert riêng về chuỗi toạ độ.
 3. `keepColor` dùng lớp `solid` thay `geq` → chỉ so nhánh **không** bật `keepAddDarkLayer`.
+
+**Khác biệt thứ 4, phát hiện khi triển khai và ĐÃ KHÉP LẠI — không phải nới lỏng phép so.**
+`chromaKey` (`render-core.js:80`), `crop` (`render-core.js:95`) và `keepColor`
+(`render-core.js:159`) chồng thẳng lên `[0:v]`: **không scale lớp nền**. Chỉ `topTransparent`
+và `blurFrame` scale nó. Compiler ban đầu luôn sinh `scale=1280:720` cho mọi lớp nên graph
+của 3 mode kia có thêm một node và phép so báo khác nhau.
+
+Khép lại bằng `fit: "none"` (xem Task 2): lớp nền của 3 preset đó khai `"geometry": { "fit":
+"none" }`, compiler không sinh bước scale, graph khớp đúng. Cách này **bổ sung năng lực**
+thay vì nới lỏng thước đo — và bỏ được một bước scale vô ích trên từng khung hình của cả mẻ
+60 video. `topTransparent` và `blurFrame` giữ `fit: "full"` vì code cũ của chúng *có* scale nền.
 
 **Files:**
 - Create: `presets-builtin/topTransparent.json`, `chromaKey.json`, `crop.json`, `keepColor.json`, `blurFrame.json`
@@ -1561,7 +1627,7 @@ Expected: FAIL — `ENOENT ... presets-builtin/topTransparent.json`
   "label": "Chroma Key",
   "base": { "w": 1280, "h": 720 },
   "layers": [
-    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "full" }, "treatments": [], "blend": "normal" },
+    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
     { "id": "ov", "label": "Video gốc", "source": { "type": "overlay" }, "geometry": { "fit": "full", "anchor": "bottom-left" }, "treatments": [{ "kind": "chromakey", "color": "D4F9D7", "similarity": 0.3, "blend": 0.1 }], "blend": "normal" }
   ]
 }
@@ -1576,7 +1642,7 @@ Expected: FAIL — `ENOENT ... presets-builtin/topTransparent.json`
   "label": "Crop",
   "base": { "w": 1280, "h": 720 },
   "layers": [
-    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "full" }, "treatments": [], "blend": "normal" },
+    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
     { "id": "person", "label": "Ảnh người", "slot": "anh_nguoi", "source": { "type": "image", "path": "" }, "geometry": { "fit": "box", "w": -2, "h": 450, "anchor": "bottom-center", "dx": 0, "dy": -220 }, "treatments": [], "blend": "normal" },
     { "id": "strip", "label": "Dải crop", "source": { "type": "overlay" }, "geometry": { "fit": "full", "anchor": "bottom-left" }, "treatments": [{ "kind": "cropStrip", "height": 220, "yOffset": 490 }, { "kind": "grayContrast", "brightness": "-1.0", "contrast": "3.0", "gamma": "1.2", "saturation": "0" }, { "kind": "opacity", "value": 0.8 }], "blend": "normal" }
   ]
@@ -1592,7 +1658,7 @@ Expected: FAIL — `ENOENT ... presets-builtin/topTransparent.json`
   "label": "Giữ màu",
   "base": { "w": 1280, "h": 720 },
   "layers": [
-    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "full" }, "treatments": [], "blend": "normal" },
+    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
     { "id": "dark", "label": "Lớp nền tối", "source": { "type": "solid", "color": "black" }, "geometry": { "fit": "box", "w": 1280, "h": 220, "anchor": "bottom-left" }, "treatments": [], "blend": "normal" },
     { "id": "kept", "label": "Màu giữ lại", "source": { "type": "overlay" }, "geometry": { "fit": "full", "anchor": "bottom-left" }, "treatments": [{ "kind": "cropStrip", "height": 220, "yOffset": 490 }, { "kind": "keepColors", "colors": ["FBFF02"], "similarity": 0.2 }], "blend": "normal" }
   ]

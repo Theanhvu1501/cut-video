@@ -97,6 +97,32 @@ function blurOverlayCoords(filter) {
   return `overlay=@:@${rest}`;
 }
 
+// Bước 1 của việc phá tie: nếu hai câu lệnh trong cùng lớp topo có filter + nhãn vào đã
+// chuẩn hoá GIỐNG HỆT nhau, không được lấy vị trí trong mảng gốc để phân định — vị trí đó
+// vô nghĩa về cấu trúc (đó chính là thứ công cụ này tồn tại để loại bỏ), nhưng
+// Array.prototype.sort ổn định sẽ ngầm rơi về nó nếu sort key không phân biệt được hai
+// phần tử. Nhìn xuống MỘT tầng: multiset chuỗi filter của các câu lệnh tiêu thụ trực tiếp
+// output của nó (downstream). Tính từ toàn bộ danh sách câu lệnh qua nhãn nối chúng, nên
+// chỉ phụ thuộc cấu trúc đồ thị, không phụ thuộc thứ tự mảng đầu vào — hai graph đẳng cấu
+// dù đảo thứ tự mảng vẫn ra cùng khoá downstream cho từng câu lệnh tương ứng.
+function downstreamConsumerKeys(stmts) {
+  const consumersByLabel = new Map();
+  for (const s of stmts) {
+    for (const l of s.ins) {
+      if (!consumersByLabel.has(l)) consumersByLabel.set(l, []);
+      consumersByLabel.get(l).push(s.filter);
+    }
+  }
+  const keys = new Map();
+  for (const s of stmts) {
+    const consumers = [];
+    for (const l of s.outs) consumers.push(...(consumersByLabel.get(l) || []));
+    consumers.sort();
+    keys.set(s, consumers.join(" "));
+  }
+  return keys;
+}
+
 export function canonicalGraph(filterConfig, opts = {}) {
   // Bung chuỗi TRƯỚC khi áp tuỳ chọn: sau khi bung thì mỗi câu lệnh đúng một filter, nên
   // blurOverlayCoords chỉ nhìn vào filter overlay thật, không nhìn vào cả chuỗi.
@@ -117,6 +143,10 @@ export function canonicalGraph(filterConfig, opts = {}) {
     }
   }
 
+  // Lookahead một tầng để phá tie đúng cấu trúc — xem comment tại downstreamConsumerKeys.
+  // Tính một lần cho cả graph, dùng chung cho mọi lớp topo.
+  const downstreamKeys = downstreamConsumerKeys(stmts);
+
   let n = 0;
   const pending = [...stmts];
   const ordered = [];
@@ -126,14 +156,31 @@ export function canonicalGraph(filterConfig, opts = {}) {
       throw new Error(`graph có nhãn treo hoặc vòng lặp: ${pending.map((s) => s.filter).join(" | ")}`);
     }
     // Sắp thứ tự trong cùng một lớp topo bằng chuỗi filter + tên nhãn ĐÃ chuẩn hoá của
-    // input — hai thứ đó so được giữa hai graph khác tên nhãn, nên số L{n} gán ra giống
-    // nhau cho hai graph đẳng cấu.
-    ready.sort((a, b) => {
-      const ka = `${a.filter}\u0000${a.ins.map((l) => map.get(l)).join(",")}`;
-      const kb = `${b.filter}\u0000${b.ins.map((l) => map.get(l)).join(",")}`;
-      return ka < kb ? -1 : ka > kb ? 1 : 0;
-    });
-    for (const s of ready) {
+    // input, cộng thêm lookahead downstream để phá tie khi hai câu lệnh có filter+input
+    // giống hệt nhau — ba thứ đó so được giữa hai graph khác tên nhãn, nên số L{n} gán ra
+    // giống nhau cho hai graph đẳng cấu bất kể thứ tự mảng gốc.
+    const readyKeyed = ready
+      .map((s) => ({
+        s,
+        key: `${s.filter} ${s.ins.map((l) => map.get(l)).join(",")} ${downstreamKeys.get(s)}`,
+      }))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+
+    // Nếu sau lookahead vẫn còn hai câu lệnh trùng key hoàn toàn thì đó là hai nhánh đối
+    // xứng THẬT — không còn thông tin cấu trúc nào phân biệt được chúng nữa. Phải NÉM LỖI
+    // chứ không được đoán: với một oracle dùng làm test hồi quy, "từ chối so kèm lý do rõ"
+    // là an toàn, còn "đoán rồi coi hai nhánh tương đương" có thể gán nhầm nhãn qua lại,
+    // khiến hai graph thực sự khác nhau bị báo "bằng nhau" một cách âm thầm — sai lệch đó
+    // sẽ không ai phát hiện ra cho tới khi ffmpeg render sai.
+    for (let i = 1; i < readyKeyed.length; i++) {
+      if (readyKeyed[i].key === readyKeyed[i - 1].key) {
+        throw new Error(
+          `graph có nhánh đối xứng, normalizer không phân biệt được: ${readyKeyed[i - 1].s.filter}, ${readyKeyed[i].s.filter}`
+        );
+      }
+    }
+
+    for (const { s } of readyKeyed) {
       for (const l of s.outs) {
         map.set(l, CONTRACT_LABELS.has(l) ? l : `L${n++}`);
         known.add(l);

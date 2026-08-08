@@ -123,3 +123,33 @@ test("ignoreOverlayCoords bỏ qua x:y nhưng GIỮ các tham số sau", () => {
 test("canonicalGraph ném lỗi khi graph có nhãn treo", () => {
   assert.throws(() => canonicalGraph(["[khong_ton_tai]copy[combined_video]"]), /nhãn treo/);
 });
+
+test("canonicalGraph phá tie bằng lookahead downstream, không phụ thuộc thứ tự mảng gốc", () => {
+  // Counterexample của reviewer: hai câu lệnh "copy" cùng filter, cùng input [0:v] — trùng
+  // sort key nếu chỉ nhìn filter+input. Chỉ đổi chỗ 2 dòng đầu (case1 vs case2), đồ thị với
+  // ffmpeg là MỘT (x luôn đi vào negate, y luôn đi vào hflip). Nếu tie rơi về vị trí mảng
+  // gốc thì case1 và case2 ra hai chuỗi chuẩn khác nhau — false positive.
+  const case1 = [
+    "[0:v]copy[x]", "[0:v]copy[y]",
+    "[x]negate[out1]", "[y]hflip[out2]",
+    "[out1][out2]overlay=0:0[combined_video]",
+  ];
+  const case2 = [
+    "[0:v]copy[y]", "[0:v]copy[x]",
+    "[x]negate[out1]", "[y]hflip[out2]",
+    "[out1][out2]overlay=0:0[combined_video]",
+  ];
+  assert.equal(canonicalGraph(case1), canonicalGraph(case2));
+});
+
+test("canonicalGraph ném lỗi khi có nhánh đối xứng thật, không đoán", () => {
+  // Hai nhánh cùng filter, cùng input, consumer cũng cùng filter: sau lookahead một tầng
+  // vẫn trùng key hoàn toàn — không còn thông tin cấu trúc nào phân biệt được x với y.
+  // Phải ném lỗi, không được đoán rồi coi là bằng nhau.
+  const g = [
+    "[0:v]copy[x]", "[0:v]copy[y]",
+    "[x]negate[out1]", "[y]negate[out2]",
+    "[out1][out2]overlay=0:0[combined_video]",
+  ];
+  assert.throws(() => canonicalGraph(g), /nhánh đối xứng/);
+});

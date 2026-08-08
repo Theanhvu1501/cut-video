@@ -41,7 +41,18 @@ Vấn đề nó giải: thứ tự câu lệnh trong `filter_complex` **không**
 - Produces:
   - `parseStatement(text: string) -> { ins: string[], filter: string, outs: string[] }`
   - `flattenStatements(filterConfig: string[]) -> string[]`
+  - `splitChain(filterText: string) -> string[]` — chẻ `"a=1,b=2"` thành `["a=1","b=2"]`, **không** cắt ở dấu phẩy nằm trong ngoặc hay trong dấu nháy
   - `canonicalGraph(filterConfig: string[], opts?: { ignoreShortest?: boolean, ignoreOverlayCoords?: boolean }) -> string`
+
+**Vì sao phải có `splitChain`:** chỗ đặt nhãn trung gian là tuỳ ý người viết. Code cũ chẻ
+chuỗi của mode `crop` thành **3 câu lệnh** (`[cropped]`, `[filtered]`, `[overlay_video]`),
+compiler gộp thành **1 câu lệnh**. Hai thứ đó hoàn toàn tương đương với ffmpeg. Nếu
+normalizer so theo câu lệnh thì nó báo "khác nhau" — nên trước khi chuẩn hoá phải **bung
+mỗi chuỗi thành từng filter một**, mỗi filter một câu lệnh riêng. Dạng chuẩn khi đó không
+còn phụ thuộc chỗ đặt nhãn.
+
+Cạm bẫy: `blend=all_expr='max(A,B)'` **có dấu phẩy bên trong**. Chẻ bừa theo dấu phẩy là
+làm hỏng filter đó.
 
 - [ ] **Step 1: Viết test thất bại**
 
@@ -50,7 +61,7 @@ Tạo `tests/graph-dag.test.js`:
 ```js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseStatement, flattenStatements, canonicalGraph } from "./graph-dag.js";
+import { parseStatement, flattenStatements, splitChain, canonicalGraph } from "./graph-dag.js";
 
 test("parseStatement bóc nhãn vào, chuỗi filter, nhãn ra", () => {
   assert.deepEqual(parseStatement("[0:v][top]overlay=0:0[out]"), {
@@ -75,6 +86,46 @@ test("parseStatement không nhầm dấu ngoặc bên trong biểu thức filter
 test("flattenStatements tách những phần bị join bằng dấu ;", () => {
   const out = flattenStatements(["[0:v]scale=1:1[a];[a]negate[b]", "[b]copy[c]"]);
   assert.deepEqual(out, ["[0:v]scale=1:1[a]", "[a]negate[b]", "[b]copy[c]"]);
+});
+
+test("splitChain chẻ chuỗi filter theo dấu phẩy", () => {
+  assert.deepEqual(splitChain("scale=1280:720,negate,copy"), ["scale=1280:720", "negate", "copy"]);
+});
+
+test("splitChain KHÔNG cắt ở dấu phẩy trong ngoặc hoặc trong nháy", () => {
+  assert.deepEqual(splitChain("blend=all_expr='max(A,B)'"), ["blend=all_expr='max(A,B)'"]);
+  assert.deepEqual(splitChain("blend=all_expr='max(A,B)',negate"), [
+    "blend=all_expr='max(A,B)'", "negate",
+  ]);
+  assert.deepEqual(splitChain("overlay=(W-w)/2:(H-h)/2,copy"), ["overlay=(W-w)/2:(H-h)/2", "copy"]);
+});
+
+test("canonicalGraph coi một chuỗi gộp và chuỗi bị chẻ ra là BẰNG NHAU", () => {
+  // Đây là khác biệt cốt lõi giữa code cũ và compiler: chỗ đặt nhãn trung gian là tuỳ ý.
+  const gop = ["[1:v]scale=1280:720,crop=1280:220:0:490,negate[combined_video]"];
+  const che = [
+    "[1:v]scale=1280:720,crop=1280:220:0:490[cropped]",
+    "[cropped]negate[combined_video]",
+  ];
+  const che3 = [
+    "[1:v]scale=1280:720[a]",
+    "[a]crop=1280:220:0:490[b]",
+    "[b]negate[combined_video]",
+  ];
+  assert.equal(canonicalGraph(gop), canonicalGraph(che));
+  assert.equal(canonicalGraph(gop), canonicalGraph(che3));
+});
+
+test("canonicalGraph vẫn phát hiện khác nhau khi THỨ TỰ filter trong chuỗi đổi", () => {
+  const a = ["[1:v]scale=1280:720,negate[combined_video]"];
+  const b = ["[1:v]negate,scale=1280:720[combined_video]"];
+  assert.notEqual(canonicalGraph(a), canonicalGraph(b));
+});
+
+test("canonicalGraph bung chuỗi mà vẫn giữ đúng câu lệnh nhiều nhãn ra", () => {
+  const a = ["[1:v]scale=1280:720,split=2[m][d]", "[m][d]alphamerge[combined_video]"];
+  const b = ["[1:v]scale=1280:720[s]", "[s]split=2[m][d]", "[m][d]alphamerge[combined_video]"];
+  assert.equal(canonicalGraph(a), canonicalGraph(b));
 });
 
 test("canonicalGraph coi hai graph chỉ khác TÊN NHÃN là bằng nhau", () => {
@@ -184,6 +235,54 @@ export function flattenStatements(filterConfig) {
     .filter(Boolean);
 }
 
+// Chẻ "a=1,b=2" thành ["a=1","b=2"]. Không cắt ở dấu phẩy nằm trong ngoặc hoặc trong dấu
+// nháy: blend=all_expr='max(A,B)' có dấu phẩy bên trong, chẻ bừa là làm hỏng filter.
+export function splitChain(filterText) {
+  const s = String(filterText || "");
+  const out = [];
+  let buf = "";
+  let depth = 0;
+  let quote = null;
+  for (const ch of s) {
+    if (quote) {
+      if (ch === quote) quote = null;
+      buf += ch;
+      continue;
+    }
+    if (ch === "'" || ch === '"') { quote = ch; buf += ch; continue; }
+    if (ch === "(") depth++;
+    if (ch === ")") depth = Math.max(0, depth - 1);
+    if (ch === "," && depth === 0) { out.push(buf); buf = ""; continue; }
+    buf += ch;
+  }
+  if (buf) out.push(buf);
+  return out.map((f) => f.trim()).filter(Boolean);
+}
+
+// Bung mỗi câu lệnh thành từng filter một, mỗi filter một câu lệnh riêng.
+// Lý do: chỗ đặt nhãn trung gian là TUỲ Ý người viết — code cũ chẻ chuỗi của mode crop
+// thành 3 câu lệnh, compiler gộp thành 1, hai thứ tương đương hoàn toàn với ffmpeg. Bung
+// ra thì dạng chuẩn không còn phụ thuộc chỗ đặt nhãn.
+// Filter đầu giữ nhãn vào gốc, filter cuối giữ nhãn ra gốc, ở giữa cấp nhãn tạm.
+function expandChains(statements) {
+  const out = [];
+  let seq = 0;
+  for (const s of statements) {
+    const filters = splitChain(s.filter);
+    if (filters.length <= 1) { out.push(s); continue; }
+    let prev = null;
+    filters.forEach((f, i) => {
+      const first = i === 0;
+      const last = i === filters.length - 1;
+      const ins = first ? s.ins : [prev];
+      const outs = last ? s.outs : [`__ex${seq++}`];
+      out.push({ ins, filter: f, outs });
+      prev = outs[0];
+    });
+  }
+  return out;
+}
+
 // overlay=X:Y[:opt...] -> overlay=@:@[:opt...]. Tách theo ":" chứ không regex: biểu thức
 // toạ độ như (W-w)/2 không chứa ":" nên tách an toàn, và các tham số sau phải giữ lại để
 // vẫn so được shortest=1.
@@ -195,8 +294,11 @@ function blurOverlayCoords(filter) {
 }
 
 export function canonicalGraph(filterConfig, opts = {}) {
-  const stmts = flattenStatements(filterConfig).map((t) => {
-    const s = parseStatement(t);
+  // Bung chuỗi TRƯỚC khi áp tuỳ chọn: sau khi bung thì mỗi câu lệnh đúng một filter, nên
+  // blurOverlayCoords chỉ nhìn vào filter overlay thật, không nhìn vào cả chuỗi.
+  const stmts = expandChains(
+    flattenStatements(filterConfig).map((t) => parseStatement(t))
+  ).map((s) => {
     let filter = s.filter;
     if (opts.ignoreOverlayCoords) filter = blurOverlayCoords(filter);
     if (opts.ignoreShortest) filter = filter.replace(/:shortest=1/g, "");
@@ -253,7 +355,7 @@ export function canonicalGraph(filterConfig, opts = {}) {
 - [ ] **Step 4: Chạy test để chắc chắn nó xanh**
 
 Run: `node --test tests/graph-dag.test.js`
-Expected: PASS — 11 test
+Expected: PASS — 16 test
 
 - [ ] **Step 5: Commit**
 
@@ -374,6 +476,9 @@ export const BASE_H = 720;
 const DEFAULT_SCALE = 0.85;
 
 // yuv420p yêu cầu chiều rộng/cao chẵn nên phải làm tròn XUỐNG số chẵn.
+// Trùng với evenDown trong render-core.js là CỐ Ý, không phải quên DRY: render-core.js
+// import file này (nhánh composer của renderOne), nên import ngược lại là vòng tròn.
+// Chiều phụ thuộc phải một hướng — layer-compiler không được biết gì về render-core.
 function evenDown(value) {
   const n = Math.round(value);
   return n % 2 === 0 ? n : n - 1;
@@ -504,14 +609,16 @@ test("opacity: format=yuva420p nằm TRƯỚC colorchannelmixer (khớp crop cũ
       geometry: { fit: "full" },
       treatments: [
         { kind: "cropStrip", height: 220, yOffset: 490 },
-        { kind: "grayContrast", brightness: -1.0, contrast: 3.0, gamma: 1.2, saturation: 0 },
+        // Chuỗi, không phải số: code cũ ghi cứng "-1.0"/"3.0", mà String(Number(-1.0))
+        // cho ra "-1". Preset giữ dạng chuỗi để sinh ra đúng chuỗi cũ.
+        { kind: "grayContrast", brightness: "-1.0", contrast: "3.0", gamma: "1.2", saturation: "0" },
         { kind: "opacity", value: 0.8 },
       ],
     },
     "1:v", labeller()
   );
   assert.deepEqual(r.statements, [
-    "[1:v]scale=1280:720,crop=1280:220:0:490,eq=brightness=-1:contrast=3:gamma=1.2:saturation=0," +
+    "[1:v]scale=1280:720,crop=1280:220:0:490,eq=brightness=-1.0:contrast=3.0:gamma=1.2:saturation=0," +
       "format=yuva420p,colorchannelmixer=aa=0.8[t0]",
   ]);
   // cropStrip đổi chiều cao của lớp — compiler phải biết để tính neo.
@@ -623,9 +730,14 @@ export const TREATMENT_KINDS = [
   "cropStrip", "grayContrast", "blur", "chromakey", "lumakey", "opacity", "keepColors",
 ];
 
-// Số của JS in ra "3" chứ không phải "3.0" — code cũ viết contrast=3.0 trong template
-// string nên cũng ra "3". Giữ nguyên cách đó để chuỗi khớp nhau.
-const numStr = (v, fallback) => String(v === undefined || v === null || v === "" ? fallback : Number(v));
+// Chuỗi đi qua NGUYÊN VẸN, chỉ số mới bị Number() nắn lại.
+// Lý do: String(Number("-1.0")) cho ra "-1", mà code cũ ghi cứng "brightness=-1.0" trong
+// chuỗi template. Preset giữ được "-1.0" dạng chuỗi thì sinh ra đúng chuỗi cũ; còn người
+// dùng gõ số trong UI thì ra "3" — ffmpeg nhận cả hai như nhau.
+const numStr = (v, fallback) => {
+  if (typeof v === "string" && v.trim() !== "") return v.trim();
+  return String(v === undefined || v === null || v === "" ? fallback : Number(v));
+};
 
 // Nối chuỗi filter của MỘT lớp: scale trước, rồi các treatment theo thứ tự khai báo.
 // keepColors là treatment duy nhất phải cắt chuỗi ra thành nhiều câu lệnh (nó cần split
@@ -1397,7 +1509,7 @@ test("preset blurFrame: extraInputs khớp buildStudioInputs cũ về thứ tự
 
 test("3 preset của mode chưa có shortest=1 thì preset PHẢI có — khác biệt cố ý", () => {
   for (const n of ["topTransparent", "chromaKey", "crop"]) {
-    const old = buildComplexFilter(n === "crop" ? "crop" : n, {}).join("|");
+    const old = buildComplexFilter(n, {}).join("|");
     assert.doesNotMatch(old, /shortest=1/, `${n}: mode cũ lẽ ra không có shortest`);
     const steps = compilePreset(load(n)).filterGraph.filter((s) => s.includes("overlay="));
     for (const s of steps) assert.match(s, /:shortest=1/, `${n}: preset phải có shortest=1`);
@@ -1453,7 +1565,7 @@ Expected: FAIL — `ENOENT ... presets-builtin/topTransparent.json`
   "layers": [
     { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "full" }, "treatments": [], "blend": "normal" },
     { "id": "person", "label": "Ảnh người", "slot": "anh_nguoi", "source": { "type": "image", "path": "" }, "geometry": { "fit": "box", "w": -2, "h": 450, "anchor": "bottom-center", "dx": 0, "dy": -220 }, "treatments": [], "blend": "normal" },
-    { "id": "strip", "label": "Dải crop", "source": { "type": "overlay" }, "geometry": { "fit": "full", "anchor": "bottom-left" }, "treatments": [{ "kind": "cropStrip", "height": 220, "yOffset": 490 }, { "kind": "grayContrast", "brightness": -1, "contrast": 3, "gamma": 1.2, "saturation": 0 }, { "kind": "opacity", "value": 0.8 }], "blend": "normal" }
+    { "id": "strip", "label": "Dải crop", "source": { "type": "overlay" }, "geometry": { "fit": "full", "anchor": "bottom-left" }, "treatments": [{ "kind": "cropStrip", "height": 220, "yOffset": 490 }, { "kind": "grayContrast", "brightness": "-1.0", "contrast": "3.0", "gamma": "1.2", "saturation": "0" }, { "kind": "opacity", "value": 0.8 }], "blend": "normal" }
   ]
 }
 ```

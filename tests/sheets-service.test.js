@@ -17,6 +17,9 @@ test("parseConfigRows maps columns and defaults enabled=true when blank", () => 
     sheetName: "Kênh A", enabled: true, videosPerDay: 3, renderMode: "topTransparent",
     cfg: { opacity: 0.7 }, proxy: "", gpmProfileId: "", postTimes: "",
     rowIndex: 2, channelUrl: "", sourceHandle: "", videoSource: "download",
+    // Task 10: 2 khoá mới luôn có mặt (giống rowIndex/channelUrl/sourceHandle trước đây),
+    // rỗng khi Sheet không có cột preset/asset nào.
+    presetName: "", slotOverrides: {},
   });
   assert.equal(out[1].enabled, true);
   assert.equal(out[1].proxy, "socks5://1.2.3.4:1080");
@@ -151,6 +154,40 @@ test("parseConfigRows đọc cột cách ghép hiệu ứng", () => {
   assert.equal("effectBlend" in out[2].cfg, false);
   assert.equal("effectBlend" in out[3].cfg, false);
   assert.equal("effectKeyThreshold" in out[2].cfg, false);
+});
+
+// Task 10: cột "preset" (mode composer) + ghi đè asset theo khe.
+test("parseConfigRows đọc cột preset", () => {
+  const values = [
+    ["tên kênh", "bật", "video mỗi ngày", "kiểu render", "preset"],
+    ["Kênh A", "x", "3", "composer", "khung-waveform"],
+  ];
+  const rows = parseConfigRows(values);
+  assert.equal(rows[0].renderMode, "composer");
+  assert.equal(rows[0].presetName, "khung-waveform");
+});
+
+test("parseConfigRows gom cột asset thành slotOverrides", () => {
+  const values = [
+    ["tên kênh", "bật", "video mỗi ngày", "kiểu render", "preset", "khung", "ảnh người", "hiệu ứng"],
+    ["Kênh A", "x", "3", "composer", "p1", "D:/kh/hoa.png", "D:/ng/", ""],
+  ];
+  const rows = parseConfigRows(values);
+  assert.equal(rows[0].slotOverrides.khung, "D:/kh/hoa.png");
+  assert.equal(rows[0].slotOverrides.anh_nguoi, "D:/ng/");
+  // Ô trống KHÔNG được thành khoá: để trống nghĩa là dùng mặc định của preset.
+  assert.equal("hieu_ung" in rows[0].slotOverrides, false);
+});
+
+test("parseConfigRows: kênh không dùng composer vẫn chạy như cũ", () => {
+  const values = [
+    ["tên kênh", "bật", "video mỗi ngày", "kiểu render", "chiều cao cắt"],
+    ["Kênh B", "x", "2", "crop", "150"],
+  ];
+  const rows = parseConfigRows(values);
+  assert.equal(rows[0].renderMode, "crop");
+  assert.equal(rows[0].presetName, "");
+  assert.equal(rows[0].cfg.cropHeight, 150);
 });
 
 test("parseConfigRows parses chromaPalette and chromaKeyAuto mode", () => {

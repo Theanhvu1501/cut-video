@@ -3,6 +3,7 @@ import { todayStr, computeRemaining, recordRendered } from "./runner-state.js";
 import { decideAction, skipText, ST, MAX_ATTEMPTS } from "./resume-plan.js";
 import { getEntry, setEntry, clearEntry } from "./resume-state.js";
 import { normalizeProxy } from "./proxy.js";
+import { loadPreset, applySlotOverrides } from "./preset-store.js";
 
 export function pickRandomBackground(files, rand = Math.random) {
   if (!files.length) return null;
@@ -247,6 +248,20 @@ export function createSheetRunner(deps) {
             } catch (err) {
               emit({ type: "log", message: `Dò màu thất bại (${ch.sheetName}), dùng chromaColor cố định: ${String(err?.message || err).slice(0, 120)}` });
             }
+          }
+          if (ch.renderMode === "composer") {
+            const preset = loadPreset(config.presetsDir, ch.presetName);
+            if (!preset) {
+              emit({
+                type: "log",
+                message: `Bỏ qua ${ch.sheetName}: không đọc được preset "${ch.presetName || "(trống)"}"`,
+              });
+              // Đây là thân một hàm async trong .map(), không phải vòng lặp for, nên
+              // "continue" không hợp lệ — "return" thoát callback của riêng item này,
+              // các item/kênh khác chạy song song không bị ảnh hưởng.
+              return;
+            }
+            cfg.preset = applySlotOverrides(preset, ch.slotOverrides);
           }
           emit({ type: "channel-status", channel: ch.sheetName, status: "đang render", url: item.url });
           await renderer({

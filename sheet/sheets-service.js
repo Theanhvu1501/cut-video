@@ -39,6 +39,7 @@ const HEADER_ALIASES = {
   enabled: ["bật", "kích hoạt"],
   videosPerDay: ["video mỗi ngày", "số video mỗi ngày"],
   renderMode: ["kiểu render", "chế độ render"],
+  presetName: ["preset", "bố cục"],
   chromaPalette: ["bảng màu tự dò", "palette"],
   chromaColor: ["màu phông", "màu chroma"],
   chromaSimilarity: ["độ nhạy chroma"],
@@ -67,6 +68,7 @@ const HEADER_ALIASES = {
   effectOpacity: ["độ mạnh hiệu ứng"],
   effectBlend: ["cách ghép hiệu ứng", "blend hiệu ứng"],
   effectKeyThreshold: ["ngưỡng khử nền tối", "ngưỡng khử nền đen"],
+  backgroundSlot: ["nền", "video nền"],
   proxy: ["proxy tải", "proxy"],
   gpmProfileId: ["gpm profile id", "gpm", "profile gpm"],
   postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
@@ -77,6 +79,15 @@ const HEADER_ALIASES = {
   totalViews: ["tổng view", "tổng lượt xem"],
   videoCount: ["số video"],
   statsUpdatedAt: ["cập nhật lúc"],
+};
+
+// Khe của lớp trong preset -> tên cột Sheet ghi đè đường dẫn asset cho từng kênh.
+// Dùng lại đúng những tên cột đã có, nên sheet đang chạy không phải đổi gì.
+const SLOT_COLUMNS = {
+  nen: "backgroundSlot",
+  khung: "framePath",
+  anh_nguoi: "personPath",
+  hieu_ung: "effectPath",
 };
 
 function acceptedNorms(canonical) {
@@ -184,6 +195,13 @@ export function parseConfigRows(values) {
       .filter((p) => /^[0-9A-F]{6}$/.test(p));
     const vsNorm = norm(col(row, "videoSource"));
     const videoSource = ["tai may", "local", "may", "file"].includes(vsNorm) ? "local" : "download";
+    // Ô trống KHÔNG được thành khoá: applySlotOverrides coi khoá có giá trị là "ghi đè",
+    // nên thêm khoá rỗng sẽ xoá mất đường dẫn mặc định của preset.
+    const slotOverrides = {};
+    for (const [slot, columnKey] of Object.entries(SLOT_COLUMNS)) {
+      const v = col(row, columnKey);
+      if (v) slotOverrides[slot] = v;
+    }
     const channel = {
       sheetName,
       enabled: truthy(col(row, "enabled")),
@@ -197,6 +215,8 @@ export function parseConfigRows(values) {
       channelUrl: col(row, "channelUrl"),
       sourceHandle: col(row, "sourceHandle"),
       videoSource,
+      presetName: col(row, "presetName"),
+      slotOverrides,
     };
     if (chromaPalette.length) channel.chromaPalette = chromaPalette;
     out.push(channel);

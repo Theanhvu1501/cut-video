@@ -437,6 +437,45 @@ test("render lỗi: giữ file overlay, ghi 'lỗi render:', tăng attempts", as
   assert.equal(getResume()["Kênh A"].u1.attempts, 1);
 });
 
+// Task 10 (bản vá theo review): composer với preset không đọc được PHẢI đi qua đúng cỗ
+// máy lỗi chung (catch -> bumpAttempts + ghi Sheet), không được "return" âm thầm — return
+// làm attempts đứng ở 0, ô trạng thái Sheet vẫn "đã tải" mãi, kênh lặp vô hạn mà người vận
+// hành không thấy gì trong Sheet. Kênh khác (không dùng composer) không được ảnh hưởng.
+test("composer: preset không đọc được -> tăng attempts, ghi lỗi vào Sheet, kênh khác vẫn chạy", async () => {
+  const { deps, calls, getResume } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "composer", presetName: "khong-ton-tai", slotOverrides: {}, cfg: {}, proxy: "" },
+        { sheetName: "Kênh B", enabled: true, videosPerDay: 5, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      // config.presetsDir không được truyền (đúng thực tế trước khi electron-main.js nối ở
+      // Giai đoạn 2) -> loadPreset tự trả null qua try/catch của chính nó, không cần mock.
+      readChannelUrls: async (sheetName) => (sheetName === "Kênh A"
+        ? [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }]
+        : [{ rowIndex: 2, url: "u2", status: "", uploadStatus: "" }]),
+      setUrlStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status }),
+      setUploadStatus: async () => {},
+    },
+  });
+  await createSheetRunner(deps).runNow();
+
+  // (a) Không xoá file overlay của Kênh A: nhánh dọn dẹp trong catch chỉ chạy khi
+  // stage === "download", còn ở đây stage đã là "render" lúc ném lỗi.
+  assert.ok(!calls.unlinked.some((p) => /u1/.test(p)), "không được xoá overlay của Kênh A");
+  // (b) attempts PHẢI được bump — đây chính là phần "return" cũ bỏ sót.
+  assert.equal(getResume()["Kênh A"].u1.attempts, 1);
+  // (c) ô trạng thái Sheet của Kênh A PHẢI ghi lỗi (không phải đứng yên ở "đã tải" —
+  // lấy lần ghi CUỐI vì lần đầu luôn là "đã tải" sau bước tải, trước khi chạm preset).
+  const errStatus = calls.status.filter((s) => s.sheetName === "Kênh A").at(-1);
+  assert.ok(errStatus, "phải ghi trạng thái lỗi vào Sheet cho Kênh A");
+  assert.ok(errStatus.status.startsWith(ST.ERR_RENDER), `expected "${ST.ERR_RENDER}", got "${errStatus.status}"`);
+  assert.match(errStatus.status, /không đọc được preset/);
+  // (d) emit đúng mức nghiêm trọng: type "error", không phải "log" nhẹ nhàng.
+  assert.ok(calls.errors.some((e) => e.channel === "Kênh A" && /không đọc được preset/.test(e.message)));
+  // (e) Kênh B không dùng composer: không bị ảnh hưởng, vẫn render bình thường.
+  assert.equal(calls.rendered.filter((p) => /u2/.test(p)).length, 1, "Kênh B vẫn phải render");
+});
+
 test("render xong: xoá overlay, ghi done, lưu outputPath", async () => {
   const { deps, calls, getResume } = makeDeps({
     sheetsApi: {

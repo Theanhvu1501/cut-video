@@ -82,7 +82,9 @@ const HEADER_ALIASES = {
 };
 
 // Khe của lớp trong preset -> tên cột Sheet ghi đè đường dẫn asset cho từng kênh.
-// Dùng lại đúng những tên cột đã có, nên sheet đang chạy không phải đổi gì.
+// Ba khoá khung/anh_nguoi/hieu_ung dùng lại đúng cột đã có nên sheet đang chạy không phải
+// đổi gì. Riêng "nền" là cột MỚI — nó không tồn tại trước đây vì 5 mode cũ lấy nền từ
+// backgroundFolder chứ không theo từng kênh. Cột mới nên để trống thì mọi thứ vẫn như cũ.
 const SLOT_COLUMNS = {
   nen: "backgroundSlot",
   khung: "framePath",
@@ -195,8 +197,9 @@ export function parseConfigRows(values) {
       .filter((p) => /^[0-9A-F]{6}$/.test(p));
     const vsNorm = norm(col(row, "videoSource"));
     const videoSource = ["tai may", "local", "may", "file"].includes(vsNorm) ? "local" : "download";
-    // Ô trống KHÔNG được thành khoá: applySlotOverrides coi khoá có giá trị là "ghi đè",
-    // nên thêm khoá rỗng sẽ xoá mất đường dẫn mặc định của preset.
+    // Ô trống KHÔNG thành khoá: giữ slotOverrides chỉ chứa thứ người dùng thật sự đặt, để
+    // đọc log và debug thấy ngay kênh nào ghi đè gì. (applySlotOverrides cũng tự bỏ qua giá
+    // trị rỗng, nên đây là lớp phòng thủ thứ hai chứ không phải rào duy nhất.)
     const slotOverrides = {};
     for (const [slot, columnKey] of Object.entries(SLOT_COLUMNS)) {
       const v = col(row, columnKey);

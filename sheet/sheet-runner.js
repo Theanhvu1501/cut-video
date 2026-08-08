@@ -252,14 +252,12 @@ export function createSheetRunner(deps) {
           if (ch.renderMode === "composer") {
             const preset = loadPreset(config.presetsDir, ch.presetName);
             if (!preset) {
-              emit({
-                type: "log",
-                message: `Bỏ qua ${ch.sheetName}: không đọc được preset "${ch.presetName || "(trống)"}"`,
-              });
-              // Đây là thân một hàm async trong .map(), không phải vòng lặp for, nên
-              // "continue" không hợp lệ — "return" thoát callback của riêng item này,
-              // các item/kênh khác chạy song song không bị ảnh hưởng.
-              return;
+              // Ném chứ không return: khối catch bên dưới là nơi DUY NHẤT bump attempts và
+              // ghi trạng thái lỗi vào Sheet. Return sớm thì attempts đứng ở 0 mãi, ô trạng
+              // thái vẫn là "đã tải", nên decideAction chọn render-only mỗi lượt — kênh thất
+              // bại vô hình với người vận hành, lặp vô hạn, và ăn một suất render mỗi lượt.
+              // Ném vẫn KHÔNG làm chết kênh khác: mỗi item có catch riêng.
+              throw new Error(`không đọc được preset "${ch.presetName || "(trống)"}"`);
             }
             cfg.preset = applySlotOverrides(preset, ch.slotOverrides);
           }

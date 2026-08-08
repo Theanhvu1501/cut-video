@@ -19,6 +19,7 @@ import {
   personOverlayX,
   cropPersonLayer,
   resolvePersonAsset,
+  resolvePresetAssets,
 } from "../sheet/render-core.js";
 
 test("topTransparent uses opacity and overlay at 0:0", () => {
@@ -499,4 +500,54 @@ test("extractFfmpegError trả chuỗi rỗng khi stderr không có dòng lỗi 
   assert.equal(extractFfmpegError("frame=  120 fps=30\nvideo:1kB"), "");
   assert.equal(extractFfmpegError(""), "");
   assert.equal(extractFfmpegError(undefined), "");
+});
+
+// ===== Composer: chốt asset của preset trước khi dựng graph =====
+
+test("resolvePresetAssets chốt file cụ thể khi path là thư mục", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vm-anh-"));
+  fs.writeFileSync(path.join(dir, "a.png"), "x");
+  const preset = {
+    layers: [
+      { id: "bg", source: { type: "background" }, geometry: { fit: "full" } },
+      { id: "im", source: { type: "image", path: dir }, geometry: { fit: "full" } },
+      { id: "ov", source: { type: "overlay" }, geometry: { fit: "full" } },
+    ],
+  };
+  const r = resolvePresetAssets(preset, () => 0);
+  assert.equal(r.preset.layers[1].source.path, path.join(dir, "a.png"));
+  assert.deepEqual(r.warnings, []);
+});
+
+test("resolvePresetAssets KHÔNG sửa preset đầu vào", () => {
+  const preset = {
+    layers: [{ id: "im", source: { type: "image", path: "/khong/co" }, geometry: { fit: "full" } }],
+  };
+  resolvePresetAssets(preset, () => 0);
+  assert.equal(preset.layers[0].source.path, "/khong/co");
+});
+
+test("resolvePresetAssets cảnh báo và để path rỗng khi đường dẫn hỏng, không ném", () => {
+  const preset = {
+    layers: [
+      { id: "im", label: "Khung", source: { type: "image", path: "/khong/co/thuc" }, geometry: { fit: "full" } },
+    ],
+  };
+  const r = resolvePresetAssets(preset, () => 0);
+  assert.equal(r.preset.layers[0].source.path, "");
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /Khung/);
+});
+
+test("resolvePresetAssets bỏ qua lớp không cần file", () => {
+  const preset = {
+    layers: [
+      { id: "bg", source: { type: "background" }, geometry: { fit: "full" } },
+      { id: "s", source: { type: "solid", color: "black" }, geometry: { fit: "box", w: 10, h: 10 } },
+      { id: "w", source: { type: "waveform" }, geometry: { fit: "box", w: 10, h: 10 } },
+      { id: "ov", source: { type: "overlay" }, geometry: { fit: "full" } },
+    ],
+  };
+  const r = resolvePresetAssets(preset, () => 0);
+  assert.deepEqual(r.warnings, []);
 });

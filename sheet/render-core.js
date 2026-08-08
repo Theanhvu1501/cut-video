@@ -3,6 +3,7 @@ import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { compilePreset } from "./layer-compiler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..");
@@ -449,6 +450,29 @@ export function encoderSettings(useGPU, gpuVideoCodec = "h264_nvenc") {
 let gpuBroken = false;
 export function resetGpuState() { gpuBroken = false; }
 
+// Chốt asset của preset MỘT LẦN trước khi dựng graph. Bắt buộc phải chốt ở đây: run()
+// được gọi lại lần hai khi GPU lỗi phải lùi về CPU, chốt muộn hơn thì lớp có path là
+// thư mục sẽ bốc ra ảnh khác giữa hai lần.
+// Đường dẫn hỏng thì cảnh báo và để rỗng (compilePreset sẽ bỏ lớp đó) chứ không ném:
+// luồng sheet chạy không người trông, một ô gõ sai không đáng làm hỏng cả mẻ video.
+export function resolvePresetAssets(preset, rand = Math.random) {
+  const clone = JSON.parse(JSON.stringify(preset || {}));
+  const warnings = [];
+  for (const layer of clone.layers || []) {
+    const type = layer?.source?.type;
+    if (type !== "image" && type !== "video") continue;
+    const exts = type === "image" ? FRAME_EXTS : EFFECT_EXTS;
+    const file = pickAsset(layer.source.path, exts, rand);
+    if (!file && layer.source.path) {
+      warnings.push(
+        `⚠️ Lớp "${layer.label || layer.id || type}": không tìm được file hợp lệ tại ${layer.source.path} — bỏ qua lớp này`
+      );
+    }
+    layer.source = { ...layer.source, path: file };
+  }
+  return { preset: clone, warnings };
+}
+
 export function renderOne({
   overlayFile, backgroundFile, outputPath,
   renderMode, cfg: cfgIn = {}, useGPU = false, gpuVideoCodec = "h264_nvenc",
@@ -469,6 +493,14 @@ export function renderOne({
     cfg.personPos = pickPersonPos(cfg.personPos);
     if (onProgress) warnings.forEach((w) => onProgress(w));
   }
+  // Composer: bố cục đến từ preset trong cfg.preset thay vì fix cứng theo mode.
+  let composed = null;
+  if (renderMode === "composer") {
+    const { preset, warnings } = resolvePresetAssets(cfg.preset);
+    if (onProgress) warnings.forEach((w) => onProgress(w));
+    composed = compilePreset(preset);
+    if (onProgress) composed.warnings.forEach((w) => onProgress(w));
+  }
   const { ffmpegPath, ffprobePath } = resolveFfmpegPaths();
   ffmpeg.setFfmpegPath(ffmpegPath);
   ffmpeg.setFfprobePath(ffprobePath);
@@ -479,13 +511,15 @@ export function renderOne({
       const duration = metadata.format.duration;
       const newDuration = duration / cfg.videoSpeed;
 
-      const filterConfig = buildComplexFilter(renderMode, cfg);
+      const filterConfig = composed
+        ? [...composed.filterGraph]
+        : buildComplexFilter(renderMode, cfg);
       filterConfig.push(`[combined_video]setpts=PTS/${cfg.videoSpeed}[final_video_speed]`);
       filterConfig.push(`[overlay_audio]atempo=${cfg.videoSpeed}[final_audio_speed]`);
 
       // Input phụ của blurFrame (khung, hiệu ứng); rỗng với 4 mode cũ.
       // Tính một lần để lần thử lại bằng CPU dùng đúng bộ asset đã bốc.
-      const studioInputs = buildStudioInputs(renderMode, cfg);
+      const studioInputs = composed ? composed.extraInputs : buildStudioInputs(renderMode, cfg);
       const say = (m) => { if (onProgress) onProgress(m); };
 
       const run = (gpuOn) => {
@@ -494,7 +528,8 @@ export function renderOne({
           .input(overlayFile);
 
         for (const extra of studioInputs) {
-          command.input(extra.file).inputOptions(extra.inputOptions);
+          // Lớp solid không có file: nó là nguồn sinh của ffmpeg (-f lavfi -i color=…).
+          command.input(extra.lavfi ?? extra.file).inputOptions(extra.inputOptions);
         }
 
         command

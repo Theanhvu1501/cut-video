@@ -204,6 +204,62 @@ test("toạ độ blurFrame: biểu thức của compiler bằng số của code
   assert.equal((720 - 612) / 2, 54);
 });
 
+test("toạ độ lớp chồng chính của 4 preset còn lại: khớp nguyên văn code cũ", () => {
+  // Bốn chỗ này code cũ và compiler ra chuỗi GIỐNG HỆT, khác duy nhất :shortest=1 — nên
+  // assert nguyên văn được, không cần suy luận số như blurFrame. Không có assert này thì
+  // ignoreOverlayCoords làm mờ luôn chúng và anchor sai sẽ không ai bắt.
+
+  // topTransparent: nền chồng lên video gốc ở góc trên trái.
+  {
+    const p = load("topTransparent");
+    const op = p.layers.find((l) => l.source.type === "background")
+      .treatments.find((t) => t.kind === "opacity");
+    const old = buildComplexFilter("topTransparent", { opacity: op.value }).join("|");
+    assert.match(old, /overlay=0:0\[combined_video\]/);
+    assert.match(compilePreset(p).filterGraph.join("|"), /overlay=0:0:shortest=1\[combined_video\]/);
+  }
+
+  // chromaKey: video gốc dán sát đáy.
+  {
+    const p = load("chromaKey");
+    const ck = p.layers.find((l) => l.source.type === "overlay")
+      .treatments.find((t) => t.kind === "chromakey");
+    const old = buildComplexFilter("chromaKey", {
+      chromaColor: ck.color, chromaSimilarity: ck.similarity,
+    }).join("|");
+    assert.match(old, /overlay=0:H-h\[combined_video\]/);
+    assert.match(compilePreset(p).filterGraph.join("|"), /overlay=0:H-h:shortest=1\[combined_video\]/);
+  }
+
+  // crop: dải crop là lớp CUỐI (nó chứa phụ đề nên không được để ảnh che), dán sát đáy.
+  {
+    const p = load("crop");
+    p.layers = p.layers.filter((l) => l.source.type !== "image");
+    const strip = p.layers.find((l) => l.source.type === "overlay")
+      .treatments.find((t) => t.kind === "cropStrip");
+    const old = buildComplexFilter("crop", {
+      cropHeight: strip.height, cropYOffset: strip.yOffset,
+    }).join("|");
+    assert.match(old, /overlay=0:H-h\[combined_video\]/);
+    assert.match(compilePreset(p).filterGraph.join("|"), /overlay=0:H-h:shortest=1\[combined_video\]/);
+  }
+
+  // keepColor: lớp giữ màu dán sát đáy. Code cũ ở đây ĐÃ có shortest=1 nên khớp trọn vẹn.
+  {
+    const p = load("keepColor");
+    p.layers = p.layers.filter((l) => l.source.type !== "solid");
+    const ovl = p.layers.find((l) => l.source.type === "overlay");
+    const strip = ovl.treatments.find((t) => t.kind === "cropStrip");
+    const keep = ovl.treatments.find((t) => t.kind === "keepColors");
+    const old = buildComplexFilter("keepColor", {
+      keepColors: keep.colors, keepSimilarity: keep.similarity, keepCrop: true,
+      keepHeight: strip.height, keepYOffset: strip.yOffset, keepAddDarkLayer: false,
+    }).join("|");
+    assert.match(old, /overlay=0:H-h:shortest=1\[combined_video\]/);
+    assert.match(compilePreset(p).filterGraph.join("|"), /overlay=0:H-h:shortest=1\[combined_video\]/);
+  }
+});
+
 test("preset blurFrame: extraInputs khớp buildStudioInputs cũ về thứ tự và cờ", () => {
   const p = load("blurFrame");
   p.layers.find((l) => l.source.type === "image").source.path = "khung.png";

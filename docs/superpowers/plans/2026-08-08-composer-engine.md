@@ -20,7 +20,12 @@
 - **Nhãn hợp đồng**: graph phải kết thúc bằng `[combined_video]` và có `[overlay_audio]`.
 - **Toạ độ luôn là biểu thức**, không tính sẵn thành số.
 - **Mọi bước chồng đều có `:shortest=1`.**
-- Chạy test: `npm test` (= `node --test 'tests/*.test.js'`). Chạy một file: `node --test tests/layer-compiler.test.js`.
+- **Chạy toàn bộ test: `node --test tests/*.test.js`** (glob do shell bung ra). **Không dùng `npm test`** trên máy Windows này: script là `node --test 'tests/*.test.js'`, dấu nháy đơn không được bung nên node nhận chuỗi literal và chạy **0 test** — một bước kiểm chứng luôn "xanh" vì không chạy gì cả. Chạy một file: `node --test tests/layer-compiler.test.js`.
+- **Mốc test trước khi bắt đầu: 313/317 pass, 4 fail có sẵn.** Cả 4 là lỗi dấu phân cách đường dẫn Windows trong chính test (kỳ vọng `/out/u1.mp4`, `path.join` cho `\out\u1.mp4`) — **ngoài phạm vi kế hoạch này, không được sửa**. Các bước "chạy toàn bộ test" phải so với mốc này, không phải so với "tất cả xanh":
+  - `sheet-runner.test.js` — `render-only: bỏ qua bước tải khi file overlay còn trên đĩa`
+  - `sheet-runner.test.js` — `render xong: xoá overlay, ghi done, lưu outputPath`
+  - `upload-queue.test.js` — `quên mở GPM: lượt sau mở lên thì tự upload lại`
+  - `resume-plan.test.js` — `prepareJob: lấy thumb trong overlays theo title + cấp slot ngày mai`
 - Comment và thông báo lỗi viết **tiếng Việt**, theo đúng văn phong `sheet/render-core.js`: giải thích *tại sao*, không diễn giải lại code.
 - Commit message tiếng Việt theo mẫu sẵn có: `feat(composer): …`, `test(composer): …`.
 

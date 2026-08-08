@@ -208,13 +208,22 @@ export function validatePreset(preset) {
   const seen = new Set();
   for (const l of layers) {
     const type = l?.source?.type;
-    if (!SOURCE_TYPES.includes(type)) errors.push(`loại nguồn không hợp lệ: ${type}`);
+    if (!SOURCE_TYPES.includes(type)) {
+      // String(type) để không ném TypeError nếu type là Symbol hay giá trị không convert được thành chuỗi.
+      // Hàm này PHẢI luôn trả { ok, errors }, không được ném lỗi làm chết cả mẻ render.
+      errors.push(`loại nguồn không hợp lệ: ${String(type)}`);
+    }
     if (BOX_ONLY.has(type) && l?.geometry?.fit !== "box") {
       errors.push(`lớp ${type} buộc dùng fit: "box" vì kích thước nằm trong tham số sinh nguồn`);
     }
     const id = l?.id;
-    if (id) {
-      if (seen.has(id)) errors.push(`id lớp bị trùng: ${id}`);
+    // id !== undefined để bắt cả giá trị falsy như "" (chuỗi rỗng) và 0 nếu chúng có mặt thực sự.
+    // Nếu dùng if (id) thì "" và 0 bị bỏ qua như không có id, nên hai lớp cùng id: "" vẫn lọt qua.
+    if (id !== undefined) {
+      if (seen.has(id)) {
+        // String(id) cùng lý do: bảo vệ khỏi Symbol và giá trị anormal.
+        errors.push(`id lớp bị trùng: ${String(id)}`);
+      }
       seen.add(id);
     }
   }

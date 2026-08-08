@@ -300,3 +300,49 @@ test("validatePreset gom TẤT CẢ lỗi, không dừng ở lỗi đầu", () =
   const r = validatePreset({ version: 1, name: "x", layers: [{ id: "a", source: { type: "abc" } }] });
   assert.ok(r.errors.length >= 2, `mong đợi nhiều lỗi, nhận ${r.errors.length}`);
 });
+
+test("validatePreset không ném lỗi khi source.type không chuyển được thành chuỗi", () => {
+  const p = {
+    version: 1, name: "x",
+    layers: [
+      { id: "l1", source: { type: Symbol("x") } },
+      { id: "l2", source: { type: "overlay" }, geometry: { fit: "full" } },
+    ],
+  };
+  let r;
+  assert.doesNotThrow(() => { r = validatePreset(p); });
+  assert.equal(r.ok, false);
+  assert.ok(r.errors.every((e) => typeof e === "string"));
+});
+
+test("validatePreset bắt trùng id kể cả khi id là chuỗi rỗng hoặc số 0", () => {
+  const blank = {
+    version: 1, name: "x",
+    layers: [
+      { id: "", source: { type: "background" }, geometry: { fit: "full" } },
+      { id: "", source: { type: "overlay" }, geometry: { fit: "full" } },
+    ],
+  };
+  const r1 = validatePreset(blank);
+  assert.equal(r1.ok, false);
+  assert.match(r1.errors.join("|"), /id lớp bị trùng/);
+
+  const zero = {
+    version: 1, name: "x",
+    layers: [
+      { id: 0, source: { type: "background" }, geometry: { fit: "full" } },
+      { id: 0, source: { type: "overlay" }, geometry: { fit: "full" } },
+    ],
+  };
+  assert.equal(validatePreset(zero).ok, false);
+
+  // Lớp KHÔNG đặt id thì vẫn không bị coi là trùng nhau.
+  const noId = {
+    version: 1, name: "x",
+    layers: [
+      { source: { type: "background" }, geometry: { fit: "full" } },
+      { source: { type: "overlay" }, geometry: { fit: "full" } },
+    ],
+  };
+  assert.equal(validatePreset(noId).ok, true);
+});

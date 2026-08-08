@@ -4,6 +4,12 @@ import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+// Bố cục composer: dùng lại compiler chung với luồng Sheet (Task 8) thay vì
+// viết lại builder filter riêng cho render.js. sheet/** đã có trong
+// build.asarUnpack của package.json nên import này an toàn khi đóng gói
+// (xem tests/packaging.test.js).
+import { compilePreset } from "./sheet/layer-compiler.js";
+import { resolvePresetAssets } from "./sheet/render-core.js";
 
 // Thêm hệ thống log tối ưu
 const LOG_LEVEL = {
@@ -291,6 +297,10 @@ const useAutoUploadVps = false;
 let renderMode = "topTransparent";
 let opacity = 0.7;
 
+// Bố cục composer. render.js không có app của Electron nên không tự tìm được thư mục
+// preset — electron-main phải nhét cả object preset vào RENDER_CONFIG_JSON.
+let composerPreset = null;
+
 // Chế độ Chroma Key
 let color = "D4F9D7";
 let chromaKeyFile = "./chromaKey.txt";
@@ -373,6 +383,7 @@ if (!config) {
 // Áp dụng config nếu có
 if (config) {
   if (config.renderMode) renderMode = config.renderMode;
+  if (config.preset) composerPreset = config.preset;
   if (config.videoSpeed) videoSpeed = config.videoSpeed;
   if (config.opacity !== undefined) opacity = config.opacity;
   if (config.chromaKeyMode) chromaKeyMode = config.chromaKeyMode;
@@ -449,6 +460,16 @@ if (config) {
     log(`Output folder từ config: ${outputFolder}`, LOG_LEVEL.INFO);
   }
   if (config.ipList) ipList = config.ipList;
+}
+
+// Dừng ngay thay vì âm thầm rơi về topTransparent: render cả mẻ ra sai bố cục tệ hơn
+// nhiều so với dừng sớm và báo rõ.
+if (renderMode === "composer" && !composerPreset) {
+  log(
+    "❌ renderMode là 'composer' nhưng config không có 'preset'. electron-main phải nạp preset và truyền qua RENDER_CONFIG_JSON.",
+    LOG_LEVEL.ERROR
+  );
+  process.exit(1);
 }
 
 // Tạo thư mục nếu chưa tồn tạ
@@ -988,6 +1009,19 @@ const processVideo = async (
         filterConfig = complexFilterCrop(personFile);
         if (personFile)
           studioInputs = [{ file: personFile, inputOptions: ["-loop", "1"] }];
+      } else if (renderMode === "composer") {
+        log(
+          `🧩 Dùng bố cục composer "${composerPreset?.name || "?"}" cho ${path.basename(outputPath)}`,
+          LOG_LEVEL.DEBUG
+        );
+        // Chốt asset rồi mới dựng filter, giống hệt nhánh crop ở trên: filter và
+        // danh sách input phải khớp nhau về chỉ số [n:v].
+        const { preset, warnings } = resolvePresetAssets(composerPreset);
+        warnings.forEach((w) => log(w, LOG_LEVEL.WARN));
+        const composed = compilePreset(preset);
+        composed.warnings.forEach((w) => log(w, LOG_LEVEL.WARN));
+        filterConfig = [...composed.filterGraph];
+        studioInputs = composed.extraInputs;
       } else {
         // Default to topTransparent if mode is invalid
         log(
@@ -1013,9 +1047,13 @@ const processVideo = async (
 
       command.inputOptions(["-stream_loop", "-1"]).input(inputOverlay);
 
-      // Input phụ của blurFrame (khung, hiệu ứng); rỗng với 4 mode cũ.
+      // Input phụ của blurFrame (khung, hiệu ứng), crop (ảnh người) hoặc composer
+      // (mọi lớp image/video/solid); rỗng với 4 mode cũ còn lại.
       for (const extra of studioInputs) {
-        command.input(extra.file).inputOptions(extra.inputOptions);
+        // Lớp solid không có file: nó là nguồn sinh của ffmpeg (-f lavfi -i color=…).
+        // Dùng ?? chứ không ||: lavfi có thể là chuỗi rỗng và || sẽ rơi về undefined,
+        // làm .input(undefined) chết ngay.
+        command.input(extra.lavfi ?? extra.file).inputOptions(extra.inputOptions);
       }
 
       command

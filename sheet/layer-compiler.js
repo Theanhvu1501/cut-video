@@ -191,3 +191,39 @@ export function buildLayerChain(layer, inLabel, nextLabel) {
   const outLabel = chain ? flush() : source;
   return { statements, outLabel, w, h };
 }
+
+export const SOURCE_TYPES = ["background", "overlay", "image", "video", "solid", "waveform"];
+
+// Kích thước của solid và waveform nằm ngay trong tham số sinh nguồn (color=…:s=WxH,
+// showwaves=s=WxH) nên không có bước scale nào sau đó — buộc phải là fit=box.
+const BOX_ONLY = new Set(["solid", "waveform"]);
+
+// Gom TẤT CẢ lỗi thay vì dừng ở lỗi đầu: người dùng sửa preset một lần là xong, không
+// phải sửa-chạy-sửa nhiều vòng.
+export function validatePreset(preset) {
+  const errors = [];
+  const layers = Array.isArray(preset?.layers) ? preset.layers : [];
+  if (!layers.length) errors.push("preset phải có ít nhất một lớp");
+
+  const seen = new Set();
+  for (const l of layers) {
+    const type = l?.source?.type;
+    if (!SOURCE_TYPES.includes(type)) errors.push(`loại nguồn không hợp lệ: ${type}`);
+    if (BOX_ONLY.has(type) && l?.geometry?.fit !== "box") {
+      errors.push(`lớp ${type} buộc dùng fit: "box" vì kích thước nằm trong tham số sinh nguồn`);
+    }
+    const id = l?.id;
+    if (id) {
+      if (seen.has(id)) errors.push(`id lớp bị trùng: ${id}`);
+      seen.add(id);
+    }
+  }
+
+  const overlays = layers.filter((l) => l?.source?.type === "overlay").length;
+  if (overlays !== 1) {
+    errors.push(
+      `preset phải có đúng một lớp video gốc (overlay) — nơi lấy tiếng và quyết định độ dài, đang có ${overlays}`
+    );
+  }
+  return { ok: errors.length === 0, errors };
+}

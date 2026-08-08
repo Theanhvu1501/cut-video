@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { anchorExpr, scaleFilter, ANCHORS, buildLayerChain, TREATMENT_KINDS } from "../sheet/layer-compiler.js";
+import { anchorExpr, scaleFilter, ANCHORS, buildLayerChain, TREATMENT_KINDS, validatePreset, SOURCE_TYPES } from "../sheet/layer-compiler.js";
 
 test("ANCHORS có đúng 9 điểm neo", () => {
   assert.equal(Object.keys(ANCHORS).length, 9);
@@ -211,4 +211,92 @@ test("treatment kind lạ bị bỏ qua, không ném lỗi", () => {
     "1:v", labeller()
   );
   assert.deepEqual(r.statements, ["[1:v]scale=1280:720[t0]"]);
+});
+
+const okPreset = {
+  version: 1,
+  name: "thu",
+  layers: [
+    { id: "l1", source: { type: "background" }, geometry: { fit: "full" } },
+    { id: "l2", source: { type: "overlay" }, geometry: { fit: "full" } },
+  ],
+};
+
+test("SOURCE_TYPES có đúng 6 loại nguồn", () => {
+  assert.deepEqual([...SOURCE_TYPES].sort(), [
+    "background", "image", "overlay", "solid", "video", "waveform",
+  ]);
+});
+
+test("validatePreset nhận preset hợp lệ", () => {
+  assert.deepEqual(validatePreset(okPreset), { ok: true, errors: [] });
+});
+
+test("validatePreset từ chối khi KHÔNG có lớp overlay", () => {
+  const p = { ...okPreset, layers: [okPreset.layers[0]] };
+  const r = validatePreset(p);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join("|"), /đúng một lớp video gốc/);
+});
+
+test("validatePreset từ chối khi có 2 lớp overlay", () => {
+  const p = { ...okPreset, layers: [...okPreset.layers, { id: "l3", source: { type: "overlay" } }] };
+  const r = validatePreset(p);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join("|"), /đúng một lớp video gốc/);
+});
+
+test("validatePreset từ chối preset không có lớp nào", () => {
+  const r = validatePreset({ version: 1, name: "x", layers: [] });
+  assert.equal(r.ok, false);
+});
+
+test("validatePreset từ chối loại nguồn lạ", () => {
+  const p = { ...okPreset, layers: [...okPreset.layers, { id: "l3", source: { type: "abc" } }] };
+  const r = validatePreset(p);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join("|"), /loại nguồn không hợp lệ: abc/);
+});
+
+test("validatePreset buộc solid và waveform dùng fit=box", () => {
+  const bad = {
+    ...okPreset,
+    layers: [...okPreset.layers, { id: "l3", source: { type: "solid" }, geometry: { fit: "full" } }],
+  };
+  const r = validatePreset(bad);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join("|"), /solid.*fit: "box"/);
+
+  const good = {
+    ...okPreset,
+    layers: [
+      ...okPreset.layers,
+      { id: "l3", source: { type: "solid", color: "black" }, geometry: { fit: "box", w: 1280, h: 150 } },
+    ],
+  };
+  assert.equal(validatePreset(good).ok, true);
+});
+
+test("validatePreset từ chối waveform khi thiếu lớp overlay để lấy tiếng", () => {
+  const p = {
+    version: 1, name: "x",
+    layers: [{ id: "l1", source: { type: "waveform" }, geometry: { fit: "box", w: 480, h: 120 } }],
+  };
+  const r = validatePreset(p);
+  assert.equal(r.ok, false);
+});
+
+test("validatePreset báo id lớp trùng nhau", () => {
+  const p = {
+    ...okPreset,
+    layers: [{ ...okPreset.layers[0], id: "same" }, { ...okPreset.layers[1], id: "same" }],
+  };
+  const r = validatePreset(p);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join("|"), /id lớp bị trùng: same/);
+});
+
+test("validatePreset gom TẤT CẢ lỗi, không dừng ở lỗi đầu", () => {
+  const r = validatePreset({ version: 1, name: "x", layers: [{ id: "a", source: { type: "abc" } }] });
+  assert.ok(r.errors.length >= 2, `mong đợi nhiều lỗi, nhận ${r.errors.length}`);
 });

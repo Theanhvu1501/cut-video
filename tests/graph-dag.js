@@ -135,6 +135,29 @@ export function canonicalGraph(filterConfig, opts = {}) {
     return { ...s, filter };
   });
 
+  // Một nhãn TRUNG GIAN trong filter_complex chỉ được ffmpeg NUÔI đúng một đích — khác nhãn
+  // NGUỒN kiểu [0:v]/[1:a] mà ffmpeg cho nhiều đích cùng đọc. layer-compiler.js từng ghi cứng
+  // asplit=2 rồi cho N lớp waveform cùng đọc một nhãn trung gian; validatePreset không bắt
+  // được vì đó không phải lỗi cấu trúc theo nghĩa "nhãn treo" — nó chỉ lộ ra khi ffmpeg từ
+  // chối filter graph lúc render thật. Kiểm ở đây để bắt ngay trong test, không phải đợi
+  // ffmpeg. Ném lỗi giống hệt cách hàm này đang ném khi gặp nhãn treo — cùng triết lý: một
+  // oracle dùng làm test hồi quy phải từ chối graph sai, không được lặng lẽ so "bằng nhau".
+  const consumeCount = new Map();
+  for (const s of stmts) {
+    for (const l of s.ins) {
+      if (SOURCE_LABEL.test(l)) continue;
+      consumeCount.set(l, (consumeCount.get(l) || 0) + 1);
+    }
+  }
+  for (const [label, count] of consumeCount) {
+    if (count > 1) {
+      throw new Error(
+        `nhãn "${label}" bị ${count} filter cùng tiêu thụ — một nhãn trung gian trong ` +
+          `filter_complex chỉ được nuôi đúng một đích (khác nhãn nguồn [N:v]/[N:a])`
+      );
+    }
+  }
+
   const map = new Map();
   const known = new Set();
   for (const s of stmts) {

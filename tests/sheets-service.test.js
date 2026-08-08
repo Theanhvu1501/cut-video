@@ -179,17 +179,6 @@ test("parseConfigRows gom cột asset thành slotOverrides", () => {
   assert.equal("hieu_ung" in rows[0].slotOverrides, false);
 });
 
-test("parseConfigRows: cột nền vào khe nen, không lẫn với cột độ mờ nền", () => {
-  const values = [
-    ["tên kênh", "bật", "video mỗi ngày", "kiểu render", "preset", "nền", "độ mờ nền"],
-    ["Kênh A", "x", "3", "composer", "p1", "D:/bg/video.mp4", "0.5"],
-  ];
-  const rows = parseConfigRows(values);
-  assert.equal(rows[0].slotOverrides.nen, "D:/bg/video.mp4");
-  // Khớp tiêu đề là so khớp CHÍNH XÁC sau chuẩn hoá, nên "nền" không cướp cột "độ mờ nền".
-  assert.equal(rows[0].cfg.bgBlur, 0.5);
-});
-
 test("parseConfigRows: kênh không dùng composer vẫn chạy như cũ", () => {
   const values = [
     ["tên kênh", "bật", "video mỗi ngày", "kiểu render", "chiều cao cắt"],

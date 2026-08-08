@@ -142,6 +142,30 @@ test("canonicalGraph phá tie bằng lookahead downstream, không phụ thuộc 
   assert.equal(canonicalGraph(case1), canonicalGraph(case2));
 });
 
+test("canonicalGraph ném lỗi khi một nhãn TRUNG GIAN bị NHIỀU filter cùng tiêu thụ", () => {
+  // Đây là lớp lỗi thật đã xảy ra: layer-compiler.js từng ghi cứng asplit=2[cl_a_out]
+  // [cl_a_wave] bất kể có bao nhiêu lớp waveform, khiến 2 lớp waveform khác màu cùng đọc
+  // một nhãn [a_wave] — ffmpeg từ chối graph này dù không có nhãn treo nào.
+  const g = [
+    "[1:a]asplit=3[a_out][a_wave][a_wave2]",
+    "[a_wave]showwaves=colors=white[w1]",
+    "[a_wave]showwaves=colors=red[w2]",
+    "[a_out]volume=1.0[overlay_audio]",
+  ];
+  assert.throws(() => canonicalGraph(g), /cùng tiêu thụ/);
+});
+
+test("canonicalGraph KHÔNG ném khi nhãn NGUỒN ([N:v]/[N:a]) được nhiều đích cùng đọc", () => {
+  // Khác nhãn trung gian: ffmpeg cho nhiều filter cùng đọc [0:v] — reviewer đã xác nhận 2 lớp
+  // background dùng chung [0:v] vẫn ra graph đúng.
+  const g = [
+    "[0:v]copy[x]",
+    "[0:v]hflip[y]",
+    "[x][y]overlay=0:0[combined_video]",
+  ];
+  assert.doesNotThrow(() => canonicalGraph(g));
+});
+
 test("canonicalGraph ném lỗi khi có nhánh đối xứng thật, không đoán", () => {
   // Hai nhánh cùng filter, cùng input, consumer cũng cùng filter: sau lookahead một tầng
   // vẫn trùng key hoàn toàn — không còn thông tin cấu trúc nào phân biệt được x với y.

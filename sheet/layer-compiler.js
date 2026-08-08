@@ -44,6 +44,12 @@ export function anchorExpr(anchor, dx = 0, dy = 0) {
   return { x: add(a.x, dx), y: add(a.y, dy) };
 }
 
+// Nguồn sự thật cho geometry.fit hợp lệ — dùng để validatePreset từ chối giá trị lạ thay vì
+// để scaleFilter âm thầm rơi về "full". fit CHỌN NHÁNH code (branch nào sinh filter), khác
+// anchor lạ (chỉ chọn một CẶP biểu thức trong 9 cặp đã định) nên không được rơi về mặc định
+// trong im lặng — xem comment ở validatePreset.
+export const FIT_MODES = ["full", "scale", "box", "none"];
+
 // Trả về cả kích thước sau scale, không chỉ chuỗi filter: lớp solid và waveform cần biết
 // kích thước để sinh nguồn, và w=null báo "không biết trước" (scale=-2).
 export function scaleFilter(geometry = {}) {
@@ -204,6 +210,14 @@ export const SOURCE_TYPES = ["background", "overlay", "image", "video", "solid",
 // showwaves=s=WxH) nên không có bước scale nào sau đó — buộc phải là fit=box.
 const BOX_ONLY = new Set(["solid", "waveform"]);
 
+// Chỉ 2 loại nguồn ĐỌC source.path lúc render — xem sourceLabel trong compilePreset:
+// background luôn là [0:v], overlay luôn là [1:v] (cả hai bỏ qua path), solid sinh từ
+// source.color chứ không phải file, waveform không có input nào cả. Lớp thuộc 4 loại này
+// mà gắn "slot" là vô tác dụng ÂM THẦM: applySlotOverrides vẫn ghi được vào source.path,
+// nhưng compilePreset không bao giờ đọc lại nó. Cả 5 preset dựng sẵn từng gắn
+// slot: "nen" cho lớp background — bug thật đã ship, không phải suy đoán.
+const PATH_READING_TYPES = new Set(["image", "video"]);
+
 // Gom TẤT CẢ lỗi thay vì dừng ở lỗi đầu: người dùng sửa preset một lần là xong, không
 // phải sửa-chạy-sửa nhiều vòng.
 export function validatePreset(preset) {
@@ -211,8 +225,12 @@ export function validatePreset(preset) {
   const layers = Array.isArray(preset?.layers) ? preset.layers : [];
   if (!layers.length) errors.push("preset phải có ít nhất một lớp");
 
+  // Tên lớp để nêu trong thông báo lỗi: ưu tiên id, không có thì dùng chỉ số. id !== undefined
+  // cùng lý do với chỗ bắt trùng id bên dưới — "" và 0 vẫn là id thật, không phải "không có".
+  const layerName = (l, i) => (l?.id !== undefined ? String(l.id) : `#${i}`);
+
   const seen = new Set();
-  for (const l of layers) {
+  layers.forEach((l, i) => {
     const type = l?.source?.type;
     if (!SOURCE_TYPES.includes(type)) {
       // String(type) để không ném TypeError nếu type là Symbol hay giá trị không convert được thành chuỗi.
@@ -221,6 +239,27 @@ export function validatePreset(preset) {
     }
     if (BOX_ONLY.has(type) && l?.geometry?.fit !== "box") {
       errors.push(`lớp ${type} buộc dùng fit: "box" vì kích thước nằm trong tham số sinh nguồn`);
+    }
+    if (SOURCE_TYPES.includes(type) && !PATH_READING_TYPES.has(type) && l?.slot) {
+      errors.push(
+        `lớp ${layerName(l, i)}: slot "${l.slot}" vô tác dụng trên loại nguồn "${type}" ` +
+          `(chỉ image/video đọc source.path) — bỏ slot hoặc đổi loại nguồn`
+      );
+    }
+    // fit lạ CHỌN NHẦM NHÁNH code (scaleFilter rơi về "full" trong im lặng) — khác anchor lạ
+    // vốn được spec cho phép tường minh rơi về "center" (đã có test riêng, không đụng ở đây).
+    // fit và kind treatment bên dưới đều chọn nhánh, không phải tham số ngoài khoảng, nên phải
+    // là lỗi chứ không phải giá trị mặc định.
+    const fit = l?.geometry?.fit;
+    if (fit !== undefined && !FIT_MODES.includes(fit)) {
+      errors.push(`lớp ${layerName(l, i)}: fit không hợp lệ "${String(fit)}" — chỉ nhận ${FIT_MODES.join("/")}`);
+    }
+    for (const t of l?.treatments || []) {
+      // kind lạ bị buildLayerChain bỏ qua trong im lặng (default: break) — cùng lớp lỗi với
+      // fit lạ ở trên.
+      if (t?.kind !== undefined && !TREATMENT_KINDS.includes(t.kind)) {
+        errors.push(`lớp ${layerName(l, i)}: treatment kind không hợp lệ "${String(t.kind)}"`);
+      }
     }
     const id = l?.id;
     // id !== undefined để bắt cả giá trị falsy như "" (chuỗi rỗng) và 0 nếu chúng có mặt thực sự.
@@ -232,7 +271,7 @@ export function validatePreset(preset) {
       }
       seen.add(id);
     }
-  }
+  });
 
   const overlays = layers.filter((l) => l?.source?.type === "overlay").length;
   if (overlays !== 1) {
@@ -258,10 +297,23 @@ export function compilePreset(preset) {
   let labelSeq = 0;
   const nextLabel = () => `cl${labelSeq++}`;
 
-  // Lớp waveform lấy tiếng từ chính luồng đang dùng làm audio đầu ra, nên phải asplit.
-  const hasWaveform = layers.some((l) => l?.source?.type === "waveform");
-  const audioSource = hasWaveform ? "cl_a_out" : "1:a";
-  if (hasWaveform) filterGraph.push("[1:a]asplit=2[cl_a_out][cl_a_wave]");
+  // Lớp waveform lấy tiếng từ chính luồng đang dùng làm audio đầu ra, nên phải asplit — MỘT
+  // nhánh riêng cho MỖI lớp waveform, cộng một nhánh giữ nguyên cho tiếng ra loa. Một nhãn
+  // trung gian trong filter_complex chỉ được NUÔI đúng một đích — khác nhãn nguồn kiểu [0:v]
+  // mà ffmpeg cho nhiều đích cùng đọc — nên ghi cứng asplit=2 rồi cho N lớp waveform cùng đọc
+  // một nhãn [cl_a_wave] là graph SAI: ffmpeg từ chối nó dù validatePreset báo ok. N lớp
+  // waveform thì phải là N nhãn audio riêng (cl_a_wave0, cl_a_wave1, …).
+  const waveformLayers = layers.filter((l) => l?.source?.type === "waveform");
+  const audioSource = waveformLayers.length ? "cl_a_out" : "1:a";
+  if (waveformLayers.length) {
+    const waveLabels = waveformLayers.map((_, i) => `cl_a_wave${i}`);
+    filterGraph.push(
+      `[1:a]asplit=${waveformLayers.length + 1}[cl_a_out]${waveLabels.map((l) => `[${l}]`).join("")}`
+    );
+  }
+  // Chỉ số riêng để gán đúng nhãn cl_a_waveN cho từng lớp waveform theo thứ tự sourceLabel
+  // được gọi (đúng thứ tự layers, vì compilePreset duyệt layers tuần tự bên dưới).
+  let waveformSeq = 0;
 
   // Nhãn nguồn video của một lớp; trả về null nghĩa là bỏ lớp này.
   const sourceLabel = (layer) => {
@@ -299,8 +351,10 @@ export function compilePreset(preset) {
       case "waveform": {
         const g = scaleFilter(layer.geometry);
         const out = nextLabel();
+        // Nhãn audio riêng cho LỚP NÀY — xem comment ở waveformLayers/waveLabels phía trên.
+        const waveLabel = `cl_a_wave${waveformSeq++}`;
         filterGraph.push(
-          `[cl_a_wave]showwaves=s=${g.w || BASE_W}x${g.h || BASE_H}` +
+          `[${waveLabel}]showwaves=s=${g.w || BASE_W}x${g.h || BASE_H}` +
             `:mode=${src.mode || "cline"}:rate=30:colors=${src.color || "white"}` +
             // showwaves vẽ trên nền đen; phải khử nền đen thành trong suốt mới chồng được.
             `,colorkey=0x000000:${src.tolerance ?? 0.01}:0[${out}]`
@@ -320,15 +374,13 @@ export function compilePreset(preset) {
     const inLabel = sourceLabel(layer);
     if (!inLabel) continue;
 
-    // Chỉ waveform đi đường riêng: câu lệnh showwaves của nó đã được đẩy vào filterGraph
-    // ngay lúc cấp nguồn, và nó đã có đúng kích thước nên không cần scale nữa.
-    // Lớp solid thì KHÔNG đi đường riêng dù nguồn color= cũng đã đúng kích thước: cho nó
-    // qua buildLayerChain thì treatment (opacity, blur…) mới áp được lên nó. Bước scale
-    // lặp lại là vô hại vì cùng kích thước.
-    const built =
-      layer?.source?.type === "waveform"
-        ? { statements: [], outLabel: inLabel, ...scaleFilter(layer.geometry) }
-        : buildLayerChain(layer, inLabel, nextLabel);
+    // MỌI lớp đều qua buildLayerChain, kể cả solid và waveform dù nguồn sinh của chúng
+    // (color=…, showwaves=…) đã đúng kích thước sẵn: chỉ qua buildLayerChain thì treatment
+    // (opacity, blur…) mới áp được lên chúng. Bước scale lặp lại ở đầu chuỗi là vô hại vì
+    // cùng kích thước — trước đây waveform đi đường riêng (bỏ qua buildLayerChain hẳn) nên
+    // mọi treatment khai trên lớp waveform bị rơi mất trong im lặng, cùng lỗi lẽ ra solid đã
+    // tránh được.
+    const built = buildLayerChain(layer, inLabel, nextLabel);
     pending.push(...built.statements);
 
     if (stage === null) {
@@ -363,8 +415,11 @@ export function compilePreset(preset) {
     pending.push(`[${stage}]copy[${out}]`);
     stage = out;
   }
-  // Không lớp nào dựng được hình: graph không dùng được. validatePreset đã chặn trường hợp
-  // này, nhưng compilePreset phải tự nói ra khi bị gọi mà bỏ qua bước kiểm.
+  // Không lớp nào dựng được hình: graph không dùng được. Đường render thật luôn gọi
+  // validatePreset trước compilePreset (renderOne ở render-core.js, nhánh composer của
+  // render.js, và sheet-runner.js lúc nạp preset theo tên) nên trường hợp này bị chặn từ đó.
+  // Nhưng compilePreset là hàm THUẦN — ai gọi trực tiếp mà bỏ qua bước kiểm kia (test, hay
+  // preview-frame.js ở Giai đoạn 2) vẫn phải được báo rõ chứ không được ra graph rỗng âm thầm.
   if (stage === null) {
     warnings.push("⚠️ Preset không có lớp nào dựng được hình — graph không dùng được");
   }

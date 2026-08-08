@@ -4,7 +4,7 @@
   "label": "Crop",
   "base": { "w": 1280, "h": 720 },
   "layers": [
-    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
+    { "id": "bg", "label": "Nền", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
     { "id": "person", "label": "Ảnh người", "slot": "anh_nguoi", "source": { "type": "image", "path": "" }, "geometry": { "fit": "box", "w": -2, "h": 450, "anchor": "bottom-center", "dx": 0, "dy": -220 }, "treatments": [], "blend": "normal" },
     { "id": "strip", "label": "Dải crop", "source": { "type": "overlay" }, "geometry": { "fit": "full", "anchor": "bottom-left" }, "treatments": [{ "kind": "cropStrip", "height": 220, "yOffset": 490 }, { "kind": "grayContrast", "brightness": "-1.0", "contrast": "3.0", "gamma": "1.2", "saturation": "0" }, { "kind": "opacity", "value": 0.8 }], "blend": "normal" }
   ]

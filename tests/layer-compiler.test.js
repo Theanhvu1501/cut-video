@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { anchorExpr, scaleFilter, ANCHORS, buildLayerChain, TREATMENT_KINDS, validatePreset, SOURCE_TYPES, compilePreset } from "../sheet/layer-compiler.js";
+import { anchorExpr, scaleFilter, ANCHORS, buildLayerChain, TREATMENT_KINDS, validatePreset, SOURCE_TYPES, FIT_MODES, compilePreset } from "../sheet/layer-compiler.js";
 import { canonicalGraph } from "./graph-dag.js";
 
 test("ANCHORS có đúng 9 điểm neo", () => {
@@ -296,6 +296,119 @@ test("validatePreset buộc solid và waveform dùng fit=box", () => {
   assert.equal(validatePreset(good).ok, true);
 });
 
+test("FIT_MODES có đúng 4 giá trị", () => {
+  assert.deepEqual([...FIT_MODES].sort(), ["box", "full", "none", "scale"]);
+});
+
+test("validatePreset từ chối geometry.fit lạ, nêu TÊN LỚP (id, hoặc chỉ số nếu không có id)", () => {
+  // Bug thật đã đo được: "fit": "bocks" trên lớp ảnh người -> validatePreset cũ báo ok:true,
+  // và scale=-2:450 âm thầm thành scale=1280:720 (rơi về "full") — ảnh người bị kéo full khung
+  // suốt cả mẻ video mà không ai biết. fit CHỌN NHÁNH code, khác anchor lạ (được spec cho phép
+  // tường minh rơi về center) nên phải là lỗi, không phải giá trị mặc định.
+  const p = {
+    ...okPreset,
+    layers: [...okPreset.layers, { id: "nguoi", source: { type: "image", path: "a.png" }, geometry: { fit: "bocks" } }],
+  };
+  const r = validatePreset(p);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join("|"), /lớp nguoi: fit không hợp lệ "bocks"/);
+
+  // Lớp không có id thì nêu chỉ số thay vì "undefined".
+  const p2 = {
+    ...okPreset,
+    layers: [...okPreset.layers, { source: { type: "image", path: "a.png" }, geometry: { fit: "bocks" } }],
+  };
+  assert.match(validatePreset(p2).errors.join("|"), /lớp #2: fit không hợp lệ/);
+
+  // fit hợp lệ hoặc bỏ trống thì không bị bắt.
+  for (const fit of [...FIT_MODES, undefined]) {
+    const good = {
+      ...okPreset,
+      layers: [...okPreset.layers, { id: "nguoi", source: { type: "image", path: "a.png" }, geometry: { fit } }],
+    };
+    assert.equal(validatePreset(good).ok, true, `fit "${fit}" phải hợp lệ`);
+  }
+});
+
+test("validatePreset từ chối treatments[].kind lạ, nêu TÊN LỚP", () => {
+  // Bug thật đã đo được: "kind": "blurr" (gõ sai) -> validatePreset cũ báo ok:true, và
+  // buildLayerChain (default: break) bỏ hẳn gblur trong im lặng — nền không còn mờ.
+  const p = {
+    ...okPreset,
+    layers: [
+      { ...okPreset.layers[0], id: "nen", treatments: [{ kind: "blurr", sigma: 20 }] },
+      okPreset.layers[1],
+    ],
+  };
+  const r = validatePreset(p);
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join("|"), /lớp nen: treatment kind không hợp lệ "blurr"/);
+
+  for (const kind of TREATMENT_KINDS) {
+    const good = {
+      ...okPreset,
+      layers: [
+        { ...okPreset.layers[0], treatments: [{ kind }] },
+        okPreset.layers[1],
+      ],
+    };
+    assert.equal(validatePreset(good).ok, true, `kind "${kind}" phải hợp lệ`);
+  }
+});
+
+test("validatePreset từ chối slot gắn trên loại nguồn KHÔNG đọc source.path (background/overlay/solid/waveform)", () => {
+  // Bug thật đã ship: cả 5 preset dựng sẵn gắn slot: "nen" cho lớp background —
+  // applySlotOverrides ghi được vào source.path nhưng sourceLabel không bao giờ đọc nó, nên
+  // ghi đè theo kênh vô tác dụng âm thầm (finding I5).
+  for (const type of ["background", "overlay", "solid", "waveform"]) {
+    const layer = {
+      id: "x", slot: "abc", source: { type, ...(type === "solid" ? { color: "black" } : {}) },
+      geometry: { fit: type === "solid" || type === "waveform" ? "box" : "full", w: 100, h: 100 },
+    };
+    const p = { ...okPreset, layers: [okPreset.layers[0], okPreset.layers[1], layer] };
+    const r = validatePreset(p);
+    assert.equal(r.ok, false, `slot trên loại nguồn "${type}" phải bị từ chối`);
+    assert.match(r.errors.join("|"), /slot "abc" vô tác dụng trên loại nguồn/);
+  }
+
+  // slot trên image/video (loại ĐỌC source.path) thì hợp lệ.
+  for (const type of ["image", "video"]) {
+    const p = {
+      ...okPreset,
+      layers: [...okPreset.layers, { id: "y", slot: "abc", source: { type, path: "a" }, geometry: { fit: "full" } }],
+    };
+    assert.equal(validatePreset(p).ok, true, `slot trên loại nguồn "${type}" phải hợp lệ`);
+  }
+});
+
+test("TREATMENT_KINDS: MỌI kind trong danh sách thật sự sinh ra được filter (không phải export chết)", () => {
+  // So hằng với danh sách literal (test "TREATMENT_KINDS có đúng 7 xử lý" ở trên) không
+  // chứng minh gì về switch trong buildLayerChain — xoá một case là test đó vẫn xanh. Test
+  // này gọi THẲNG buildLayerChain với từng kind và khẳng định chuỗi không rỗng.
+  for (const kind of TREATMENT_KINDS) {
+    const params = kind === "keepColors" ? { colors: ["FBFF02"] } : {};
+    const r = buildLayerChain(
+      { geometry: { fit: "full" }, treatments: [{ kind, ...params }] }, "1:v", labeller()
+    );
+    assert.ok(r.statements.length > 0, `kind "${kind}" phải sinh ít nhất 1 câu lệnh`);
+    assert.ok(r.statements.join("").length > 0, `kind "${kind}" không được sinh chuỗi rỗng`);
+  }
+});
+
+test("SOURCE_TYPES: MỌI loại nguồn thật sự dựng được graph qua compilePreset (không phải export chết)", () => {
+  for (const type of SOURCE_TYPES) {
+    if (type === "background" || type === "overlay") continue; // đã có bg/ov cố định trong mọi preset test khác
+    const layer = {
+      id: "extra",
+      source: { type, ...(type === "image" || type === "video" ? { path: "a" } : {}), ...(type === "solid" ? { color: "black" } : {}) },
+      geometry: { fit: type === "solid" || type === "waveform" ? "box" : "full", w: 100, h: 100 },
+    };
+    const r = compilePreset({ layers: [bg, ov, layer] });
+    assert.equal(r.warnings.length, 0, `loại nguồn "${type}" không được cảnh báo: ${r.warnings.join(";")}`);
+    assert.ok(r.filterGraph.join("").length > 0, `loại nguồn "${type}" phải sinh filterGraph không rỗng`);
+  }
+});
+
 test("validatePreset từ chối waveform khi thiếu lớp overlay để lấy tiếng", () => {
   const p = {
     version: 1, name: "x",
@@ -481,6 +594,43 @@ test("compilePreset: lớp waveform sinh asplit và KHÔNG chiếm input", () =>
   // Tiếng ra vẫn phải nguyên vẹn, chỉ đổi nguồn từ [1:a] sang nhánh của asplit.
   assert.match(joined, /volume=1\.0\[overlay_audio\]/);
   assert.doesNotMatch(joined, /\[1:a\]volume=1\.0/);
+});
+
+test("compilePreset: HAI lớp waveform khác màu ra asplit=3 với 2 nhãn audio RIÊNG, không lớp nào bị tiêu thụ 2 lần", () => {
+  // Bug thật đã ship: asplit=2 ghi cứng bất kể số lớp waveform, và mọi waveform đọc cùng
+  // [cl_a_wave] — ffmpeg từ chối graph đó dù validatePreset từng báo ok. canonicalGraph giờ
+  // tự phát hiện một nhãn trung gian bị nhiều filter tiêu thụ, nên test này không cần tự
+  // đếm nhãn tay — không ném là đủ bằng chứng graph hợp lệ.
+  const r = compilePreset({
+    layers: [
+      bg, ov,
+      { id: "w1", source: { type: "waveform", color: "white" }, geometry: { fit: "box", w: 480, h: 120 } },
+      { id: "w2", source: { type: "waveform", color: "red" }, geometry: { fit: "box", w: 480, h: 120 } },
+    ],
+  });
+  const joined = r.filterGraph.join("|");
+  assert.match(joined, /\[1:a\]asplit=3\[cl_a_out\]\[cl_a_wave0\]\[cl_a_wave1\]/);
+  assert.match(joined, /\[cl_a_wave0\]showwaves=.*colors=white/);
+  assert.match(joined, /\[cl_a_wave1\]showwaves=.*colors=red/);
+  assert.doesNotThrow(() => canonicalGraph(r.filterGraph), "graph phải hợp lệ: mỗi nhãn trung gian chỉ một đích");
+});
+
+test("compilePreset: lớp waveform ÁP ĐƯỢC treatment (opacity, blur…) — không còn rơi mất trong im lặng", () => {
+  // M1: waveform từng đi đường riêng, bỏ hẳn buildLayerChain nên mọi treatment khai trên nó
+  // bị bỏ qua — cùng lỗi lẽ ra lớp solid đã tránh được (solid CÓ qua buildLayerChain).
+  const r = compilePreset({
+    layers: [
+      bg, ov,
+      {
+        id: "w", source: { type: "waveform", color: "white" },
+        geometry: { fit: "box", w: 480, h: 120 },
+        treatments: [{ kind: "opacity", value: 0.3 }, { kind: "blur", sigma: 5 }],
+      },
+    ],
+  });
+  const joined = r.filterGraph.join("|");
+  assert.match(joined, /gblur=sigma=5/, "blur phải áp lên waveform");
+  assert.match(joined, /colorchannelmixer=aa=0\.3/, "opacity phải áp lên waveform");
 });
 
 test("compilePreset: không có waveform thì giữ đúng [1:a]volume=1.0[overlay_audio]", () => {

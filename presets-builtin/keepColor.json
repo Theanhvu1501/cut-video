@@ -4,7 +4,7 @@
   "label": "Giữ màu",
   "base": { "w": 1280, "h": 720 },
   "layers": [
-    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
+    { "id": "bg", "label": "Nền", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
     { "id": "dark", "label": "Lớp nền tối", "source": { "type": "solid", "color": "black" }, "geometry": { "fit": "box", "w": 1280, "h": 220, "anchor": "bottom-left" }, "treatments": [], "blend": "normal" },
     { "id": "kept", "label": "Màu giữ lại", "source": { "type": "overlay" }, "geometry": { "fit": "full", "anchor": "bottom-left" }, "treatments": [{ "kind": "cropStrip", "height": 220, "yOffset": 490 }, { "kind": "keepColors", "colors": ["FBFF02"], "similarity": 0.2 }], "blend": "normal" }
   ]

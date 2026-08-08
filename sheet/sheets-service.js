@@ -68,7 +68,6 @@ const HEADER_ALIASES = {
   effectOpacity: ["độ mạnh hiệu ứng"],
   effectBlend: ["cách ghép hiệu ứng", "blend hiệu ứng"],
   effectKeyThreshold: ["ngưỡng khử nền tối", "ngưỡng khử nền đen"],
-  backgroundSlot: ["nền", "video nền"],
   proxy: ["proxy tải", "proxy"],
   gpmProfileId: ["gpm profile id", "gpm", "profile gpm"],
   postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
@@ -81,12 +80,20 @@ const HEADER_ALIASES = {
   statsUpdatedAt: ["cập nhật lúc"],
 };
 
-// Khe của lớp trong preset -> tên cột Sheet ghi đè đường dẫn asset cho từng kênh.
-// Ba khoá khung/anh_nguoi/hieu_ung dùng lại đúng cột đã có nên sheet đang chạy không phải
-// đổi gì. Riêng "nền" là cột MỚI — nó không tồn tại trước đây vì 5 mode cũ lấy nền từ
-// backgroundFolder chứ không theo từng kênh. Cột mới nên để trống thì mọi thứ vẫn như cũ.
+// Khe của lớp trong preset -> tên cột Sheet ghi đè đường dẫn asset cho từng kênh. Cả ba khoá
+// đều dùng LẠI đúng cột đã có (framePath/personPath/effectPath) nên sheet đang chạy không
+// phải đổi gì — không có cột nào mới ở đây.
+//
+// KHÔNG có khe "nen": lớp nền của composer luôn là input [0] cố định theo hợp đồng với
+// renderOne (background luôn "0:v" — xem sourceLabel trong layer-compiler.js), không đọc
+// source.path bao giờ. Từng có khe "nen" -> cột "backgroundSlot" ở đây và slot: "nen" gắn
+// trên cả 5 preset dựng sẵn, nhưng applySlotOverrides ghi vào source.path của lớp background
+// thì compilePreset không bao giờ đọc lại — ghi đè vô tác dụng âm thầm (finding I5). Làm
+// đúng ("nền theo từng kênh" thật) đòi hỏi đổi input [0] theo preset, xung đột với hợp đồng
+// chỉ số [0]/[1] cố định của renderOne — để lại cho một bước thiết kế riêng, không vá tạm ở
+// đây. validatePreset giờ từ chối preset nào gắn slot lên loại nguồn không đọc source.path
+// (xem PATH_READING_TYPES trong layer-compiler.js) nên lỗi này không quay lại được.
 const SLOT_COLUMNS = {
-  nen: "backgroundSlot",
   khung: "framePath",
   anh_nguoi: "personPath",
   hieu_ung: "effectPath",

@@ -10,8 +10,14 @@ import { canonicalGraph } from "./graph-dag.js";
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "presets-builtin");
 const load = (name) => JSON.parse(fs.readFileSync(path.join(DIR, `${name}.json`), "utf8"));
 
-// So theo đồ thị, bỏ qua 2 khác biệt CỐ Ý (shortest, toạ độ). Cả hai được kiểm riêng
-// bằng assert tường minh ở các test bên dưới, nên bỏ qua ở đây không tạo lỗ hổng.
+// So theo đồ thị, bỏ qua 2 khác biệt CỐ Ý (shortest, toạ độ). Toạ độ overlay của lớp chồng
+// CHÍNH (video gốc/dải cuối cùng của 4 trong 5 preset, cộng ảnh người/khung của crop và
+// blurFrame) được kiểm riêng bằng assert tường minh ở các test bên dưới — ĐỦ để bỏ qua ở đây
+// không tạo lỗ hổng cho NHỮNG lớp đó. Dải đen (solid) của keepColor thì KHÔNG nằm trong số
+// đó: nó là lớp mới hoàn toàn, không có mode cũ nào để so kích thước/vị trí/thứ tự — reviewer
+// từng đổi hẳn geometry của nó (kích thước, neo) mà mọi test composer vẫn xanh cho tới khi có
+// test "preset keepColor NGUYÊN BẢN" riêng bên dưới. Không có test đó thì ignoreOverlayCoords
+// ở đây làm mờ luôn dải đen.
 const sameGraph = (a, b) => {
   const opts = { ignoreShortest: true, ignoreOverlayCoords: true };
   assert.equal(canonicalGraph(a, opts), canonicalGraph(b, opts));
@@ -166,6 +172,52 @@ test("preset keepColor dùng lớp solid thay geq — khác bản gốc CỐ Ý"
   assert.match(r.extraInputs.map((i) => i.lavfi || "").join("|"), /color=c=black/);
   // Bản gốc dựng khối đen bằng geq trên bản copy video gốc; compiler không dùng geq.
   assert.doesNotMatch(r.filterGraph.join("|"), /geq=/);
+});
+
+test("preset keepColor NGUYÊN BẢN: dải đen ghim đúng kích thước/vị trí, chồng DƯỚI dải giữ màu", () => {
+  // sameGraph ở các test khác XOÁ HẲN lớp solid rồi so phần còn lại, và test "dùng lớp solid
+  // thay geq" ở trên chỉ khẳng định CÓ input color=c=black — không gì khẳng định kích thước,
+  // vị trí, hay thứ tự chồng của dải đen. Reviewer chứng minh: đổi solid.geometry từ
+  // {fit:"box",w:1280,h:220,anchor:"bottom-left"} thành {fit:"box",w:640,h:700,anchor:"center"}
+  // — phá hoàn toàn bố cục — mà 104 test composer vẫn xanh. Test này lấy preset NGUYÊN VẸN,
+  // không xoá lớp nào, để đóng đúng lỗ đó.
+  const p = load("keepColor");
+  const solid = p.layers.find((l) => l.source.type === "solid");
+  const ovl = p.layers.find((l) => l.source.type === "overlay");
+  const strip = ovl.treatments.find((t) => t.kind === "cropStrip");
+
+  // Code cũ dùng CHUNG một giá trị keepHeight cho cả chiều cao dải đen lẫn chiều cao vùng
+  // cắt; preset có HAI số độc lập (solid.geometry.h và cropStrip.height) nên chúng có thể
+  // lệch nhau âm thầm nếu ai sửa một bên mà quên bên kia. assert.equal ở đây SUY 220 ra từ
+  // cropStrip.height — không gán cứng — để chính assert này tự lệch theo nếu preset ship đổi.
+  assert.equal(solid.geometry.h, strip.height, "chiều cao dải đen (solid.h) phải khớp cropStrip.height của preset ship");
+  assert.equal(solid.geometry.w, 1280, "chiều rộng dải đen phải phủ hết khung 1280");
+  assert.equal(solid.geometry.anchor, "bottom-left", "dải đen phải dán sát đáy, cùng phía với dải giữ màu");
+
+  const r = compilePreset(p);
+  assert.equal(
+    r.extraInputs[0].lavfi,
+    `color=c=black:s=1280x${strip.height}:r=30`,
+    "input sinh dải đen phải đúng kích thước ghim trong preset ship (suy từ cropStrip.height)"
+  );
+
+  // Cả dải đen lẫn dải giữ màu đều neo bottom-left trên khung full nên RA CÙNG một chuỗi
+  // overlay=0:H-h:shortest=1 — phải có ĐÚNG 2 bước chồng dạng này, không hơn không kém.
+  const overlaySteps = r.filterGraph.filter((s) => s.includes("overlay=0:H-h:shortest=1"));
+  assert.equal(overlaySteps.length, 2, "phải có đúng 2 bước chồng overlay=0:H-h:shortest=1: dải đen và dải giữ màu");
+
+  // Thứ tự: dải đen phải chồng lên NỀN trước (nó ở DƯỚI), rồi dải giữ màu mới chồng lên trên
+  // cùng (bước chồng CUỐI, ra [combined_video]) — khớp bảng preset ở spec: "solid đen neo
+  // bottom-left -> overlay + cropStrip + keepColors, neo bottom-left".
+  const darkOverlayLine = r.filterGraph.find((s) => /^\[0:v\]\[cl\d+\]overlay=0:H-h:shortest=1\[cl\d+\]$/.test(s));
+  assert.ok(darkOverlayLine, "bước chồng dải đen phải nhận input trực tiếp từ [0:v] (nền)");
+  const darkOutLabel = darkOverlayLine.match(/overlay=0:H-h:shortest=1\[(cl\d+)\]$/)[1];
+  const finalOverlayLine = r.filterGraph.find((s) => s.endsWith("overlay=0:H-h:shortest=1[combined_video]"));
+  assert.ok(finalOverlayLine, "bước chồng cuối cùng (ra [combined_video]) phải là bước chồng dải giữ màu");
+  assert.ok(
+    finalOverlayLine.startsWith(`[${darkOutLabel}]`),
+    "bước chồng cuối (dải giữ màu) phải nhận stage TỪ bước chồng dải đen — tức dải đen nằm DƯỚI dải giữ màu"
+  );
 });
 
 test("preset blurFrame tương đương mode blurFrame (đủ 3 lớp)", () => {

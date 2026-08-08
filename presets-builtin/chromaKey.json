@@ -4,7 +4,7 @@
   "label": "Chroma Key",
   "base": { "w": 1280, "h": 720 },
   "layers": [
-    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
+    { "id": "bg", "label": "Nền", "source": { "type": "background" }, "geometry": { "fit": "none" }, "treatments": [], "blend": "normal" },
     { "id": "ov", "label": "Video gốc", "source": { "type": "overlay" }, "geometry": { "fit": "full", "anchor": "bottom-left" }, "treatments": [{ "kind": "chromakey", "color": "D4F9D7", "similarity": 0.3, "blend": 0.1 }], "blend": "normal" }
   ]
 }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { anchorExpr, scaleFilter, ANCHORS, buildLayerChain, TREATMENT_KINDS, validatePreset, SOURCE_TYPES } from "../sheet/layer-compiler.js";
+import { anchorExpr, scaleFilter, ANCHORS, buildLayerChain, TREATMENT_KINDS, validatePreset, SOURCE_TYPES, compilePreset } from "../sheet/layer-compiler.js";
+import { canonicalGraph } from "./graph-dag.js";
 
 test("ANCHORS có đúng 9 điểm neo", () => {
   assert.equal(Object.keys(ANCHORS).length, 9);
@@ -345,4 +346,151 @@ test("validatePreset bắt trùng id kể cả khi id là chuỗi rỗng hoặc 
     ],
   };
   assert.equal(validatePreset(noId).ok, true);
+});
+
+const bg = { id: "bg", source: { type: "background" }, geometry: { fit: "full" } };
+const ov = { id: "ov", source: { type: "overlay" }, geometry: { fit: "full" } };
+
+test("compilePreset: nền dưới, video gốc trên, không input phụ", () => {
+  const r = compilePreset({ layers: [bg, { ...ov, geometry: { fit: "full" } }] });
+  assert.deepEqual(r.extraInputs, []);
+  const joined = r.filterGraph.join("|");
+  assert.match(joined, /\[0:v\]scale=1280:720/);
+  assert.match(joined, /\[1:v\]scale=1280:720/);
+  assert.match(joined, /overlay=0:0:shortest=1\[combined_video\]/);
+  assert.ok(r.filterGraph.includes("[1:a]volume=1.0[overlay_audio]"));
+});
+
+test("compilePreset: lớp dưới cùng KHÔNG có bước chồng, nó là nền của chuỗi", () => {
+  const r = compilePreset({ layers: [bg, ov] });
+  const overlaySteps = r.filterGraph.filter((s) => s.includes("overlay="));
+  assert.equal(overlaySteps.length, 1);
+});
+
+test("compilePreset: MỌI bước chồng đều có :shortest=1", () => {
+  const r = compilePreset({
+    layers: [
+      bg,
+      { id: "im", source: { type: "image", path: "a.png" }, geometry: { fit: "box", w: -2, h: 380 } },
+      ov,
+    ],
+  });
+  const steps = r.filterGraph.filter((s) => s.includes("overlay="));
+  assert.equal(steps.length, 2);
+  for (const s of steps) assert.match(s, /:shortest=1/);
+});
+
+test("compilePreset: chỉ số [n:v] khớp đúng thứ tự extraInputs", () => {
+  const r = compilePreset({
+    layers: [
+      bg,
+      { id: "a", source: { type: "image", path: "khung.png" }, geometry: { fit: "full" } },
+      ov,
+      { id: "b", source: { type: "video", path: "fx.mp4" }, geometry: { fit: "full" } },
+    ],
+  });
+  assert.equal(r.extraInputs.length, 2);
+  assert.equal(r.extraInputs[0].file, "khung.png");
+  assert.deepEqual(r.extraInputs[0].inputOptions, ["-loop", "1"]);
+  assert.equal(r.extraInputs[1].file, "fx.mp4");
+  assert.deepEqual(r.extraInputs[1].inputOptions, ["-stream_loop", "-1"]);
+  const joined = r.filterGraph.join("|");
+  assert.match(joined, /\[2:v\]/);
+  assert.match(joined, /\[3:v\]/);
+});
+
+test("compilePreset: lớp image thiếu path bị bỏ + có cảnh báo, chỉ số không lệch", () => {
+  const r = compilePreset({
+    layers: [
+      bg,
+      { id: "a", source: { type: "image", path: "" }, geometry: { fit: "full" } },
+      ov,
+      { id: "b", source: { type: "video", path: "fx.mp4" }, geometry: { fit: "full" } },
+    ],
+  });
+  assert.equal(r.extraInputs.length, 1);
+  assert.equal(r.extraInputs[0].file, "fx.mp4");
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /bỏ qua lớp/);
+  // fx.mp4 là input phụ đầu tiên nên phải là [2:v], KHÔNG phải [3:v].
+  assert.match(r.filterGraph.join("|"), /\[2:v\]/);
+  assert.doesNotMatch(r.filterGraph.join("|"), /\[3:v\]/);
+});
+
+test("compilePreset: lớp solid dùng lavfi color, kích thước từ geometry", () => {
+  const r = compilePreset({
+    layers: [
+      bg,
+      {
+        id: "s", source: { type: "solid", color: "black" },
+        geometry: { fit: "box", w: 1280, h: 150, anchor: "bottom-left" },
+      },
+      ov,
+    ],
+  });
+  assert.equal(r.extraInputs.length, 1);
+  assert.equal(r.extraInputs[0].lavfi, "color=c=black:s=1280x150:r=30");
+  assert.deepEqual(r.extraInputs[0].inputOptions, ["-f", "lavfi"]);
+});
+
+test("compilePreset: lớp waveform sinh asplit và KHÔNG chiếm input", () => {
+  const r = compilePreset({
+    layers: [
+      bg, ov,
+      {
+        id: "w", source: { type: "waveform", mode: "cline", color: "white", tolerance: 0.01 },
+        geometry: { fit: "box", w: 480, h: 120, anchor: "bottom-center" },
+      },
+    ],
+  });
+  assert.deepEqual(r.extraInputs, []);
+  const joined = r.filterGraph.join("|");
+  assert.match(joined, /\[1:a\]asplit=2/);
+  assert.match(joined, /showwaves=s=480x120:mode=cline:rate=30:colors=white/);
+  assert.match(joined, /colorkey=0x000000:0\.01:0/);
+  // Tiếng ra vẫn phải nguyên vẹn, chỉ đổi nguồn từ [1:a] sang nhánh của asplit.
+  assert.match(joined, /volume=1\.0\[overlay_audio\]/);
+  assert.doesNotMatch(joined, /\[1:a\]volume=1\.0/);
+});
+
+test("compilePreset: không có waveform thì giữ đúng [1:a]volume=1.0[overlay_audio]", () => {
+  const r = compilePreset({ layers: [bg, ov] });
+  assert.ok(r.filterGraph.includes("[1:a]volume=1.0[overlay_audio]"));
+});
+
+test("compilePreset: blend=screen dùng blend=all_mode=screen với all_opacity", () => {
+  const r = compilePreset({
+    layers: [
+      bg, ov,
+      {
+        id: "fx", source: { type: "video", path: "fx.mp4" }, geometry: { fit: "full" },
+        treatments: [{ kind: "opacity", value: 0.15 }], blend: "screen",
+      },
+    ],
+  });
+  assert.match(
+    r.filterGraph.join("|"),
+    /blend=all_mode=screen:all_opacity=0\.15:shortest=1\[combined_video\]/
+  );
+});
+
+test("compilePreset: graph luôn kết thúc bằng [combined_video] và có [overlay_audio]", () => {
+  const r = compilePreset({
+    layers: [bg, ov, { id: "x", source: { type: "image", path: "a.png" }, geometry: { fit: "full" } }],
+  });
+  const joined = r.filterGraph.join("|");
+  assert.equal((joined.match(/\[combined_video\]/g) || []).length, 1);
+  assert.match(joined, /\[overlay_audio\]/);
+});
+
+test("compilePreset: graph sinh ra không có nhãn treo (canonicalGraph không ném)", () => {
+  const r = compilePreset({
+    layers: [
+      bg,
+      { id: "s", source: { type: "solid", color: "black" }, geometry: { fit: "box", w: 1280, h: 150 } },
+      { ...ov, treatments: [{ kind: "keepColors", colors: ["FBFF02"], similarity: 0.2 }] },
+      { id: "w", source: { type: "waveform" }, geometry: { fit: "box", w: 480, h: 120 } },
+    ],
+  });
+  assert.doesNotThrow(() => canonicalGraph(r.filterGraph));
 });

@@ -236,3 +236,120 @@ export function validatePreset(preset) {
   }
   return { ok: errors.length === 0, errors };
 }
+
+// Chỉ số input là hợp đồng cứng với renderOne: [0] = nền, [1] = video gốc. Input phụ bắt
+// đầu từ [2] và phải khớp đúng thứ tự extraInputs trả về.
+const FIRST_EXTRA_INPUT = 2;
+
+// Cấp input và sinh [n:v] trong CÙNG một vòng lặp: đây là lý do blurFrameLayers() phải
+// tồn tại trong code cũ. Làm trong một vòng thì không có đường nào lệch chỉ số.
+export function compilePreset(preset) {
+  const layers = Array.isArray(preset?.layers) ? preset.layers : [];
+  const extraInputs = [];
+  const warnings = [];
+  const filterGraph = [];
+
+  let labelSeq = 0;
+  const nextLabel = () => `cl${labelSeq++}`;
+
+  // Lớp waveform lấy tiếng từ chính luồng đang dùng làm audio đầu ra, nên phải asplit.
+  const hasWaveform = layers.some((l) => l?.source?.type === "waveform");
+  const audioSource = hasWaveform ? "cl_a_out" : "1:a";
+  if (hasWaveform) filterGraph.push("[1:a]asplit=2[cl_a_out][cl_a_wave]");
+
+  // Nhãn nguồn video của một lớp; trả về null nghĩa là bỏ lớp này.
+  const sourceLabel = (layer) => {
+    const src = layer?.source || {};
+    switch (src.type) {
+      case "background":
+        return "0:v";
+      case "overlay":
+        return "1:v";
+      case "image":
+      case "video": {
+        if (!src.path) {
+          warnings.push(
+            `⚠️ Lớp "${layer.label || layer.id || src.type}" không có đường dẫn hợp lệ — bỏ qua lớp này`
+          );
+          return null;
+        }
+        const idx = FIRST_EXTRA_INPUT + extraInputs.length;
+        extraInputs.push({
+          file: src.path,
+          // Ảnh tĩnh phải -loop 1, nếu không chỉ khung hình đầu tiên có ảnh.
+          inputOptions: src.type === "image" ? ["-loop", "1"] : ["-stream_loop", "-1"],
+        });
+        return `${idx}:v`;
+      }
+      case "solid": {
+        const g = scaleFilter(layer.geometry);
+        const idx = FIRST_EXTRA_INPUT + extraInputs.length;
+        extraInputs.push({
+          lavfi: `color=c=${src.color || "black"}:s=${g.w || BASE_W}x${g.h || BASE_H}:r=30`,
+          inputOptions: ["-f", "lavfi"],
+        });
+        return `${idx}:v`;
+      }
+      case "waveform": {
+        const g = scaleFilter(layer.geometry);
+        const out = nextLabel();
+        filterGraph.push(
+          `[cl_a_wave]showwaves=s=${g.w || BASE_W}x${g.h || BASE_H}` +
+            `:mode=${src.mode || "cline"}:rate=30:colors=${src.color || "white"}` +
+            // showwaves vẽ trên nền đen; phải khử nền đen thành trong suốt mới chồng được.
+            `,colorkey=0x000000:${src.tolerance ?? 0.01}:0[${out}]`
+        );
+        return out;
+      }
+      default:
+        warnings.push(`⚠️ Loại nguồn không hiểu (${src.type}) — bỏ qua lớp này`);
+        return null;
+    }
+  };
+
+  let stage = null; // nhãn của kết quả đã chồng đến lớp hiện tại
+  const pending = [];
+
+  for (const layer of layers) {
+    const inLabel = sourceLabel(layer);
+    if (!inLabel) continue;
+
+    // Lớp waveform và solid đã có kích thước đúng từ nguồn; các lớp khác đi qua chuỗi
+    // scale + treatment bình thường.
+    const built =
+      layer?.source?.type === "waveform"
+        ? { statements: [], outLabel: inLabel, ...scaleFilter(layer.geometry) }
+        : buildLayerChain(layer, inLabel, nextLabel);
+    pending.push(...built.statements);
+
+    if (stage === null) {
+      stage = built.outLabel;
+      continue;
+    }
+    const geo = layer.geometry || {};
+    const { x, y } = anchorExpr(geo.anchor, geo.dx, geo.dy);
+    const out = nextLabel();
+    if (layer.blend === "screen") {
+      const op = (layer.treatments || []).find((t) => t?.kind === "opacity");
+      // blend phủ toàn khung, không có toạ độ — anchor/dx/dy bị bỏ qua ở đây.
+      pending.push(
+        `[${stage}][${built.outLabel}]blend=all_mode=screen` +
+          `:all_opacity=${op ? numStr(op.value, 1) : 1}:shortest=1[${out}]`
+      );
+    } else {
+      // shortest=1 ở MỌI bước: nền, ảnh, khối màu đều là nguồn vô hạn; độ dài hữu hạn
+      // chỉ đến từ lớp video gốc.
+      pending.push(`[${stage}][${built.outLabel}]overlay=${x}:${y}:shortest=1[${out}]`);
+    }
+    stage = out;
+  }
+
+  // Nhãn cuối cùng phải là [combined_video] — hợp đồng với renderOne. Đổi tên ở bước cuối
+  // thay vì đoán trước lớp nào là lớp cuối.
+  const rewritten = pending.map((s, i) =>
+    i === pending.length - 1 && stage ? s.replace(new RegExp(`\\[${stage}\\]$`), "[combined_video]") : s
+  );
+  filterGraph.push(...rewritten);
+  filterGraph.push(`[${audioSource}]volume=1.0[overlay_audio]`);
+  return { extraInputs, filterGraph, warnings };
+}

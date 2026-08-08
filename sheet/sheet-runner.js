@@ -4,6 +4,8 @@ import { decideAction, skipText, ST, MAX_ATTEMPTS } from "./resume-plan.js";
 import { getEntry, setEntry, clearEntry } from "./resume-state.js";
 import { normalizeProxy } from "./proxy.js";
 import { loadPreset, applySlotOverrides } from "./preset-store.js";
+import { validatePreset } from "./layer-compiler.js";
+import { resetGpuState } from "./render-core.js";
 
 export function pickRandomBackground(files, rand = Math.random) {
   if (!files.length) return null;
@@ -204,6 +206,37 @@ export function createSheetRunner(deps) {
         return;
       }
 
+      // Composer: nạp + KIỂM preset MỘT LẦN cho cả kênh, TRƯỚC khi tải video nào (bản vá
+      // theo review — I1a). Trước đây việc này nằm trong vòng lặp per-item, SAU khi mỗi video
+      // đã tải xong (stage đã là "render"): một tên preset gõ sai làm mất hết lượt tải yt-dlp,
+      // băng thông proxy và hạn mức rate-limit của cả renderWork trước khi thất bại lần lượt
+      // từng video. Nạp sớm ở đây thì hỏng preset chỉ tốn một lần kiểm, không tốn lượt tải nào
+      // — đúng spec "Preset không tồn tại/không có đúng 1 lớp overlay -> bỏ qua KÊNH đó".
+      let composerPreset = null;
+      if (ch.renderMode === "composer") {
+        const preset = loadPreset(config.presetsDir, ch.presetName);
+        const check = preset ? validatePreset(preset) : null;
+        const msg = !preset
+          ? `không đọc được preset "${ch.presetName || "(trống)"}"`
+          : !check.ok
+            ? `preset "${ch.presetName || "(trống)"}" không hợp lệ: ${check.errors.join("; ")}`
+            : null;
+        if (msg) {
+          emit({ type: "error", channel: ch.sheetName, message: msg });
+          emit({ type: "channel-status", channel: ch.sheetName, status: "lỗi preset" });
+          // Ghi rõ trạng thái lỗi vào ô Sheet của TỪNG item đã lên kế hoạch, dù CHƯA tải video
+          // nào của chúng — giữ tính hiển thị trong Sheet, đúng như trước đây, nhưng không đổi
+          // bằng một lượt tải lãng phí mỗi item.
+          for (const { item } of renderWork) {
+            try {
+              await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, `${ST.ERR_RENDER} ${msg}`.slice(0, 200));
+            } catch { /* ignore */ }
+          }
+          return;
+        }
+        composerPreset = preset;
+      }
+
       const limit = pLimitFn(config.renderConcurrency || 2);
       const downloadLimit = pLimitFn(1);
       let firstDownload = true;
@@ -250,22 +283,22 @@ export function createSheetRunner(deps) {
             }
           }
           if (ch.renderMode === "composer") {
-            const preset = loadPreset(config.presetsDir, ch.presetName);
-            if (!preset) {
-              // Ném chứ không return: khối catch bên dưới là nơi DUY NHẤT bump attempts và
-              // ghi trạng thái lỗi vào Sheet. Return sớm thì attempts đứng ở 0 mãi, ô trạng
-              // thái vẫn là "đã tải", nên decideAction chọn render-only mỗi lượt — kênh thất
-              // bại vô hình với người vận hành, lặp vô hạn, và ăn một suất render mỗi lượt.
-              // Ném vẫn KHÔNG làm chết kênh khác: mỗi item có catch riêng.
-              throw new Error(`không đọc được preset "${ch.presetName || "(trống)"}"`);
-            }
-            cfg.preset = applySlotOverrides(preset, ch.slotOverrides);
+            // Preset đã được nạp + kiểm MỘT LẦN cho cả kênh, trước Promise.all (xem khối
+            // composerPreset phía trên) — ở đây chỉ còn việc áp ghi đè theo khe cho item này.
+            cfg.preset = applySlotOverrides(composerPreset, ch.slotOverrides);
           }
           emit({ type: "channel-status", channel: ch.sheetName, status: "đang render", url: item.url });
           await renderer({
             overlayFile: dl.filePath, backgroundFile: path.join(backgroundsDir, bg),
             outputPath, renderMode: ch.renderMode, cfg,
             useGPU: config.useGPU, gpuVideoCodec: config.gpuVideoCodec,
+            onProgress: (m) => {
+              // renderOne đẩy CẢ mọi dòng stderr của ffmpeg qua onProgress, nên phải lọc —
+              // nối thẳng là log ngập. Mọi cảnh báo trong codebase đều mở đầu bằng "⚠️".
+              if (String(m).startsWith("⚠️")) {
+                emit({ type: "log", message: `[${ch.sheetName}] ${m}` });
+              }
+            },
           });
 
           await sheetsApi.setUrlStatus(ch.sheetName, item.rowIndex, ST.DONE);
@@ -317,6 +350,12 @@ export function createSheetRunner(deps) {
     }
     running = true;
     if (uploadQueue) uploadQueue.beginRun(); // tạm ngưng gửi digest trong lúc chạy
+    // gpuBroken (render-core.js) là biến mức MODULE: GPU hỏng ở video đầu tiên của lượt trước
+    // sẽ tắt GPU cho toàn bộ phần đời còn lại của tiến trình Electron, kể cả những kênh có
+    // preset/cấu hình hoàn toàn đúng ở lượt SAU. resetGpuState() là cơ chế duy nhất khoanh
+    // vùng thiệt hại đó — gọi lại ở ĐẦU MỖI LƯỢT để một lần GPU chết không lỗi tận số vĩnh
+    // viễn tới cuối phiên làm việc; nếu GPU vẫn hỏng thật thì lượt này lại tự tắt nó y như cũ.
+    resetGpuState();
     try {
       const today = todayStr(now());
       // Hỏi GPM MỘT lần cho cả lượt. GPM chết mà cứ enqueue thì mỗi video phải chờ

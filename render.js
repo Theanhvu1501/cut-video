@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 // viết lại builder filter riêng cho render.js. sheet/** đã có trong
 // build.asarUnpack của package.json nên import này an toàn khi đóng gói
 // (xem tests/packaging.test.js).
-import { compilePreset } from "./sheet/layer-compiler.js";
+import { compilePreset, validatePreset } from "./sheet/layer-compiler.js";
 import { resolvePresetAssets } from "./sheet/render-core.js";
 
 // Thêm hệ thống log tối ưu
@@ -475,6 +475,23 @@ if (renderMode === "composer" && !composerPreset) {
   fs.writeSync(2, `${msg}\n`);
   log(msg, LOG_LEVEL.ERROR);
   process.exit(1);
+}
+
+// Lớp phòng thủ THỨ HAI cho preset composer (thứ nhất là sheet-runner.js, nạp + kiểm preset
+// một lần cho cả kênh trước khi tải video nào — render.js không đi qua đường đó, nó chạy như
+// tiến trình riêng nhận preset thẳng qua RENDER_CONFIG_JSON). Kiểm MỘT LẦN ở đây cho cả mẻ,
+// trước vòng lặp render từng video: preset sai cấu trúc thì dừng cả mẻ ngay, không phải chạy
+// hỏng rồi để ffmpeg từ chối filter graph ở video đầu tiên. validatePreset đã gom hết lỗi nên
+// check.errors.join("; ") đúng là thông báo người vận hành cần.
+if (renderMode === "composer" && composerPreset) {
+  const check = validatePreset(composerPreset);
+  if (!check.ok) {
+    const msg = `❌ Preset composer "${composerPreset?.name || "?"}" không hợp lệ: ${check.errors.join("; ")}`;
+    // Cùng lý do dùng fs.writeSync(2,...) rồi process.exit như khối kiểm tra ngay trên.
+    fs.writeSync(2, `${msg}\n`);
+    log(msg, LOG_LEVEL.ERROR);
+    process.exit(1);
+  }
 }
 
 // Tạo thư mục nếu chưa tồn tạ
@@ -1056,8 +1073,11 @@ const processVideo = async (
       // (mọi lớp image/video/solid); rỗng với 4 mode cũ còn lại.
       for (const extra of studioInputs) {
         // Lớp solid không có file: nó là nguồn sinh của ffmpeg (-f lavfi -i color=…).
-        // Dùng ?? chứ không ||: lavfi có thể là chuỗi rỗng và || sẽ rơi về undefined,
-        // làm .input(undefined) chết ngay.
+        // Dùng ?? chứ không ||: compilePreset LUÔN sinh lavfi dạng "color=c=…" cho lớp solid
+        // nên nó không bao giờ là chuỗi rỗng — ?? ở đây chỉ rơi về extra.file khi lavfi là
+        // undefined/null, đúng ngữ nghĩa "lớp này không dùng nguồn sinh" (image/video có
+        // file, không có lavfi). || thì rơi cả với mọi giá trị falsy hợp lệ, không phải lý do
+        // thật khiến ?? là toán tử đúng ở đây.
         command.input(extra.lavfi ?? extra.file).inputOptions(extra.inputOptions);
       }
 

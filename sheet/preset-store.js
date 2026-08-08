@@ -115,7 +115,11 @@ export function ensureBuiltins(presetsDir, builtinDir) {
       continue;
     }
     try {
-      fs.copyFileSync(path.join(builtinDir, f), dst);
+      // writeFileSync(dst, readFileSync(src)) chứ không copyFileSync: builtinDir nằm trong
+      // app.asar lúc chạy bản đóng gói. Bản vá asar của Electron chắc chắn bọc readFileSync
+      // (đọc file bên trong asar là nhu cầu cơ bản nhất), nhưng có bọc copyFileSync hay không
+      // là chi tiết cài đặt không được tài liệu hoá — an toàn hơn là không dựa vào nó.
+      fs.writeFileSync(dst, fs.readFileSync(path.join(builtinDir, f)));
       copied.push(f.slice(0, -".json".length));
     } catch (err) {
       warnings.push(`không copy được preset dựng sẵn ${f}: ${err.message}`);

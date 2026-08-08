@@ -20,6 +20,7 @@ import {
   cropPersonLayer,
   resolvePersonAsset,
   resolvePresetAssets,
+  renderOne,
 } from "../sheet/render-core.js";
 
 test("topTransparent uses opacity and overlay at 0:0", () => {
@@ -550,4 +551,50 @@ test("resolvePresetAssets bỏ qua lớp không cần file", () => {
   };
   const r = resolvePresetAssets(preset, () => 0);
   assert.deepEqual(r.warnings, []);
+});
+
+// I1(b) (bản vá theo review toàn nhánh 2026-08-08): renderOne phải là lớp phòng thủ THỨ HAI
+// cho preset composer — sheet-runner.js kiểm trước khi tải video (lớp thứ nhất), nhưng
+// renderOne còn được gọi trực tiếp từ render.js và các nơi khác không đi qua sheet-runner.
+// validatePreset ném TRƯỚC khi chạm ffprobe/ffmpeg nên test này gọi renderOne được mà không
+// cần file video thật hay mock fluent-ffmpeg: lỗi phải là throw ĐỒNG BỘ, không phải promise
+// reject, vì check này nằm trước dòng "return new Promise(...)".
+test("renderOne composer: preset không hợp lệ (thiếu lớp overlay) -> ném lỗi TRƯỚC khi chạm ffprobe", () => {
+  const badPreset = {
+    version: 1, name: "x",
+    layers: [{ id: "bg", source: { type: "background" }, geometry: { fit: "full" } }],
+  };
+  assert.throws(
+    () => renderOne({
+      overlayFile: "khong-ton-tai.mp4", backgroundFile: "khong-ton-tai.mp4", outputPath: "out.mp4",
+      renderMode: "composer", cfg: { preset: badPreset },
+    }),
+    /preset composer không hợp lệ.*đúng một lớp video gốc/
+  );
+});
+
+test("renderOne composer: preset hợp lệ -> KHÔNG ném ở bước kiểm (lỗi sau đó, nếu có, đến từ ffprobe file không tồn tại)", () => {
+  const okPreset = {
+    version: 1, name: "x",
+    layers: [
+      { id: "bg", source: { type: "background" }, geometry: { fit: "full" } },
+      { id: "ov", source: { type: "overlay" }, geometry: { fit: "full" } },
+    ],
+  };
+  // Không throw đồng bộ: renderOne phải đi tới được return new Promise(...). Promise đó rồi
+  // sẽ reject vì file không tồn tại (ffprobe thật) — không đợi/assert phần đó, chỉ cần biết
+  // hàm không ném lỗi validatePreset ở bước đồng bộ.
+  let threwSync = false;
+  let p;
+  try {
+    p = renderOne({
+      overlayFile: "khong-ton-tai.mp4", backgroundFile: "khong-ton-tai.mp4", outputPath: "out.mp4",
+      renderMode: "composer", cfg: { preset: okPreset },
+    });
+  } catch {
+    threwSync = true;
+  }
+  assert.equal(threwSync, false);
+  assert.ok(p instanceof Promise);
+  p.catch(() => {}); // tránh unhandledRejection khi ffprobe thất bại thật ở nền
 });

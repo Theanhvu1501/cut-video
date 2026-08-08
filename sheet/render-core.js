@@ -3,7 +3,7 @@ import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { compilePreset } from "./layer-compiler.js";
+import { compilePreset, validatePreset } from "./layer-compiler.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.join(__dirname, "..");
@@ -496,6 +496,16 @@ export function renderOne({
   // Composer: bố cục đến từ preset trong cfg.preset thay vì fix cứng theo mode.
   let composed = null;
   if (renderMode === "composer") {
+    // Lớp phòng thủ THỨ HAI (thứ nhất là sheet-runner.js, nạp + kiểm preset một lần cho cả
+    // kênh trước khi tải video nào). renderOne cũng được gọi trực tiếp từ nơi khác (render.js,
+    // test, Giai đoạn 2 sau này) nên không được coi preset đầu vào là luôn hợp lệ. Kiểm TRƯỚC
+    // ffprobe: preset sai cấu trúc thì dừng ngay, không tốn một lượt ffprobe/ffmpeg nào.
+    // validatePreset đã gom hết lỗi nên check.errors.join("; ") đúng là thông báo người vận
+    // hành cần, không phải chỉ lỗi đầu tiên.
+    const check = validatePreset(cfg.preset);
+    if (!check.ok) {
+      throw new Error(`preset composer không hợp lệ: ${check.errors.join("; ")}`);
+    }
     const { preset, warnings } = resolvePresetAssets(cfg.preset);
     if (onProgress) warnings.forEach((w) => onProgress(w));
     composed = compilePreset(preset);

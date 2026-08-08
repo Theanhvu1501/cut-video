@@ -1,5 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import pLimit from "p-limit";
 import { createSheetRunner, pickRandomBackground, pickDownloadDelay } from "../sheet/sheet-runner.js";
 import { ST, skipText, MAX_ATTEMPTS } from "../sheet/resume-plan.js";
@@ -157,6 +160,58 @@ function makeDeps(overrides = {}) {
   delete overrides.existingFiles;
   return { deps: { ...deps, ...overrides }, calls, getState: () => savedState, getResume: () => savedResume, files };
 }
+
+// I2 (bản vá theo review toàn nhánh 2026-08-08): renderOne bọc MỌI cảnh báo trong
+// if (onProgress), nhưng renderer() cũng đẩy CẢ mọi dòng stderr của ffmpeg qua onProgress —
+// nối thẳng renderer.onProgress vào emit({type:"log"}) là log ngập stderr của ffmpeg mỗi
+// video. sheet-runner.js phải LỌC: chỉ log những dòng bắt đầu bằng "⚠️" (quy ước cảnh báo
+// dùng xuyên codebase), bỏ mọi thứ khác.
+test("renderer nhận onProgress: lọc CHỈ dòng bắt đầu bằng ⚠️, bỏ mọi dòng khác (kể cả stderr ffmpeg)", async () => {
+  const seenOnProgress = [];
+  const { deps } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 1, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+    },
+    renderer: async (opts) => {
+      seenOnProgress.push(typeof opts.onProgress);
+      // Mô phỏng đúng những gì renderOne thật đẩy qua onProgress: cảnh báo thật của composer/
+      // blurFrame/crop VÀ một dòng stderr thô của ffmpeg (không có tiền tố ⚠️).
+      opts.onProgress("⚠️ Lớp \"khung\" không tìm được file hợp lệ — bỏ qua lớp này");
+      opts.onProgress("frame=  120 fps=30 q=23.0 size=    512kB time=00:00:04.00 bitrate=1048.6kbits/s");
+      opts.onProgress("⚠️ GPU (h264_nvenc) không encode được, render lại bằng CPU. Lý do: x");
+      return { outputPath: opts.outputPath };
+    },
+  });
+  await createSheetRunner(deps).runNow();
+  assert.deepEqual(seenOnProgress, ["function"], "renderer() PHẢI được truyền onProgress");
+});
+
+test("renderer nhận onProgress: dòng ⚠️ đi vào emit({type:'log'}), dòng thường (stderr ffmpeg) thì KHÔNG", async () => {
+  const emitted = [];
+  const { deps } = makeDeps({
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 1, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async () => {},
+    },
+    emit: (e) => { emitted.push(e); },
+    renderer: async (opts) => {
+      opts.onProgress("⚠️ Lớp \"khung\" không tìm được file hợp lệ — bỏ qua lớp này");
+      opts.onProgress("frame=  120 fps=30 q=23.0 size=    512kB time=00:00:04.00 bitrate=1048.6kbits/s");
+      return { outputPath: opts.outputPath };
+    },
+  });
+  await createSheetRunner(deps).runNow();
+  const logs = emitted.filter((e) => e.type === "log");
+  assert.ok(logs.some((l) => l.message.includes("⚠️ Lớp") && l.message.includes("[Kênh A]")), "cảnh báo ⚠️ phải tới emit log, có tiền tố tên kênh");
+  assert.ok(!logs.some((l) => l.message.includes("frame=")), "dòng stderr thô của ffmpeg KHÔNG được lọt vào log");
+});
 
 test("chromaKeyAuto: detectChroma sets cfg.chromaColor and gpu/speed pass through", async () => {
   const detectCalls = [];
@@ -437,11 +492,15 @@ test("render lỗi: giữ file overlay, ghi 'lỗi render:', tăng attempts", as
   assert.equal(getResume()["Kênh A"].u1.attempts, 1);
 });
 
-// Task 10 (bản vá theo review): composer với preset không đọc được PHẢI đi qua đúng cỗ
-// máy lỗi chung (catch -> bumpAttempts + ghi Sheet), không được "return" âm thầm — return
-// làm attempts đứng ở 0, ô trạng thái Sheet vẫn "đã tải" mãi, kênh lặp vô hạn mà người vận
-// hành không thấy gì trong Sheet. Kênh khác (không dùng composer) không được ảnh hưởng.
-test("composer: preset không đọc được -> tăng attempts, ghi lỗi vào Sheet, kênh khác vẫn chạy", async () => {
+// I1(a) (bản vá theo review toàn nhánh 2026-08-08, thay cho hành vi Task 10 cũ): composer với
+// preset không đọc được phải bị CHẶN TRƯỚC KHI TẢI bất kỳ video nào của kênh đó — nạp + kiểm
+// preset MỘT LẦN cho cả kênh trước Promise.all, không phải mỗi item SAU KHI đã tải xong (cách
+// cũ). Cách cũ tốn một lượt tải yt-dlp/băng thông proxy/hạn mức rate-limit cho MỌI item trước
+// khi thất bại lần lượt — đúng cái giá spec "Preset không tồn tại -> bỏ qua kênh đó" muốn
+// tránh. Vẫn phải ghi lỗi rõ vào Sheet + emit "error"/"channel-status", và kênh khác không bị
+// ảnh hưởng.
+test("composer: preset không đọc được -> BỎ QUA kênh TRƯỚC KHI TẢI, ghi lỗi vào Sheet, kênh khác vẫn chạy", async () => {
+  const emitted = [];
   const { deps, calls, getResume } = makeDeps({
     sheetsApi: {
       readConfigSheet: async () => [
@@ -456,24 +515,55 @@ test("composer: preset không đọc được -> tăng attempts, ghi lỗi vào 
       setUrlStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status }),
       setUploadStatus: async () => {},
     },
+    emit: (e) => { emitted.push(e); if (e.type === "error") calls.errors.push(e); },
   });
   await createSheetRunner(deps).runNow();
 
-  // (a) Không xoá file overlay của Kênh A: nhánh dọn dẹp trong catch chỉ chạy khi
-  // stage === "download", còn ở đây stage đã là "render" lúc ném lỗi.
-  assert.ok(!calls.unlinked.some((p) => /u1/.test(p)), "không được xoá overlay của Kênh A");
-  // (b) attempts PHẢI được bump — đây chính là phần "return" cũ bỏ sót.
-  assert.equal(getResume()["Kênh A"].u1.attempts, 1);
-  // (c) ô trạng thái Sheet của Kênh A PHẢI ghi lỗi (không phải đứng yên ở "đã tải" —
-  // lấy lần ghi CUỐI vì lần đầu luôn là "đã tải" sau bước tải, trước khi chạm preset).
+  // (a) KHÔNG được tải u1: preset hỏng phải chặn TRƯỚC download, không phải tốn một lượt tải
+  // yt-dlp rồi mới thất bại ở bước render như trước.
+  assert.ok(!calls.downloaded.includes("u1"), "không được tải u1 khi preset hỏng");
+  assert.ok(!calls.unlinked.some((p) => /u1/.test(p)), "không có gì để xoá vì chưa tải gì");
+  // (b) KHÔNG có entry resume cho u1: chưa hề chạm tới bước download/render nào của nó.
+  assert.equal(getResume()["Kênh A"]?.u1, undefined);
+  // (c) ô trạng thái Sheet của Kênh A phải ghi lỗi preset (không phải "đã tải").
   const errStatus = calls.status.filter((s) => s.sheetName === "Kênh A").at(-1);
   assert.ok(errStatus, "phải ghi trạng thái lỗi vào Sheet cho Kênh A");
   assert.ok(errStatus.status.startsWith(ST.ERR_RENDER), `expected "${ST.ERR_RENDER}", got "${errStatus.status}"`);
   assert.match(errStatus.status, /không đọc được preset/);
-  // (d) emit đúng mức nghiêm trọng: type "error", không phải "log" nhẹ nhàng.
+  // (d) emit đúng mức nghiêm trọng: type "error" + "channel-status", không phải "log" nhẹ nhàng.
   assert.ok(calls.errors.some((e) => e.channel === "Kênh A" && /không đọc được preset/.test(e.message)));
+  assert.ok(emitted.some((e) => e.type === "channel-status" && e.channel === "Kênh A" && e.status === "lỗi preset"));
   // (e) Kênh B không dùng composer: không bị ảnh hưởng, vẫn render bình thường.
   assert.equal(calls.rendered.filter((p) => /u2/.test(p)).length, 1, "Kênh B vẫn phải render");
+});
+
+test("composer: preset đọc được nhưng KHÔNG hợp lệ (vd. thiếu lớp overlay) -> cũng bị chặn TRƯỚC KHI TẢI", async () => {
+  // validatePreset là lớp chắn thứ hai bên trong khối kiểm của I1(a) — không chỉ "đọc được
+  // hay không". Dùng presetsDir trỏ vào một thư mục tạm chứa preset thật (không mock
+  // loadPreset) để bài test đi qua đúng đường validatePreset thật.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "preset-invalid-"));
+  fs.writeFileSync(
+    path.join(dir, "hong.json"),
+    JSON.stringify({ version: 1, name: "hong", layers: [{ id: "bg", source: { type: "background" }, geometry: { fit: "full" } }] })
+  );
+  const { deps, calls } = makeDeps({
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/state.json", renderConcurrency: 2, presetsDir: dir },
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 5, renderMode: "composer", presetName: "hong", slotOverrides: {}, cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+      setUrlStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status }),
+      setUploadStatus: async () => {},
+    },
+  });
+  await createSheetRunner(deps).runNow();
+  fs.rmSync(dir, { recursive: true, force: true });
+
+  assert.ok(!calls.downloaded.includes("u1"), "không được tải u1 khi preset không hợp lệ");
+  const errStatus = calls.status.filter((s) => s.sheetName === "Kênh A").at(-1);
+  assert.ok(errStatus, "phải ghi trạng thái lỗi vào Sheet");
+  assert.match(errStatus.status, /không hợp lệ.*đúng một lớp video gốc/);
 });
 
 test("render xong: xoá overlay, ghi done, lưu outputPath", async () => {

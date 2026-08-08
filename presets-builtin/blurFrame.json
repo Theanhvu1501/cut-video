@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "blurFrame",
+  "label": "Nền mờ + khung",
+  "base": { "w": 1280, "h": 720 },
+  "layers": [
+    { "id": "bg", "label": "Nền mờ", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "full" }, "treatments": [{ "kind": "blur", "sigma": 20 }], "blend": "normal" },
+    { "id": "ov", "label": "Video gốc", "source": { "type": "overlay" }, "geometry": { "fit": "scale", "value": 0.85, "anchor": "center" }, "treatments": [{ "kind": "opacity", "value": 0.85 }], "blend": "normal" },
+    { "id": "frame", "label": "Khung", "slot": "khung", "source": { "type": "image", "path": "" }, "geometry": { "fit": "box", "w": 1088, "h": 612, "anchor": "center" }, "treatments": [], "blend": "normal" },
+    { "id": "fx", "label": "Hiệu ứng", "slot": "hieu_ung", "source": { "type": "video", "path": "" }, "geometry": { "fit": "full", "anchor": "top-left" }, "treatments": [{ "kind": "opacity", "value": 0.15 }], "blend": "screen" }
+  ]
+}

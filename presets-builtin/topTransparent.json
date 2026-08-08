@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "topTransparent",
+  "label": "Video trong suốt",
+  "base": { "w": 1280, "h": 720 },
+  "layers": [
+    { "id": "ov", "label": "Video gốc", "source": { "type": "overlay" }, "geometry": { "fit": "full" }, "treatments": [], "blend": "normal" },
+    { "id": "bg", "label": "Nền", "slot": "nen", "source": { "type": "background" }, "geometry": { "fit": "full", "anchor": "top-left" }, "treatments": [{ "kind": "opacity", "value": 0.9 }], "blend": "normal" }
+  ]
+}

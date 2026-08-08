@@ -48,6 +48,12 @@ export function anchorExpr(anchor, dx = 0, dy = 0) {
 // kích thước để sinh nguồn, và w=null báo "không biết trước" (scale=-2).
 export function scaleFilter(geometry = {}) {
   const g = geometry || {};
+  // "none" = dùng nguồn y nguyên, KHÔNG sinh bước scale nào. Cần cho lớp nền của
+  // chromaKey/crop/keepColor: code cũ chồng thẳng lên [0:v] chứ không scale nó, nên preset
+  // muốn ra đúng graph cũ thì phải bỏ được bước scale. Ngoài chuyện khớp graph, đây còn
+  // tránh một bước scale vô ích trên từng khung hình của cả mẻ 60 video.
+  // buildLayerChain đã xử lý được chuỗi rỗng sẵn (outLabel = nhãn nguồn, 0 câu lệnh).
+  if (g.fit === "none") return { filter: "", w: null, h: null };
   if (g.fit === "scale") {
     const raw = Number(g.value);
     const ratio = raw > 0 && raw <= 1 ? raw : DEFAULT_SCALE;

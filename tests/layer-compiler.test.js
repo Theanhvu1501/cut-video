@@ -69,6 +69,11 @@ test("scaleFilter fit lạ rơi về full", () => {
   assert.equal(scaleFilter({ fit: "khong-ton-tai" }).filter, "scale=1280:720");
 });
 
+test("scaleFilter fit=none không sinh bước scale nào", () => {
+  // Cần cho lớp nền của chromaKey/crop/keepColor: code cũ chồng thẳng lên [0:v].
+  assert.deepEqual(scaleFilter({ fit: "none" }), { filter: "", w: null, h: null });
+});
+
 // Bộ sinh nhãn xác định để test so chuỗi được.
 function labeller() {
   let n = 0;
@@ -87,6 +92,19 @@ test("lớp không treatment chỉ có scale", () => {
   );
   assert.deepEqual(r.statements, ["[1:v]scale=1280:720[t0]"]);
   assert.equal(r.outLabel, "t0");
+});
+
+test("buildLayerChain với fit=none và không treatment thì không sinh câu lệnh nào", () => {
+  const r = buildLayerChain({ geometry: { fit: "none" }, treatments: [] }, "0:v", labeller());
+  assert.deepEqual(r.statements, []);
+  assert.equal(r.outLabel, "0:v");
+});
+
+test("buildLayerChain với fit=none vẫn áp được treatment", () => {
+  const r = buildLayerChain(
+    { geometry: { fit: "none" }, treatments: [{ kind: "blur", sigma: 20 }] }, "0:v", labeller()
+  );
+  assert.deepEqual(r.statements, ["[0:v]gblur=sigma=20[t0]"]);
 });
 
 test("chromakey: format=yuva420p nằm SAU colorkey (khớp chromaKey cũ)", () => {

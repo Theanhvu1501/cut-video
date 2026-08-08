@@ -879,7 +879,9 @@ git commit -m "feat(composer): 7 treatment và luật chèn format=yuva420p"
 - Test: `tests/layer-compiler.test.js`
 
 **Interfaces:**
-- Consumes: `TREATMENT_KINDS`, `ANCHORS` từ Task 2–3
+- Consumes: không có gì từ task trước. `validatePreset` **không** kiểm `treatments` hay
+  `anchor`: kind lạ đã bị `buildLayerChain` bỏ qua (Task 3) và `anchor` lạ đã rơi về
+  `center` trong `anchorExpr` (Task 2). Kiểm lại ở đây là trùng lặp.
 - Produces:
   - `SOURCE_TYPES: string[]` — `["background","overlay","image","video","solid","waveform"]`
   - `validatePreset(preset) -> { ok: boolean, errors: string[] }`
@@ -1006,13 +1008,19 @@ export function validatePreset(preset) {
   const seen = new Set();
   for (const l of layers) {
     const type = l?.source?.type;
-    if (!SOURCE_TYPES.includes(type)) errors.push(`loại nguồn không hợp lệ: ${type}`);
+    // String(type) chứ không nội suy thẳng vào chuỗi template: type là Symbol thì nội suy
+    // NÉM TypeError, mà hàm này có hợp đồng là luôn trả { ok, errors } — một validator
+    // chết giữa đường không bảo vệ được mẻ render chạy không người trông.
+    if (!SOURCE_TYPES.includes(type)) errors.push(`loại nguồn không hợp lệ: ${String(type)}`);
     if (BOX_ONLY.has(type) && l?.geometry?.fit !== "box") {
       errors.push(`lớp ${type} buộc dùng fit: "box" vì kích thước nằm trong tham số sinh nguồn`);
     }
     const id = l?.id;
-    if (id) {
-      if (seen.has(id)) errors.push(`id lớp bị trùng: ${id}`);
+    // id !== undefined chứ không phải if (id): "" và 0 là giá trị falsy nhưng CÓ mặt, và
+    // hai lớp cùng để id: "" (lỗi sao chép rất dễ gặp khi sửa preset bằng tay) phải bị
+    // bắt là trùng, không được lọt qua như thể chưa đặt id.
+    if (id !== undefined) {
+      if (seen.has(id)) errors.push(`id lớp bị trùng: ${String(id)}`);
       seen.add(id);
     }
   }
@@ -1060,7 +1068,7 @@ Thêm vào `tests/layer-compiler.test.js`:
 
 ```js
 import { compilePreset } from "../sheet/layer-compiler.js";
-import { canonicalGraph } from "../tests/graph-dag.js";
+import { canonicalGraph } from "./graph-dag.js";
 
 const bg = { id: "bg", source: { type: "background" }, geometry: { fit: "full" } };
 const ov = { id: "ov", source: { type: "overlay" }, geometry: { fit: "full" } };

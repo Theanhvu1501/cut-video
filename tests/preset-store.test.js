@@ -123,6 +123,20 @@ test("savePreset cho ghi đè khi file cũ hỏng, không phải preset", () => 
   assert.equal(savePreset(dir, { ...p1, name: "thu" }).ok, true);
 });
 
+test("savePreset từ chối trùng chỗ lưu kể cả khi file cũ thiếu trường name", () => {
+  const dir = tmp();
+  fs.mkdirSync(dir, { recursive: true });
+  // Người dùng sửa preset bằng tay rồi lỡ xoá mất dòng name — vẫn là file của họ.
+  const khongTen = { version: 1, layers: p1.layers };
+  fs.writeFileSync(path.join(dir, "thu.json"), JSON.stringify(khongTen), "utf8");
+
+  const r = savePreset(dir, { ...p1, name: "thu" });
+  assert.equal(r.ok, false);
+  assert.match(r.errors.join("|"), /trùng chỗ lưu/);
+  // Quan trọng nhất: nội dung cũ KHÔNG bị thay.
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(dir, "thu.json"), "utf8")), khongTen);
+});
+
 test("loadPreset trả null khi JSON parse được nhưng không phải object preset", () => {
   const dir = tmp();
   fs.mkdirSync(dir, { recursive: true });

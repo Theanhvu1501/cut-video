@@ -46,12 +46,19 @@ export function savePreset(presetsDir, preset) {
   // file ("foo/bar" và "foo-bar"; hay "Alpha" và "alpha" trên ổ Windows). Ghi thẳng là xoá
   // mất preset kia mà không ai biết — preset là công sức người dùng, không được im lặng.
   // Lưu lại đúng preset đang có (cùng name) thì vẫn cho, đó là ghi đè hợp lệ.
+  // KHÔNG kiểm typeof existing.name: loadPreset đã trả null cho mọi thứ không phải object
+  // preset, nên tới đây existing chắc chắn là object. Một file thiếu hẳn trường name vẫn là
+  // file của người dùng — thêm điều kiện kiểu chỉ mở lỗ cho nó bị xoá âm thầm.
   const existing = loadPreset(presetsDir, preset?.name);
-  if (existing && typeof existing.name === "string" && existing.name !== preset?.name) {
+  if (existing && existing.name !== preset?.name) {
+    const cuaAi =
+      typeof existing.name === "string"
+        ? `preset "${existing.name}"`
+        : "một file preset không rõ tên";
     return {
       ok: false,
       errors: [
-        `tên "${preset?.name}" trùng chỗ lưu với preset "${existing.name}" — đổi tên khác`,
+        `tên "${preset?.name}" trùng chỗ lưu với ${cuaAi} — đổi tên khác, hoặc xoá file đó nếu không cần`,
       ],
     };
   }

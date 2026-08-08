@@ -465,10 +465,15 @@ if (config) {
 // Dừng ngay thay vì âm thầm rơi về topTransparent: render cả mẻ ra sai bố cục tệ hơn
 // nhiều so với dừng sớm và báo rõ.
 if (renderMode === "composer" && !composerPreset) {
-  log(
-    "❌ renderMode là 'composer' nhưng config không có 'preset'. electron-main phải nạp preset và truyền qua RENDER_CONFIG_JSON.",
-    LOG_LEVEL.ERROR
-  );
+  const msg =
+    "❌ renderMode là 'composer' nhưng config không có 'preset'. electron-main phải nạp preset và truyền qua RENDER_CONFIG_JSON.";
+  // Phải ghi STDERR, không chỉ log(): electron-main dựng thông báo lỗi trả về cho người gọi
+  // bằng `stderr || "Script exited with code N"`, mà log() chỉ vào stdout và render.log —
+  // nên nếu thiếu dòng này thì đúng thông báo trên bị thay bằng "Script exited with code 1".
+  // fs.writeSync chứ không console.error: trên Windows stdio ghi vào pipe là bất đồng bộ,
+  // process.exit ngay sau đó có thể cắt mất dòng vừa ghi.
+  fs.writeSync(2, `${msg}\n`);
+  log(msg, LOG_LEVEL.ERROR);
   process.exit(1);
 }
 

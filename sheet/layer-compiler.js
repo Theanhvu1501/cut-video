@@ -314,8 +314,11 @@ export function compilePreset(preset) {
     const inLabel = sourceLabel(layer);
     if (!inLabel) continue;
 
-    // Lớp waveform và solid đã có kích thước đúng từ nguồn; các lớp khác đi qua chuỗi
-    // scale + treatment bình thường.
+    // Chỉ waveform đi đường riêng: câu lệnh showwaves của nó đã được đẩy vào filterGraph
+    // ngay lúc cấp nguồn, và nó đã có đúng kích thước nên không cần scale nữa.
+    // Lớp solid thì KHÔNG đi đường riêng dù nguồn color= cũng đã đúng kích thước: cho nó
+    // qua buildLayerChain thì treatment (opacity, blur…) mới áp được lên nó. Bước scale
+    // lặp lại là vô hại vì cùng kích thước.
     const built =
       layer?.source?.type === "waveform"
         ? { statements: [], outLabel: inLabel, ...scaleFilter(layer.geometry) }
@@ -342,6 +345,22 @@ export function compilePreset(preset) {
       pending.push(`[${stage}][${built.outLabel}]overlay=${x}:${y}:shortest=1[${out}]`);
     }
     stage = out;
+  }
+
+  // Lớp waveform đẩy câu lệnh thẳng vào filterGraph chứ không qua pending. Nếu nó là lớp
+  // duy nhất còn sống thì pending rỗng, bước đổi tên bên dưới không có gì để đổi, và graph
+  // ra THIẾU HẲN [combined_video] — ffmpeg chết với lỗi khó hiểu thay vì báo sai preset.
+  // Chèn một bước copy để hợp đồng đúng về cấu trúc, không phụ thuộc loại lớp nào đi
+  // đường riêng.
+  if (stage !== null && !pending.length) {
+    const out = nextLabel();
+    pending.push(`[${stage}]copy[${out}]`);
+    stage = out;
+  }
+  // Không lớp nào dựng được hình: graph không dùng được. validatePreset đã chặn trường hợp
+  // này, nhưng compilePreset phải tự nói ra khi bị gọi mà bỏ qua bước kiểm.
+  if (stage === null) {
+    warnings.push("⚠️ Preset không có lớp nào dựng được hình — graph không dùng được");
   }
 
   // Nhãn cuối cùng phải là [combined_video] — hợp đồng với renderOne. Đổi tên ở bước cuối

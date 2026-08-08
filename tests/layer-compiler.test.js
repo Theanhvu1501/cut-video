@@ -506,3 +506,21 @@ test("compilePreset: graph sinh ra không có nhãn treo (canonicalGraph không 
   });
   assert.doesNotThrow(() => canonicalGraph(r.filterGraph));
 });
+
+test("compilePreset: waveform là lớp duy nhất vẫn ra đúng [combined_video]", () => {
+  // Hợp đồng phải đúng về cấu trúc, không phụ thuộc lớp nào đi đường riêng: waveform đẩy
+  // câu lệnh thẳng vào filterGraph nên nếu không chèn bước copy thì graph thiếu nhãn cuối.
+  const r = compilePreset({
+    layers: [{ id: "w", source: { type: "waveform" }, geometry: { fit: "box", w: 480, h: 120 } }],
+  });
+  const joined = r.filterGraph.join("|");
+  assert.equal((joined.match(/\[combined_video\]/g) || []).length, 1);
+  assert.doesNotThrow(() => canonicalGraph(r.filterGraph));
+});
+
+test("compilePreset: không lớp nào dựng được hình thì có cảnh báo rõ ràng", () => {
+  const r = compilePreset({
+    layers: [{ id: "a", source: { type: "image", path: "" }, geometry: { fit: "full" } }],
+  });
+  assert.match(r.warnings.join("|"), /không có lớp nào dựng được hình/);
+});

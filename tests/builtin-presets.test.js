@@ -329,6 +329,56 @@ test("preset blurFrame: extraInputs khớp buildStudioInputs cũ về thứ tự
   ]);
 });
 
+test("C2: lớp dưới cùng KHÔNG phải 1280x720 → compiler tự chèn canvas nền đen cố định khung", () => {
+  // Kịch bản UI kéo thả: một lớp nhỏ (solid 400x300) bị kéo xuống dưới cùng. Không chèn
+  // canvas thì video ra sai kích thước — lỗi THẬT đã gặp khi render (1280x190 thay vì
+  // 1280x720), xem comment ở isTrustedFullFrame trong sheet/layer-compiler.js.
+  const p = {
+    layers: [
+      {
+        id: "small", label: "Lớp nhỏ dưới cùng", source: { type: "solid", color: "red" },
+        geometry: { fit: "box", w: 400, h: 300, anchor: "top-left" }, treatments: [],
+      },
+      { id: "ov", label: "Video gốc", source: { type: "overlay" }, geometry: { fit: "full" }, treatments: [] },
+    ],
+  };
+  const r = compilePreset(p);
+
+  const canvasLine = r.filterGraph.find((s) => /^color=c=black:s=1280x720:r=30\[cl\d+\]$/.test(s));
+  assert.ok(canvasLine, "phải có node canvas nền đen 1280x720 làm khung cố định");
+  const canvasLabel = canvasLine.match(/\[(cl\d+)\]$/)[1];
+
+  // Lớp nhỏ dưới cùng phải chồng lên ĐÚNG canvas đó, tại anchor "top-left" (0,0) của chính nó.
+  const baseOverlay = r.filterGraph.find(
+    (s) => s.startsWith(`[${canvasLabel}]`) && s.includes("overlay=0:0:shortest=1")
+  );
+  assert.ok(baseOverlay, "lớp nhỏ dưới cùng phải chồng lên canvas tại đúng anchor của chính nó");
+  const stageLabel = baseOverlay.match(/\[(cl\d+)\]$/)[1];
+
+  // Video gốc (lớp thứ hai) phải chồng TIẾP lên kết quả đã cố định khung đó, không phải
+  // chồng thẳng lên lớp nhỏ.
+  const finalOverlay = r.filterGraph.find((s) => s.endsWith("[combined_video]"));
+  assert.ok(
+    finalOverlay.startsWith(`[${stageLabel}]`),
+    "video gốc phải chồng lên khung đã cố định kích thước, không phải lên lớp nhỏ trực tiếp"
+  );
+});
+
+test("C2: lớp dưới cùng ĐÃ đúng 1280x720 (kể cả background fit:\"none\") → không chèn canvas thừa", () => {
+  // Cả 5 preset dựng sẵn đều có lớp dưới cùng full-frame — 3 trong số đó (chromaKey, crop,
+  // keepColor) dùng background với fit:"none" (w/h null ở scaleFilter). Đây chính là trường
+  // hợp isTrustedFullFrame phải nhận diện là "đã đủ khung" để KHÔNG chèn canvas — không thì
+  // 15 test hồi quy phía trên đã đỏ ngay từ nhánh C2 này.
+  for (const name of ["topTransparent", "chromaKey", "crop", "keepColor", "blurFrame"]) {
+    const r = compilePreset(load(name));
+    assert.doesNotMatch(
+      r.filterGraph.join("|"),
+      /color=c=black:s=1280x720:r=30/,
+      `${name}: không được chèn canvas 1280x720 thừa (lớp dưới cùng vốn đã đủ khung)`
+    );
+  }
+});
+
 test("3 preset của mode chưa có shortest=1 thì preset PHẢI có — khác biệt cố ý", () => {
   for (const n of ["topTransparent", "chromaKey", "crop"]) {
     const old = buildComplexFilter(n, {}).join("|");

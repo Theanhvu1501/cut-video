@@ -286,6 +286,28 @@ export function validatePreset(preset) {
 // đầu từ [2] và phải khớp đúng thứ tự extraInputs trả về.
 const FIRST_EXTRA_INPUT = 2;
 
+// C2: lớp DƯỚI CÙNG (lớp đầu tiên dựng được stage trong compilePreset) quyết định kích
+// thước của TOÀN BỘ canvas phía sau, vì hành vi mặc định của filter overlay là lấy kích
+// thước theo INPUT ĐẦU TIÊN chứ không phải theo `base` của preset. Preset không có lớp nền
+// full-frame ở dưới cùng (ví dụ người dùng kéo một lớp ảnh nhỏ xuống dưới cùng ở UI kéo thả)
+// thì video ra SAI kích thước — lỗi THẬT đã gặp khi render (1280x190 thay vì 1280x720).
+//
+// scaleFilter trả w/h = null cho fit "none" (xem comment ở scaleFilter) vì compiler THẬT SỰ
+// không biết trước kích thước nguồn của một lớp bất kỳ. Nhưng 4/5 mode CŨ đã chồng thẳng
+// [0:v]/[1:v] (background/overlay) mà không qua bước scale nào — tức toàn hệ thống vẫn giả
+// định hai luồng video gốc này luôn đúng 1280x720 khi tới compiler (được chuẩn hoá ở khâu
+// tải/ghép trước đó, ngoài phạm vi file này). Phải GIỮ đúng giả định đó (không chèn canvas)
+// khi lớp dưới cùng là background/overlay dùng fit "none" — đây là ĐIỀU KIỆN BẮT BUỘC để 15
+// test hồi quy trong tests/builtin-presets.test.js còn xanh, vì cả 5 preset dựng sẵn đều
+// dùng đúng tổ hợp này cho lớp nền dưới cùng của chúng. KHÔNG áp dụng suy luận này cho
+// image/video/solid/waveform: kích thước thật của chúng phụ thuộc file hoặc tham số người
+// dùng chọn, "không biết trước" ở những loại đó nghĩa là THẬT SỰ không biết trước.
+function isTrustedFullFrame(built, layer) {
+  if (built.w === BASE_W && built.h === BASE_H) return true;
+  const type = layer?.source?.type;
+  return (built.w === null || built.h === null) && (type === "background" || type === "overlay");
+}
+
 // Cấp input và sinh [n:v] trong CÙNG một vòng lặp: đây là lý do blurFrameLayers() phải
 // tồn tại trong code cũ. Làm trong một vòng thì không có đường nào lệch chỉ số.
 export function compilePreset(preset) {
@@ -390,7 +412,23 @@ export function compilePreset(preset) {
     pending.push(...built.statements);
 
     if (stage === null) {
-      stage = built.outLabel;
+      if (isTrustedFullFrame(built, layer)) {
+        stage = built.outLabel;
+      } else {
+        // Chèn canvas đen full-frame làm khung cố định 1280x720, rồi chồng lớp dưới cùng lên
+        // đó bằng CHÍNH anchor/dx/dy khai báo trên lớp (không khai báo thì anchorExpr tự rơi
+        // về "center", đúng như mọi lớp chồng khác trong hàm này). Canvas phát ra dưới dạng
+        // NODE NGUỒN trong filter_complex — không chiếm input phụ nào — cùng kỹ thuật với lớp
+        // solid (xem case "solid" trong sourceLabel phía trên và comment ở đó về lý do không
+        // dùng "-f lavfi").
+        const canvasLabel = nextLabel();
+        filterGraph.push(`color=c=black:s=${BASE_W}x${BASE_H}:r=30[${canvasLabel}]`);
+        const geo0 = layer.geometry || {};
+        const { x: x0, y: y0 } = anchorExpr(geo0.anchor, geo0.dx, geo0.dy);
+        const out0 = nextLabel();
+        pending.push(`[${canvasLabel}][${built.outLabel}]overlay=${x0}:${y0}:shortest=1[${out0}]`);
+        stage = out0;
+      }
       continue;
     }
     const geo = layer.geometry || {};

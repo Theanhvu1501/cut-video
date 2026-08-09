@@ -341,12 +341,18 @@ export function compilePreset(preset) {
       }
       case "solid": {
         const g = scaleFilter(layer.geometry);
-        const idx = FIRST_EXTRA_INPUT + extraInputs.length;
-        extraInputs.push({
-          lavfi: `color=c=${src.color || "black"}:s=${g.w || BASE_W}x${g.h || BASE_H}:r=30`,
-          inputOptions: ["-f", "lavfi"],
-        });
-        return `${idx}:v`;
+        const out = nextLabel();
+        // Phát color= thành NODE NGUỒN trong filter_complex, không cấp input "-f lavfi -i"
+        // riêng: fluent-ffmpeg tiền kiểm "-f lavfi" bằng cách đọc `ffmpeg -formats` với một
+        // regex chỉ hiểu 2 cột cờ (node_modules/fluent-ffmpeg/lib/capabilities.js:18), mà
+        // ffmpeg mới in thêm cột cờ device (" D d lavfi") nên dòng đó bị bỏ qua và nó ném
+        // "Input format lavfi is not available" — dù binary hoàn toàn hỗ trợ lavfi. Dạng
+        // node nguồn tránh hẳn phép tiền kiểm đó, chạy được với cả bin/ffmpeg.exe (có cột
+        // device) lẫn bản @ffmpeg-installer (không có), và bỏ luôn một khe input.
+        filterGraph.push(
+          `color=c=${src.color || "black"}:s=${g.w || BASE_W}x${g.h || BASE_H}:r=30[${out}]`
+        );
+        return out;
       }
       case "waveform": {
         const g = scaleFilter(layer.geometry);
@@ -405,11 +411,16 @@ export function compilePreset(preset) {
     stage = out;
   }
 
-  // Lớp waveform đẩy câu lệnh thẳng vào filterGraph chứ không qua pending. Nếu nó là lớp
-  // duy nhất còn sống thì pending rỗng, bước đổi tên bên dưới không có gì để đổi, và graph
-  // ra THIẾU HẲN [combined_video] — ffmpeg chết với lỗi khó hiểu thay vì báo sai preset.
-  // Chèn một bước copy để hợp đồng đúng về cấu trúc, không phụ thuộc loại lớp nào đi
-  // đường riêng.
+  // solid/waveform giờ CÓ qua buildLayerChain (xem comment ở lời gọi built = buildLayerChain
+  // phía trên) nên KHÔNG phải nguồn của pending rỗng nữa: fit="box" bắt buộc của chúng luôn
+  // sinh một bước scale, tức luôn có ít nhất một câu lệnh trong pending. pending chỉ rỗng khi
+  // lớp DUY NHẤT còn sống có geometry fit="none" VÀ không treatment nào — buildLayerChain khi
+  // đó không thêm câu lệnh nào (chain rỗng suốt, flush() không được gọi — xem "buildLayerChain
+  // đã xử lý được chuỗi rỗng sẵn" ở scaleFilter), nên outLabel = inLabel nguyên vẹn. Ví dụ:
+  // preset chỉ có một lớp overlay với fit: "none". Không chèn copy thì bước đổi tên bên dưới
+  // không có gì để đổi, và graph ra THIẾU HẲN [combined_video] — ffmpeg chết với lỗi khó hiểu
+  // thay vì báo sai preset. Chèn một bước copy để hợp đồng đúng về cấu trúc, không phụ thuộc
+  // loại lớp nào đi đường riêng.
   if (stage !== null && !pending.length) {
     const out = nextLabel();
     pending.push(`[${stage}]copy[${out}]`);

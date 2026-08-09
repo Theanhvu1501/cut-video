@@ -79,6 +79,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     validate: (preset) => ipcRenderer.invoke("composer:validate", preset),
     pickAsset: (options) => ipcRenderer.invoke("composer:pickAsset", options),
     previewFrame: (opts) => ipcRenderer.invoke("composer:previewFrame", opts),
+    // Giai đoạn 2B — canvas kéo thả: khung hình đại diện thật cho lớp background/overlay/video.
+    extractThumb: (opts) => ipcRenderer.invoke("composer:extractThumb", opts),
     renderTest: (opts) => ipcRenderer.invoke("composer:renderTest", opts),
     onRenderTestLog: (cb) => ipcRenderer.on("composer:renderTestLog", (event, data) => cb(data)),
     removeRenderTestLogListener: () => ipcRenderer.removeAllListeners("composer:renderTestLog"),

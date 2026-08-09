@@ -64,6 +64,55 @@ function runFfmpeg(ffmpegPath, args) {
   });
 }
 
+// Giai đoạn 2B — cache khung hình đại diện cho canvas kéo thả: Map<videoPath, dataUri>. CHỈ
+// khoá theo videoPath (không kèm giây xem) — canvas không cần xem đúng giây như previewFrame,
+// nó chỉ cần MỘT khung "trông giống video này" để không phải vẽ ô xám giả. Không dùng cache
+// theo (videoPath, atSecond) để tránh trích lại file mỗi lần người dùng gõ số giây khác — đổi
+// lại là hành vi CÓ CHỦ Ý: đổi giây sau lần trích đầu không làm khung đại diện đổi theo.
+const thumbCache = new Map();
+
+// Trích 1 khung PNG thật từ video mẫu, trả về data URI (nhúng thẳng vào <img src>, không cần
+// phục vụ qua file:// nên không phải lo escape đường dẫn Windows như previewFrame). Dùng ĐÚNG
+// resolveFfmpegPaths() của render-core.js — không viết lại logic dò ffmpeg.exe ở đây.
+async function extractThumb({ videoPath, atSecond } = {}, app) {
+  if (!videoPath) return { ok: false, error: "chưa chọn video mẫu" };
+  const cached = thumbCache.get(videoPath);
+  if (cached) return { ok: true, dataUri: cached };
+
+  const second = Number(atSecond) >= 0 ? Number(atSecond) : 1;
+  const outPath = path.join(
+    app.getPath("temp"),
+    `composer-thumb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`
+  );
+  // scale=320:-2: khung đại diện chỉ để ĐỊNH VỊ trên canvas thu nhỏ, không cần độ phân giải gốc
+  // — giữ data URI nhỏ (nhúng trực tiếp vào DOM, không phải file riêng nên không giới hạn bởi
+  // đường truyền, nhưng vẫn nên nhỏ vì mỗi lần đổi preset có thể vẽ lại nhiều khung cùng lúc).
+  const args = [
+    "-y", "-ss", String(second), "-i", videoPath,
+    "-frames:v", "1", "-vf", "scale=320:-2",
+    outPath,
+  ];
+  const { ffmpegPath } = resolveFfmpegPaths();
+  const { code, stderr } = await runFfmpeg(ffmpegPath, args);
+  if (code !== 0) {
+    const detail = extractFfmpegError(stderr);
+    return { ok: false, error: detail || `ffmpeg thoát với mã ${code}` };
+  }
+  let buf;
+  try {
+    buf = fs.readFileSync(outPath);
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  } finally {
+    // Đã đọc xong vào buffer — dọn file tạm ngay, không cần chờ (lỗi xoá không quan trọng,
+    // đây chỉ là file trong thư mục temp của OS).
+    fs.unlink(outPath, () => {});
+  }
+  const dataUri = `data:image/png;base64,${buf.toString("base64")}`;
+  thumbCache.set(videoPath, dataUri);
+  return { ok: true, dataUri };
+}
+
 // Xuất 1 khung hình PNG thật bằng ĐÚNG resolvePresetAssets + compilePreset của luồng render
 // thật (sheet/render-core.js, sheet/layer-compiler.js) — không dựng graph riêng, nếu không
 // bản xem trước sẽ "nói dối" so với video render ra thật.
@@ -275,6 +324,10 @@ export function registerComposerIpc({ ipcMain, app, BrowserWindow }) {
   });
 
   ipcMain.handle("composer:previewFrame", async (event, opts) => previewFrame(opts, app));
+
+  // Giai đoạn 2B — canvas kéo thả: khung hình đại diện thật cho lớp background/overlay/video
+  // (không phải ô xám) — xem extractThumb() phía trên.
+  ipcMain.handle("composer:extractThumb", async (event, opts) => extractThumb(opts, app));
 
   ipcMain.handle("composer:renderTest", async (event, opts) => renderTest(event, opts, app));
 }

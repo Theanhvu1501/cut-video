@@ -8,6 +8,11 @@
 // script kiểu module tải qua file:// có thể bị Chromium chặn CORS tuỳ cấu hình sandbox/
 // webSecurity của BrowserWindow — rủi ro làm CẢ TAB composer trắng trơn, không một dòng lỗi dễ
 // thấy. <script> thường thì chắc chắn chạy được, renderer.js đã dùng suốt từ đầu.
+//
+// Giai đoạn 3 (polish, thuần giao diện — không đổi hành vi render): 3 việc — (1) canvas co giãn
+// theo bề rộng panel thay vì khoá cứng scale 50%, xuống dòng riêng thay vì cạnh tranh bề rộng với
+// cột "Xem thử 1 khung hình"; (2) chữ giữ chỗ ("Chưa chọn ảnh/video") không còn đè lên nhau giữa
+// các lớp; (3) đổi vị trí/nhãn nút tab (chỉ ở renderer.html, xem ghi chú tại dòng nút đó).
 (function () {
   "use strict";
 
@@ -75,10 +80,15 @@
   const renderTestState = { overlayFolder: "", backgroundFolder: "", outputFolder: "" };
 
   // Giai đoạn 2B — canvas kéo thả. Tách state riêng, không trộn vào preset (đây là UI runtime,
-  // không phải dữ liệu preset): scale cố định 50% (đủ vừa panel 1400px của app, không cần
-  // ResizeObserver để tự co giãn — đơn giản hơn và không có gì để vỡ khi cửa sổ resize).
+  // không phải dữ liệu preset).
+  // Giai đoạn 3 (polish): "scale" KHÔNG còn là hằng số 0.5 cố định — canvas giờ co theo bề rộng
+  // panel thật (xem computeCanvasScale()/scheduleCanvasRescale() ngay dưới đây). Giá trị 0.5 ở
+  // đây chỉ là fallback trước khi renderEditor() lần đầu ghi đè bằng phép đo DOM thật; KHÔNG nơi
+  // nào khác được đọc canvasState.scale mà không đi qua computeCanvasScale() trước đó ít nhất một
+  // lần kể từ lần dựng/resize gần nhất — đọc thẳng giá trị cũ mà không đo lại chính là lỗi "cache
+  // lúc dựng DOM" mà polish này phải sửa.
   const canvasState = {
-    scale: 0.5,
+    scale: 0.5, // fallback ban đầu, xem giải thích ở trên.
     selectedIndex: null,     // đồng bộ 2 chiều với bảng thông số
     note: "",                // ghi chú 1 dòng cạnh canvas (vd: tự đổi fit sang "box")
     dragPreview: null,       // { index, x, y, w, h } — vị trí đang kéo, CHƯA ghi vào preset
@@ -91,6 +101,60 @@
   // load để đọc naturalWidth/naturalHeight (suy tỉ lệ cho lớp w:-2), main process không biết gì
   // về việc đó.
   const mediaCache = {};
+
+  // ── Giai đoạn 3 (polish): canvas co theo bề rộng panel thay vì khoá cứng 50% ───────────────
+  // Đo bề rộng THẬT đang có cho canvas bằng #composer-editor-body — khung chứa này luôn tồn tại
+  // ngay khi tab được dựng (SHELL_HTML dựng nó trước, xem ensureBuilt()), và bề rộng của nó do
+  // CSS flex của .composer-shell/.composer-sidebar quyết định — KHÔNG phụ thuộc nội dung canvas
+  // bên trong nó, nên đo được cả TRƯỚC KHI canvas HTML được chèn (không có vòng phụ thuộc con-cha
+  // kiểu "muốn biết bề rộng khung chứa phải dựng xong canvas trước").
+  function measureCanvasAvailableWidth() {
+    const el = document.getElementById("composer-editor-body");
+    if (el && el.clientWidth > 0) return el.clientWidth;
+    // Không đo được (tab chưa từng dựng, hoặc đang ẩn nên clientWidth = 0) — trả về một giá trị
+    // an toàn thay vì để phép chia cho ra NaN/0.
+    return BASE_W * 0.5;
+  }
+
+  // Tính LẠI scale mỗi lần được gọi — cố ý KHÔNG cache kết quả vào một biến module-level dùng
+  // chung, để buộc mọi nơi cần scale (vẽ canvas, quy đổi toạ độ lúc kéo) phải tự gọi hàm này tại
+  // đúng thời điểm cần, thay vì đọc một giá trị đã tính từ trước. Đây là yêu cầu cốt lõi của
+  // polish này: canvas co giãn theo panel, nhưng phép quy đổi chuột ↔ toạ độ preset (nhân/chia
+  // cho scale) phải luôn dùng đúng scale TẠI THỜI ĐIỂM ĐANG KÉO — nếu scale được tính một lần lúc
+  // dựng DOM rồi dùng mãi, toạ độ sẽ sai ngay khi cửa sổ đổi kích thước sau đó.
+  function computeCanvasScale() {
+    const raw = measureCanvasAvailableWidth() / BASE_W;
+    if (!Number.isFinite(raw) || raw <= 0) return 0.5;
+    // Chặn hai đầu: quá hẹp thì khó bấm trúng tay cầm/lớp nhỏ trên canvas; quá rộng thì brief yêu
+    // cầu KHÔNG có trần thật sự ("canvas càng rộng thì kéo thả càng chính xác") — số 2 ở đây chỉ
+    // là lưới an toàn chống phình bất thường nếu phép đo DOM lỗi, không phải giới hạn thiết kế.
+    return Math.max(0.3, Math.min(2, raw));
+  }
+
+  let canvasRescaleScheduled = false;
+  // Đo lại bề rộng + vẽ lại canvas theo scale mới — gọi khi cửa sổ đổi kích thước, và khi tab
+  // Composer vừa được bấm (tự sửa nếu lần đo đầu tiên trót đo lúc tab còn ẩn, clientWidth = 0).
+  // Dùng requestAnimationFrame để gộp nhiều sự kiện "resize" liên tiếp (bắn liên tục lúc người
+  // dùng đang kéo cạnh cửa sổ) thành đúng 1 lần đo/vẽ mỗi khung hình.
+  function scheduleCanvasRescale() {
+    if (canvasRescaleScheduled) return;
+    canvasRescaleScheduled = true;
+    requestAnimationFrame(() => {
+      canvasRescaleScheduled = false;
+      if (!built || !preset) return;
+      const stage = document.getElementById("composer-canvas-stage");
+      if (!stage) return; // canvas không có trong DOM lúc này (chưa dựng, hoặc tab đang ẩn).
+      const newScale = computeCanvasScale();
+      if (Math.abs(newScale - canvasState.scale) < 0.001) return; // không đổi đáng kể, khỏi vẽ lại.
+      canvasState.scale = newScale;
+      stage.style.width = `${Math.round(BASE_W * newScale)}px`;
+      stage.style.height = `${Math.round(BASE_H * newScale)}px`;
+      renderCanvasOnly();
+      const title = document.getElementById("composer-canvas-title");
+      if (title) title.textContent = `Canvas — kéo thả để đặt vị trí (khung 1280×720, thu nhỏ ${Math.round(newScale * 100)}%)`;
+    });
+  }
+  window.addEventListener("resize", scheduleCanvasRescale);
 
   // ── helpers ────────────────────────────────────────────────────────────────────────────
   function esc(s) {
@@ -184,9 +248,14 @@
     #composer .composer-canvas-section h3 { margin: 0 0 10px; color: #2d3748; }
     #composer .composer-canvas-legend { font-size: 12px; color: #4a5568; margin-bottom: 14px; line-height: 1.6; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px 12px; }
     #composer .composer-canvas-legend kbd { background: #edf2f7; border: 1px solid #cbd5e0; border-radius: 4px; padding: 0 4px; font-size: 11px; }
-    #composer .composer-canvas-columns { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+    /* Giai đoạn 3 (polish): ĐỔI từ hàng ngang (canvas | cột xem-thử cạnh nhau, canvas bị ép còn
+       ~640px) sang CỘT DỌC — canvas xuống dòng riêng, chiếm trọn bề rộng panel (ưu tiên chiều
+       rộng vì đây là thứ người dùng nhìn/kéo thả nhiều nhất); cột "Xem thử 1 khung hình" xuống
+       hàng dưới, không còn cạnh tranh bề rộng với canvas nữa. align-items mặc định (stretch) làm
+       cả hai hàng con tự giãn full-width, không cần khai thêm width riêng. */
+    #composer .composer-canvas-columns { display: flex; flex-direction: column; gap: 20px; }
     #composer .composer-canvas-col { min-width: 0; }
-    #composer .composer-canvas-preview-col { flex: 1; min-width: 260px; }
+    #composer .composer-canvas-preview-col { max-width: 640px; }
     #composer .composer-canvas-stage { position: relative; background: #1a202c; border: 2px solid #2d3748; border-radius: 6px; overflow: hidden; user-select: none; }
     #composer .composer-canvas-layer { position: absolute; box-sizing: border-box; border: 1px solid rgba(255,255,255,0.55); cursor: move; overflow: hidden; }
     /* pointer-events:none: lớp khoá kéo (đặc biệt blend:"screen") thường phủ TOÀN khung ở
@@ -202,7 +271,13 @@
     #composer .composer-canvas-media { width: 100%; height: 100%; }
     #composer .composer-canvas-img { width: 100%; height: 100%; object-fit: cover; display: block; }
     #composer .composer-canvas-waveform { display: flex; align-items: center; background: #1a202c; color: #fff; }
-    #composer .composer-canvas-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #2d3748; color: #a0aec0; font-size: 10px; text-align: center; padding: 2px; line-height: 1.3; }
+    /* overflow:hidden: lưới an toàn cuối — chữ giữ chỗ giờ chỉ hiện ở ĐÚNG 1 lớp (lớp đang được
+       chọn, và chỉ khi hộp đủ lớn, xem showText trong canvasLayerBox()) nên về lý thuyết không
+       còn ca chữ dài tràn ra ngoài hộp NHỎ của chính nó rồi đè lên hộp lớp khác nữa (bug thật đã
+       thấy trong ảnh chụp: "Ch...Chưa chọn ảnh/video" của 2 lớp đè lên nhau) — nhưng vẫn giữ
+       overflow:hidden ở đây để chữ không bao giờ tràn ra NGOÀI hộp của chính nó trong mọi trường
+       hợp, kể cả nếu sau này có ai nới ngưỡng showText mà quên xét lại kích thước hộp. */
+    #composer .composer-canvas-placeholder { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #2d3748; color: #a0aec0; font-size: 10px; text-align: center; padding: 2px; line-height: 1.3; overflow: hidden; }
     #composer .composer-canvas-tag { position: absolute; top: 0; left: 0; background: rgba(0,0,0,0.6); color: #fff; font-size: 10px; padding: 1px 4px; pointer-events: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #composer .composer-canvas-lock-note { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(197,48,48,0.85); color: #fff; font-size: 9px; padding: 1px 3px; pointer-events: none; line-height: 1.3; }
     #composer .composer-canvas-approx-badge { position: absolute; top: 0; right: 0; background: rgba(191,124,15,0.9); color: #fff; font-size: 10px; padding: 0 4px; pointer-events: none; cursor: help; }
@@ -218,6 +293,14 @@
     #composer .composer-layer-card.drop-target { border-top: 3px solid #667eea; }
     #composer .composer-drag-handle { cursor: grab; }
     #composer .composer-layer-locknote { margin-top: 10px; font-size: 11px; color: #9c4221; background: #fffaf0; border: 1px solid #fbd38d; border-radius: 6px; padding: 6px 10px; }
+
+    /* Giai đoạn 3 (polish): dấu hiệu nhỏ "mới" cạnh nhãn nút tab Composer — phần tử này nằm
+       NGOÀI #composer (nó ở trên thanh tab .tabs, trong renderer.html), nên không thể dùng tiền
+       tố scope "#composer ..." như mọi rule khác ở trên; đổi lại dùng tên lớp "cmp-" duy nhất
+       (không đụng lớp có sẵn nào của renderer.html) để tự cách ly, đúng quy tắc "mọi class mới
+       phải có tiền tố riêng" của polish này. Cố tình nhạt (không màu chói) và không animation —
+       chỉ để dễ nhận ra tab mới, không phải cảnh báo. */
+    .cmp-tab-badge { margin-left: 6px; font-size: 10px; font-weight: 400; color: #a0aec0; vertical-align: super; }
   `;
 
   function injectStyles() {
@@ -535,19 +618,37 @@
         fill="none" stroke="currentColor" stroke-width="2"/>
     </svg>`;
 
+  // Ngưỡng (theo px ĐÃ THU NHỎ trên canvas — cùng đơn vị với style width/height của hộp, không
+  // phải hệ 1280x720 gốc) để coi một hộp là "đủ chỗ" hiện chữ giữ chỗ mô tả. Dưới ngưỡng này thì
+  // bỏ chữ, chỉ giữ nhãn góc "#N tên lớp" (composer-canvas-tag — đã luôn hiển thị sẵn, tự co bằng
+  // overflow/ellipsis). Số chọn tuỳ ý (đủ cho khoảng 2 dòng chữ 10px, line-height 1.3), không có
+  // ý nghĩa chính xác tuyệt đối nào khác ngoài "tránh chữ dài chắc chắn tràn ra ngoài".
+  const PLACEHOLDER_MIN_W = 70;
+  const PLACEHOLDER_MIN_H = 40;
+
   function placeholderHtml(text) {
     return `<div class="composer-canvas-placeholder">${esc(text)}</div>`;
   }
-  function mediaFromCacheEntry(entry, missingLabel) {
-    if (!entry) return placeholderHtml(missingLabel);
-    if (entry.status === "loading") return placeholderHtml("Đang tải…");
-    if (entry.status === "error") return placeholderHtml(entry.error || missingLabel);
+  // showText: Giai đoạn 3 (polish) — trước đây hàm này LUÔN vẽ chữ (missingLabel/"Đang tải…"/
+  // entry.error) bất kể lớp có đang được chọn hay hộp có đủ chỗ hay không. Hai lớp cùng chưa có
+  // media ở cùng vị trí (vd background + overlay đều chưa chọn video mẫu) thì cả hai cùng vẽ chữ
+  // full-text đè lên nhau — đúng bug thấy trong ảnh chụp thật ("Ch...Chưa chọn ảnh/video"). Giờ
+  // gọi nơi này (canvasLayerBox) tự quyết định showText theo đúng 1 quy tắc dùng chung cho MỌI
+  // lớp: chỉ lớp đang được CHỌN, và chỉ khi hộp đủ lớn — nên tại một thời điểm, canvas không bao
+  // giờ vẽ quá 1 dòng chữ giữ chỗ, và dòng đó luôn nằm gọn trong hộp của chính lớp đó.
+  function mediaFromCacheEntry(entry, missingLabel, showText) {
+    if (!entry) return placeholderHtml(showText ? missingLabel : "");
+    if (entry.status === "loading") return placeholderHtml(showText ? "Đang tải…" : "");
+    if (entry.status === "error") return placeholderHtml(showText ? (entry.error || missingLabel) : "");
     return `<img class="composer-canvas-img" src="${entry.src}" draggable="false" alt="">`;
   }
 
   // Hình đại diện THẬT theo từng loại nguồn — đây là điểm brief nhấn mạnh: KHÔNG vẽ ô xám cho
   // background/overlay/image/solid, chỉ waveform mới vẽ hình giả (và được ghi rõ là giả).
-  function mediaHtmlForLayer(layer) {
+  // showText do canvasLayerBox() tính (xem comment ở mediaFromCacheEntry) — CHỈ áp dụng cho các
+  // nhánh vẽ CHỮ (chưa có path/đang tải/lỗi); nhánh có media thật (ảnh/video/màu/SVG waveform)
+  // không bị ảnh hưởng, vì đó không phải chữ nên không có gì để đè lên lớp khác.
+  function mediaHtmlForLayer(layer, showText) {
     const type = layer?.source?.type;
     if (type === "solid") {
       return `<div class="composer-canvas-media" style="background:${esc(layer.source?.color || "black")};"></div>`;
@@ -556,22 +657,22 @@
       return `<div class="composer-canvas-media composer-canvas-waveform">${WAVEFORM_SVG}</div>`;
     }
     if (type === "background") {
-      return mediaFromCacheEntry(getMedia("video", previewState.backgroundFile), "Chưa chọn video nền mẫu (cột bên phải)");
+      return mediaFromCacheEntry(getMedia("video", previewState.backgroundFile), "Chưa chọn video nền mẫu (cột bên phải)", showText);
     }
     if (type === "overlay") {
-      return mediaFromCacheEntry(getMedia("video", previewState.overlayFile), "Chưa chọn video gốc mẫu (cột bên phải)");
+      return mediaFromCacheEntry(getMedia("video", previewState.overlayFile), "Chưa chọn video gốc mẫu (cột bên phải)", showText);
     }
     if (type === "video") {
       const p = layer.source?.path;
-      if (!p) return placeholderHtml("Chưa chọn file video");
-      return mediaFromCacheEntry(getMedia("video", p), "Không trích được khung hình");
+      if (!p) return placeholderHtml(showText ? "Chưa chọn file video" : "");
+      return mediaFromCacheEntry(getMedia("video", p), "Không trích được khung hình", showText);
     }
     if (type === "image") {
       const p = layer.source?.path;
-      if (!p) return placeholderHtml("Chưa chọn ảnh");
-      return mediaFromCacheEntry(getMedia("image", p), "Không tải được ảnh");
+      if (!p) return placeholderHtml(showText ? "Chưa chọn ảnh" : "");
+      return mediaFromCacheEntry(getMedia("image", p), "Không tải được ảnh", showText);
     }
-    return placeholderHtml(type || "?");
+    return placeholderHtml(showText ? (type || "?") : "");
   }
 
   function resizeHandleHtml() {
@@ -582,11 +683,13 @@
   // khi đã áp dragPreview/resizePreview nếu đang kéo — xem buildCanvasBoxesHtml).
   function canvasLayerBox(layer, index, box) {
     const scale = canvasState.scale;
+    const scaledW = Math.max(box.w * scale, 3);
+    const scaledH = Math.max(box.h * scale, 3);
     const style = [
       `left:${(box.x * scale).toFixed(1)}px`,
       `top:${(box.y * scale).toFixed(1)}px`,
-      `width:${Math.max(box.w * scale, 3).toFixed(1)}px`,
-      `height:${Math.max(box.h * scale, 3).toFixed(1)}px`,
+      `width:${scaledW.toFixed(1)}px`,
+      `height:${scaledH.toFixed(1)}px`,
       `z-index:${index + 1}`, // lớp sau đè lên lớp trước, đúng thứ tự chồng của compilePreset.
     ].join(";");
     const classes = ["composer-canvas-layer"];
@@ -598,7 +701,15 @@
     // điểm ảnh, xem info-box "Xem thử 1 khung hình" để thấy đúng).
     if (box.ignoredBlend) classes.push("blend-fade");
     if (box.approx) classes.push("approx");
-    if (canvasState.selectedIndex === index) classes.push("selected");
+    const selected = canvasState.selectedIndex === index;
+    if (selected) classes.push("selected");
+    // Giai đoạn 3 (polish): chữ giữ chỗ mô tả (vd "Chưa chọn ảnh") chỉ hiện ở lớp ĐANG ĐƯỢC CHỌN
+    // và chỉ khi hộp đủ lớn để chứa — sửa đúng bug "2 lớp cùng thiếu media ở cùng vị trí hiện chữ
+    // đè lên nhau, đọc không ra" (thấy trong ảnh chụp thật). Lớp không được chọn/quá nhỏ vẫn có
+    // viền + nhãn góc "#N tên" (composer-canvas-tag ngay dưới) — đủ để phân biệt lớp nào với lớp
+    // nào mà không cần chữ mô tả dài. Bấm vào lớp bất kỳ (trên canvas hoặc bảng thông số) để xem
+    // đúng chữ mô tả của lớp đó.
+    const showText = selected && scaledW >= PLACEHOLDER_MIN_W && scaledH >= PLACEHOLDER_MIN_H;
     const lockNote = box.ignoredBottom
       ? `<div class="composer-canvas-lock-note">Lớp dưới cùng — không qua bước chồng, kéo vô tác dụng</div>`
       : box.ignoredBlend
@@ -609,7 +720,7 @@
       : "";
     return `
       <div class="${classes.join(" ")}" data-layer-index="${index}" style="${style}">
-        ${mediaHtmlForLayer(layer)}
+        ${mediaHtmlForLayer(layer, showText)}
         ${approxBadge}
         <div class="composer-canvas-tag">#${index} ${esc(layer.label || layer.source?.type || "")}</div>
         ${lockNote}
@@ -704,12 +815,18 @@
   }
 
   function startMoveDrag(e, index, layer, info) {
-    const scale = canvasState.scale;
     const startMouseX = e.clientX;
     const startMouseY = e.clientY;
     const startX = info.x;
     const startY = info.y;
     function onMove(ev) {
+      // Giai đoạn 3 (polish): đọc canvasState.scale NGAY TẠI ĐÂY (mỗi lần chuột di chuyển), KHÔNG
+      // cache vào biến `scale` ở đầu startMoveDrag như trước — canvas giờ co giãn theo panel nên
+      // scale có thể đổi giữa lúc dựng DOM và lúc người dùng thật sự kéo chuột; cache lại đúng lúc
+      // mousedown vẫn còn là "cache lúc dựng DOM" theo đúng nghĩa brief cảnh báo, chỉ là trễ hơn
+      // một nhịp. Đọc trực tiếp ở đây đảm bảo LUÔN dùng đúng scale hiện tại của canvas đang hiển
+      // thị, kể cả trong trường hợp hiếm là cửa sổ đổi kích thước ngay giữa một lượt kéo.
+      const scale = canvasState.scale;
       const dxBase = (ev.clientX - startMouseX) / scale;
       const dyBase = (ev.clientY - startMouseY) / scale;
       const rawX = startX + dxBase;
@@ -748,7 +865,6 @@
   }
 
   function startResizeDrag(e, index, layer, info) {
-    const scale = canvasState.scale;
     const startMouseX = e.clientX;
     const startMouseY = e.clientY;
     const startW = info.w;
@@ -756,6 +872,8 @@
     const wasMinus2 = Number(layer.geometry?.w) === -2;
     const aspect = startH > 0 ? startW / startH : 1;
     function onMove(ev) {
+      // Đọc scale live — cùng lý do đã giải thích ở startMoveDrag() phía trên.
+      const scale = canvasState.scale;
       const dW = (ev.clientX - startMouseX) / scale;
       const dH = (ev.clientY - startMouseY) / scale;
       const newH = Math.max(4, startH + dH);
@@ -863,6 +981,11 @@
       ? `<div class="composer-errors"><strong>⚠️ Preset chưa hợp lệ — sửa hết các lỗi sau rồi Lưu lại:</strong><ul>${validation.errors.map((e) => `<li>${esc(e)}</li>`).join("")}</ul></div>`
       : "";
     const layersHtml = (preset.layers || []).map((l, i) => layerCard(l, i, preset.layers.length)).join("");
+    // Giai đoạn 3 (polish): đo lại NGAY TRƯỚC KHI dựng stage, không dùng giá trị canvasState.scale
+    // còn sót từ lần render trước — el (#composer-editor-body) đã tồn tại và đã có đúng bề rộng
+    // panel hiện tại tại đây (xem computeCanvasScale()), nên đây là thời điểm chính xác nhất để
+    // đo trong toàn bộ vòng đời render.
+    canvasState.scale = computeCanvasScale();
     const stageW = Math.round(BASE_W * canvasState.scale);
     const stageH = Math.round(BASE_H * canvasState.scale);
 
@@ -880,7 +1003,7 @@
       </div>
 
       <div class="composer-canvas-section">
-        <h3>Canvas — kéo thả để đặt vị trí (khung 1280×720, thu nhỏ ${Math.round(canvasState.scale * 100)}%)</h3>
+        <h3 id="composer-canvas-title">Canvas — kéo thả để đặt vị trí (khung 1280×720, thu nhỏ ${Math.round(canvasState.scale * 100)}%)</h3>
         <div class="composer-canvas-legend">
           Khung hình THẬT cho background/overlay (theo video mẫu ở cột bên phải) và ảnh; khối màu vẽ đúng màu; waveform vẽ SVG giả chỉ để định vị.
           Viền nét đứt + nhãn "≈" = kích thước hoặc xử lý điểm ảnh chỉ là ƯỚC LƯỢNG (làm mờ/khử màu nền/khử độ sáng/sáng-tương phản/hình sóng thật KHÔNG vẽ được trên canvas) — bấm "Xem thử 1 khung hình" bên phải để xem đúng.
@@ -1255,11 +1378,37 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    // Giai đoạn 3 (polish): chèn CSS ngay từ đầu (không đợi tab được bấm lần đầu như ensureBuilt()
+    // vẫn làm) — cần cho ".cmp-tab-badge" bên dưới có style ngay khi span vừa được chèn vào nút
+    // tab, kẻo nó hiện thô (không màu/không cỡ chữ đúng) trong khoảng thời gian trước cú bấm đầu
+    // tiên. injectStyles() tự chống chèn 2 lần (kiểm id "composer-ui-styles") nên gọi sớm ở đây
+    // không xung đột gì với lần gọi lại bên trong ensureBuilt().
+    injectStyles();
     const btn = document.querySelector('.tab-button[data-tab="composer"]');
-    if (btn) btn.addEventListener("click", ensureBuilt);
+    if (btn) {
+      btn.addEventListener("click", () => {
+        ensureBuilt();
+        // Tab vừa được kích hoạt (renderer.js đổi class "active" trước khi listener này chạy, vì
+        // nó được gắn từ đầu file renderer.js — tức là được ĐĂNG KÝ trước, xem renderer.html: script
+        // renderer.js nạp trước composer-ui.js) — nhưng vẫn gọi lại phép đo/vẽ này để tự sửa nếu
+        // ensureBuilt() lỡ render trước khi lớp "active" kịp áp dụng, và để xử lý luôn trường hợp
+        // cửa sổ bị đổi kích thước trong lúc tab Composer đang ẩn (không có sự kiện "resize" nào
+        // vẽ lại được vì khi đó #composer-editor-body có clientWidth = 0).
+        scheduleCanvasRescale();
+      });
+      // Dấu hiệu nhỏ "mới" cạnh nhãn nút — chỉ để dễ tìm thấy tab mới, xem giải thích đầy đủ ở
+      // rule CSS ".cmp-tab-badge" (COMPOSER_CSS). Chèn bằng JS (không phải CSS ::after) để dùng
+      // chung được esc()/textContent, không phải escape HTML riêng cho content CSS.
+      if (!btn.querySelector(".cmp-tab-badge")) {
+        const badge = document.createElement("span");
+        badge.className = "cmp-tab-badge";
+        badge.textContent = "mới";
+        btn.appendChild(badge);
+      }
+    }
     // Phòng khi tab composer lỡ "active" sẵn lúc tải trang (không phải kịch bản mặc định của
     // renderer.html hiện tại, nơi tab "render" mới là active) — vẫn dựng ngay, không đợi click.
     const tabEl = document.getElementById(TAB_ID);
-    if (tabEl && tabEl.classList.contains("active")) ensureBuilt();
+    if (tabEl && tabEl.classList.contains("active")) { ensureBuilt(); scheduleCanvasRescale(); }
   });
 })();

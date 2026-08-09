@@ -52,7 +52,15 @@ test("render.js: preset composer hợp lệ -> KHÔNG bị chặn ở bước ki
     ],
   };
   const res = runRenderJs({ renderMode: "composer", preset: okPreset });
-  // Không tự dựng thư mục overlays/backgrounds thật -> nó sẽ báo "không tìm thấy overlay" và
-  // thoát êm (exit 0, xem getFilesFromFolder trong render.js) chứ KHÔNG phải lỗi preset.
+  // Không tự dựng thư mục overlays thật -> getFilesFromFolder (render.js) gọi fs.readdirSync
+  // KHÔNG có try/catch, ném ENOENT ngay ở top-level module (dòng "const overlayFiles =
+  // getFilesFromFolder(overlayFolder)") -> process crash với exit 1, KHÔNG phải thoát êm exit
+  // 0. Assert duy nhất trước đây (doesNotMatch "không hợp lệ") thoả mãn với BẤT KỲ crash nào,
+  // kể cả crash do lỗi preset thật — không phân biệt được hai loại thất bại. Khẳng định thêm
+  // dấu hiệu ENOENT/scandir để chứng minh đây đúng là crash "chưa có thư mục overlays" (bước
+  // kiểm preset đã cho qua), không phải preset bị chặn.
   assert.doesNotMatch(res.stderr, /không hợp lệ/);
+  assert.equal(res.status, 1, `expected crash ENOENT (exit 1), got ${res.status}. stderr: ${res.stderr}`);
+  assert.match(res.stderr, /ENOENT/);
+  assert.match(res.stderr, /scandir/);
 });

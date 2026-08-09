@@ -385,10 +385,14 @@ test("TREATMENT_KINDS: MỌI kind trong danh sách thật sự sinh ra được 
   // So hằng với danh sách literal (test "TREATMENT_KINDS có đúng 7 xử lý" ở trên) không
   // chứng minh gì về switch trong buildLayerChain — xoá một case là test đó vẫn xanh. Test
   // này gọi THẲNG buildLayerChain với từng kind và khẳng định chuỗi không rỗng.
+  // fit: "none" (KHÔNG phải "full"): scaleFilter("full") luôn trả về "scale=1280:720" bất kể
+  // treatment, nên statements.length > 0 đúng SẴN kể cả khi xoá case của treatment — test khi
+  // đó không còn kiểm tra gì cả. fit: "none" khiến chain rỗng lúc bắt đầu (xem scaleFilter),
+  // nên statements chỉ khác rỗng nếu chính case của kind đó thật sự push được filter.
   for (const kind of TREATMENT_KINDS) {
     const params = kind === "keepColors" ? { colors: ["FBFF02"] } : {};
     const r = buildLayerChain(
-      { geometry: { fit: "full" }, treatments: [{ kind, ...params }] }, "1:v", labeller()
+      { geometry: { fit: "none" }, treatments: [{ kind, ...params }] }, "1:v", labeller()
     );
     assert.ok(r.statements.length > 0, `kind "${kind}" phải sinh ít nhất 1 câu lệnh`);
     assert.ok(r.statements.join("").length > 0, `kind "${kind}" không được sinh chuỗi rỗng`);
@@ -560,7 +564,13 @@ test("compilePreset: lớp image thiếu path bị bỏ + có cảnh báo, chỉ
   assert.doesNotMatch(r.filterGraph.join("|"), /\[3:v\]/);
 });
 
-test("compilePreset: lớp solid dùng lavfi color, kích thước từ geometry", () => {
+test("compilePreset: lớp solid phát color= thành node nguồn trong filter_complex, không chiếm input", () => {
+  // C1 (Critical, bắt bằng render thật): fluent-ffmpeg tiền kiểm "-f lavfi" bằng cách đọc
+  // `ffmpeg -formats` với regex chỉ hiểu 2 cột cờ (node_modules/fluent-ffmpeg/lib/
+  // capabilities.js:18); ffmpeg mới in thêm cột cờ device khiến dòng "lavfi" bị bỏ qua, nên
+  // extraInputs kiểu { lavfi, inputOptions: ["-f","lavfi"] } ném "Input format lavfi is not
+  // available" dù binary hoàn toàn hỗ trợ lavfi. Compiler giờ phát color=…[nhãn] thẳng vào
+  // filterGraph — không có input phụ nào để fluent-ffmpeg tiền kiểm.
   const r = compilePreset({
     layers: [
       bg,
@@ -571,9 +581,8 @@ test("compilePreset: lớp solid dùng lavfi color, kích thước từ geometry
       ov,
     ],
   });
-  assert.equal(r.extraInputs.length, 1);
-  assert.equal(r.extraInputs[0].lavfi, "color=c=black:s=1280x150:r=30");
-  assert.deepEqual(r.extraInputs[0].inputOptions, ["-f", "lavfi"]);
+  assert.deepEqual(r.extraInputs, []);
+  assert.match(r.filterGraph.join("|"), /color=c=black:s=1280x150:r=30\[cl\d+\]/);
 });
 
 test("compilePreset: lớp waveform sinh asplit và KHÔNG chiếm input", () => {
@@ -676,13 +685,31 @@ test("compilePreset: graph sinh ra không có nhãn treo (canonicalGraph không 
 });
 
 test("compilePreset: waveform là lớp duy nhất vẫn ra đúng [combined_video]", () => {
-  // Hợp đồng phải đúng về cấu trúc, không phụ thuộc lớp nào đi đường riêng: waveform đẩy
-  // câu lệnh thẳng vào filterGraph nên nếu không chèn bước copy thì graph thiếu nhãn cuối.
+  // waveform buộc fit="box" (validatePreset) nên buildLayerChain LUÔN sinh một bước scale
+  // (scaleFilter với fit="box" không bao giờ trả filter rỗng) — pending không rỗng, và
+  // graph ra đúng [combined_video] nhờ bước ĐỔI TÊN câu lệnh scale cuối cùng, không phải
+  // nhờ bước "chèn copy" (xem test "lớp overlay duy nhất, fit: none" bên dưới — đó mới là
+  // ca chạm bước copy).
   const r = compilePreset({
     layers: [{ id: "w", source: { type: "waveform" }, geometry: { fit: "box", w: 480, h: 120 } }],
   });
   const joined = r.filterGraph.join("|");
   assert.equal((joined.match(/\[combined_video\]/g) || []).length, 1);
+  assert.doesNotThrow(() => canonicalGraph(r.filterGraph));
+});
+
+test("compilePreset: lớp overlay duy nhất, fit: \"none\" -> chạm bước chèn copy", () => {
+  // Nhánh `if (stage !== null && !pending.length)` (chèn [stage]copy[out]) trước đây không
+  // test nào phủ — xoá cả khối đó 149 test vẫn xanh. Nó chạm khi lớp DUY NHẤT còn sống có
+  // fit: "none" VÀ không treatment nào: buildLayerChain không thêm câu lệnh nào vào pending
+  // (chain rỗng suốt, flush() không được gọi), nên pending rỗng dù stage đã có nhãn nguồn
+  // ("1:v"). Không chèn copy thì graph thiếu hẳn [combined_video] — xem comment tại nơi
+  // chèn trong compilePreset.
+  const r = compilePreset({
+    layers: [{ id: "ov", source: { type: "overlay" }, geometry: { fit: "none" } }],
+  });
+  assert.match(r.filterGraph.join("|"), /\[1:v\]copy\[combined_video\]/);
+  assert.equal((r.filterGraph.join("|").match(/\[combined_video\]/g) || []).length, 1);
   assert.doesNotThrow(() => canonicalGraph(r.filterGraph));
 });
 

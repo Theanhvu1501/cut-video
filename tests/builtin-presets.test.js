@@ -169,7 +169,11 @@ test("preset keepColor dùng lớp solid thay geq — khác bản gốc CỐ Ý"
   const solid = p.layers.find((l) => l.source.type === "solid");
   assert.ok(solid, "preset keepColor phải có lớp solid làm nền tối");
   const r = compilePreset(p);
-  assert.match(r.extraInputs.map((i) => i.lavfi || "").join("|"), /color=c=black/);
+  // C1: solid phát color= thành node nguồn trong filter_complex, không còn chiếm input phụ
+  // (xem sheet/layer-compiler.js) — extraInputs phải rỗng, và câu lệnh color= nằm trong
+  // filterGraph.
+  assert.deepEqual(r.extraInputs, []);
+  assert.match(r.filterGraph.join("|"), /color=c=black/);
   // Bản gốc dựng khối đen bằng geq trên bản copy video gốc; compiler không dùng geq.
   assert.doesNotMatch(r.filterGraph.join("|"), /geq=/);
 });
@@ -195,10 +199,12 @@ test("preset keepColor NGUYÊN BẢN: dải đen ghim đúng kích thước/vị
   assert.equal(solid.geometry.anchor, "bottom-left", "dải đen phải dán sát đáy, cùng phía với dải giữ màu");
 
   const r = compilePreset(p);
-  assert.equal(
-    r.extraInputs[0].lavfi,
-    `color=c=black:s=1280x${strip.height}:r=30`,
-    "input sinh dải đen phải đúng kích thước ghim trong preset ship (suy từ cropStrip.height)"
+  // C1: không còn extraInputs[0].lavfi — solid giờ là node nguồn trong filterGraph, không
+  // phải input phụ (xem sheet/layer-compiler.js).
+  assert.match(
+    r.filterGraph.join("|"),
+    new RegExp(`color=c=black:s=1280x${strip.height}:r=30\\[cl\\d+\\]`),
+    "câu lệnh sinh dải đen phải đúng kích thước ghim trong preset ship (suy từ cropStrip.height)"
   );
 
   // Cả dải đen lẫn dải giữ màu đều neo bottom-left trên khung full nên RA CÙNG một chuỗi

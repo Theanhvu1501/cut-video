@@ -1070,14 +1070,14 @@ const processVideo = async (
       command.inputOptions(["-stream_loop", "-1"]).input(inputOverlay);
 
       // Input phụ của blurFrame (khung, hiệu ứng), crop (ảnh người) hoặc composer
-      // (mọi lớp image/video/solid); rỗng với 4 mode cũ còn lại.
+      // (mọi lớp image/video); rỗng với 4 mode cũ còn lại.
       for (const extra of studioInputs) {
-        // Lớp solid không có file: nó là nguồn sinh của ffmpeg (-f lavfi -i color=…).
-        // Dùng ?? chứ không ||: compilePreset LUÔN sinh lavfi dạng "color=c=…" cho lớp solid
-        // nên nó không bao giờ là chuỗi rỗng — ?? ở đây chỉ rơi về extra.file khi lavfi là
-        // undefined/null, đúng ngữ nghĩa "lớp này không dùng nguồn sinh" (image/video có
-        // file, không có lavfi). || thì rơi cả với mọi giá trị falsy hợp lệ, không phải lý do
-        // thật khiến ?? là toán tử đúng ở đây.
+        // extra.lavfi: giữ lại cho input dạng nguồn sinh (-f lavfi -i ...) nếu tương lai có
+        // loại lớp nào cần — HIỆN TẠI không loại lớp nào của compilePreset còn phát ra input
+        // dạng này. Lớp solid từng dùng "-f lavfi -i color=…" (đã đổi: fluent-ffmpeg tiền
+        // kiểm "-f lavfi" ném "Input format lavfi is not available" trên ffmpeg mới — xem
+        // comment ở case "solid" trong sheet/layer-compiler.js), giờ phát color= thành node
+        // nguồn thẳng trong filter_complex nên không còn nằm trong studioInputs nữa.
         command.input(extra.lavfi ?? extra.file).inputOptions(extra.inputOptions);
       }
 

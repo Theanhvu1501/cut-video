@@ -554,8 +554,10 @@ test("resolvePresetAssets bỏ qua lớp không cần file", () => {
 });
 
 // I1(b) (bản vá theo review toàn nhánh 2026-08-08): renderOne phải là lớp phòng thủ THỨ HAI
-// cho preset composer — sheet-runner.js kiểm trước khi tải video (lớp thứ nhất), nhưng
-// renderOne còn được gọi trực tiếp từ render.js và các nơi khác không đi qua sheet-runner.
+// cho preset composer — sheet-runner.js kiểm trước khi tải video (lớp thứ nhất). render.js
+// KHÔNG gọi renderOne (nó có pipeline ffmpeg riêng, chỉ import compilePreset/validatePreset/
+// resolvePresetAssets); người gọi renderOne duy nhất ngoài test là electron-main.js. Vẫn cần
+// lớp phòng thủ này vì renderOne là hàm export công khai, không tự biết nơi gọi đã kiểm chưa.
 // validatePreset ném TRƯỚC khi chạm ffprobe/ffmpeg nên test này gọi renderOne được mà không
 // cần file video thật hay mock fluent-ffmpeg: lỗi phải là throw ĐỒNG BỘ, không phải promise
 // reject, vì check này nằm trước dòng "return new Promise(...)".

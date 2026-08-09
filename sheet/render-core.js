@@ -497,8 +497,12 @@ export function renderOne({
   let composed = null;
   if (renderMode === "composer") {
     // Lớp phòng thủ THỨ HAI (thứ nhất là sheet-runner.js, nạp + kiểm preset một lần cho cả
-    // kênh trước khi tải video nào). renderOne cũng được gọi trực tiếp từ nơi khác (render.js,
-    // test, Giai đoạn 2 sau này) nên không được coi preset đầu vào là luôn hợp lệ. Kiểm TRƯỚC
+    // kênh trước khi tải video nào). render.js KHÔNG gọi renderOne — nó có pipeline ffmpeg
+    // riêng, chỉ import compilePreset/validatePreset/resolvePresetAssets từ layer-compiler.js
+    // (xem render.js, nhánh renderMode === "composer"). Người gọi renderOne duy nhất ngoài
+    // test là electron-main.js. Dù vậy vẫn không được coi preset đầu vào là luôn hợp lệ vì
+    // renderOne là hàm export công khai — bất kỳ người gọi mới nào (Giai đoạn 2 sau này) đều
+    // có thể bỏ qua bước kiểm ở nơi gọi. Kiểm TRƯỚC
     // ffprobe: preset sai cấu trúc thì dừng ngay, không tốn một lượt ffprobe/ffmpeg nào.
     // validatePreset đã gom hết lỗi nên check.errors.join("; ") đúng là thông báo người vận
     // hành cần, không phải chỉ lỗi đầu tiên.
@@ -538,7 +542,12 @@ export function renderOne({
           .input(overlayFile);
 
         for (const extra of studioInputs) {
-          // Lớp solid không có file: nó là nguồn sinh của ffmpeg (-f lavfi -i color=…).
+          // extra.lavfi: giữ lại cho input dạng nguồn sinh (-f lavfi -i ...) nếu tương lai có
+          // loại lớp nào cần — HIỆN TẠI không loại lớp nào của compilePreset còn phát ra input
+          // dạng này. Lớp solid từng dùng "-f lavfi -i color=…" (đã đổi: fluent-ffmpeg tiền
+          // kiểm "-f lavfi" ném "Input format lavfi is not available" trên ffmpeg mới — xem
+          // comment ở case "solid" trong sheet/layer-compiler.js), giờ phát color= thành node
+          // nguồn thẳng trong filter_complex nên không còn nằm trong extraInputs nữa.
           command.input(extra.lavfi ?? extra.file).inputOptions(extra.inputOptions);
         }
 

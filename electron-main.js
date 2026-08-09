@@ -20,6 +20,7 @@ import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
 import { loadState, saveState, todayStr, computeRemaining } from "./sheet/runner-state.js";
 import { loadResume, saveResume } from "./sheet/resume-state.js";
+import { registerComposerIpc, getPresetsDir } from "./sheet/composer-ipc.js";
 
 const require = createRequire(import.meta.url);
 const { autoUpdater } = require("electron-updater");
@@ -494,7 +495,7 @@ async function checkLicenseBeforeStart() {
 function createWindow() {
   mainWindow = new BrowserWindow({
     icon: path.join(__dirname, "assets/icon.ico"),
-    width: 1200,
+    width: 1400,
     height: 800,
     webPreferences: {
       nodeIntegration: false,
@@ -1410,6 +1411,7 @@ function buildSheetRunner(win) {
     },
     config: {
       spreadsheetId: s.spreadsheetId, channelsRoot: s.channelsRoot, statePath, renderConcurrency: 2,
+      presetsDir: getPresetsDir(app), // thiếu dòng này thì mọi kênh renderMode:"composer" bị sheet-runner.js bỏ qua preset (config.presetsDir undefined)
       useGPU: !!s.useGPU,
       gpuVideoCodec: s.gpuVideoCodec || "h264_nvenc",
       videoSpeed: (typeof s.videoSpeed === "number" && s.videoSpeed > 0) ? s.videoSpeed : 0.95,
@@ -1606,6 +1608,7 @@ ipcMain.handle("sheet:run-now", async (e, sheetName) => {
   return { success: true };
 });
 
+registerComposerIpc({ ipcMain, app, BrowserWindow }); // Giai đoạn 2A — tab Composer: 9 kênh composer:* (sheet/composer-ipc.js)
 ipcMain.handle("yt:list-channels", async () => {
   try { return await listStatsChannels(); }
   catch (err) { return { ok: false, error: String(err?.message || err) }; }

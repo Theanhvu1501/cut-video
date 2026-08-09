@@ -68,4 +68,19 @@ contextBridge.exposeInMainWorld("electronAPI", {
     gpmConnect: (args) => ipcRenderer.invoke("gpm:connect", args),
     gpmTestTelegram: (token, chatId, topicId) => ipcRenderer.invoke("gpm:test-telegram", { token, chatId, topicId }),
   },
+  // Giai đoạn 2A — tab Composer (sheet/composer-ipc.js). Namespace RIÊNG, không đụng các khối
+  // ở trên: mọi kênh mới của composer nằm gọn trong đây.
+  composer: {
+    presetsDir: () => ipcRenderer.invoke("composer:presetsDir"),
+    list: () => ipcRenderer.invoke("composer:list"),
+    load: (name) => ipcRenderer.invoke("composer:load", name),
+    save: (preset) => ipcRenderer.invoke("composer:save", preset),
+    delete: (name) => ipcRenderer.invoke("composer:delete", name),
+    validate: (preset) => ipcRenderer.invoke("composer:validate", preset),
+    pickAsset: (options) => ipcRenderer.invoke("composer:pickAsset", options),
+    previewFrame: (opts) => ipcRenderer.invoke("composer:previewFrame", opts),
+    renderTest: (opts) => ipcRenderer.invoke("composer:renderTest", opts),
+    onRenderTestLog: (cb) => ipcRenderer.on("composer:renderTestLog", (event, data) => cb(data)),
+    removeRenderTestLogListener: () => ipcRenderer.removeAllListeners("composer:renderTestLog"),
+  },
 });

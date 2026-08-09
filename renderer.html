@@ -4651,6 +4651,11 @@
     </div>
 
     <script src="renderer.js"></script>
+    <!-- Giai đoạn 2B: hàm thuần tính anchor cho canvas kéo thả (sheet/composer-geometry.cjs) —
+         PHẢI nạp trước composer-ui.js vì nó gắn vào window.ComposerGeometry, composer-ui.js đọc
+         biến đó lúc dựng canvas. Cùng lý do dùng <script> thường (không type="module") như
+         composer-ui.js: xem comment đầu composer-ui.js về rủi ro CORS của module qua file://. -->
+    <script src="sheet/composer-geometry.cjs"></script>
     <script src="composer-ui.js"></script>
   </body>
 </html>

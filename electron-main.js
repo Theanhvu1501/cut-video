@@ -19,6 +19,7 @@ import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
 import { loadYtdlpSettings, saveYtdlpSettings } from "./sheet/ytdlp-config.js";
+import { loadDownloadConfig, getNodeExecutable } from "./sheet/download-options.js";
 import { loadState, saveState, todayStr, computeRemaining } from "./sheet/runner-state.js";
 import { loadResume, saveResume } from "./sheet/resume-state.js";
 import { registerComposerIpc, getPresetsDir } from "./sheet/composer-ipc.js";
@@ -750,6 +751,18 @@ function getCurrentProjectPath() {
   return path.join(configDir, ".current-project.json");
 }
 
+// Tên project đang mở — tải theo Sheet đọc settings.download của đúng project này,
+// giống hệt lúc bấm tải thủ công (run-script truyền PROJECT_NAME xuống download.js).
+function getCurrentProjectName() {
+  try {
+    const p = getCurrentProjectPath();
+    if (!fs.existsSync(p)) return "default";
+    return JSON.parse(fs.readFileSync(p, "utf-8")).projectName || "default";
+  } catch {
+    return "default";
+  }
+}
+
 // IPC handler để lấy danh sách projects
 ipcMain.handle("get-projects", async () => {
   try {
@@ -1444,14 +1457,35 @@ function buildSheetRunner(win) {
     },
     // Preflight đầu lượt: GPM có đang chạy không. Ném lỗi = chưa mở GPM.
     checkGpm: async () => { await testGpmConnection(s.gpmHost || "127.0.0.1:19995"); return true; },
-    // extractorArgs đọc TỪNG LƯỢT TẢI (không cache lúc dựng runner): YouTube đổi cơ chế
-    // giữa chừng thì người dùng sửa trong app là lượt kế đã ăn ngay, khỏi Dừng → Chạy lại.
+    // extractorArgs VÀ cấu hình tải đọc TỪNG LƯỢT TẢI (không cache lúc dựng runner):
+    // YouTube đổi cơ chế giữa chừng thì người dùng sửa trong app là lượt kế đã ăn ngay,
+    // khỏi Dừng → Chạy lại.
+    // Tải theo Sheet dùng ĐÚNG cấu hình của tab "Tải video" (cookies, Drive, ngôn ngữ)
+    // như khi bấm tải thủ công; riêng proxy vẫn lấy từ cột proxy trong Sheet (opts.proxy).
     downloader: (url, dir, opts) => {
       const { extractorArgs } = loadYtdlpSettings(getConfigDir());
-      // Ghi ra log giá trị đang dùng: yt-dlp BỎ QUA âm thầm key extractor lạ, gõ sai
-      // không có lỗi nào cả — nhìn log là biết nó thực sự nhận gì.
-      emitEvent({ type: "log", message: `extractor-args: ${extractorArgs || "(không truyền)"}` });
-      return downloadOne(url, dir, { ...opts, ytdlpPath: YTDLP_PATH, extractorArgs });
+      const dl = loadDownloadConfig(getProjectsDir(), getCurrentProjectName());
+      const jsRuntime = getNodeExecutable(getAppPath());
+      // Ghi ra log những gì thực sự truyền cho yt-dlp: nó BỎ QUA âm thầm key extractor lạ
+      // và cookies sai đường dẫn, gõ sai không có lỗi nào cả — nhìn log là biết ngay.
+      const cookiesNote = dl.cookiesFile
+        ? (fs.existsSync(dl.cookiesFile) ? path.basename(dl.cookiesFile) : `${dl.cookiesFile} (KHÔNG THẤY FILE)`)
+        : "không dùng";
+      emitEvent({
+        type: "log",
+        message: `tải: extractor-args=${extractorArgs || "(không truyền)"} | cookies=${cookiesNote} | js-runtime=${jsRuntime}`,
+      });
+      return downloadOne(url, dir, {
+        ...opts,
+        cookiesFile: dl.cookiesFile,
+        downloadDrive: dl.downloadDrive,
+        driveLanguage: dl.driveLanguage,
+        // descDir cố tình bỏ trống: kênh chạy theo Sheet lấy tiêu đề/mô tả từ cột trong
+        // Sheet, bật --write-description chỉ rơi file .description thừa vào overlays/.
+        jsRuntime,
+        ytdlpPath: YTDLP_PATH,
+        extractorArgs,
+      });
     },
     copyLocalOverlay,
     listLocalInputs: (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".mp4")).sort() : []),

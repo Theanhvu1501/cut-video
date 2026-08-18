@@ -2,7 +2,8 @@ import fs from "fs";
 import path from "path";
 import { create as createYoutubeDl } from "youtube-dl-exec";
 import { normalizeProxy } from "./proxy.js";
-import { DEFAULT_EXTRACTOR_ARGS, parseExtractorArgs } from "./ytdlp-config.js";
+import { DEFAULT_EXTRACTOR_ARGS } from "./ytdlp-config.js";
+import { buildYtdlOptions } from "./download-options.js";
 
 export function pickDownloadedFile(dirBefore, dirAfter) {
   const beforeSet = new Set(dirBefore);
@@ -14,34 +15,39 @@ export function pickDownloadedFile(dirBefore, dirAfter) {
 export async function downloadOne(
   url,
   outputDir,
-  { proxy, cookiesFile, ytdlpPath, extractorArgs = DEFAULT_EXTRACTOR_ARGS, ytdlFactory = createYoutubeDl } = {},
+  {
+    proxy,
+    cookiesFile,
+    downloadDrive = false,
+    driveLanguage = "jp",
+    descDir = null,
+    jsRuntime = null,
+    ytdlpPath,
+    extractorArgs = DEFAULT_EXTRACTOR_ARGS,
+    ytdlFactory = createYoutubeDl,
+  } = {},
 ) {
   // Proxy rỗng = cố ý tải thẳng. Proxy có giá trị mà hỏng -> ném lỗi trước khi
   // chạm mạng, không tải bằng IP thật (kết cục tệ nhất cho người né bot-check).
+  // Proxy là thứ DUY NHẤT lấy từ Sheet (cột "proxy tải"); cookies/Drive/js-runtime
+  // lấy từ cấu hình tải trong app, giống hệt luồng tải thủ công.
   const proxyUrl = String(proxy ?? "").trim() ? normalizeProxy(proxy) : null;
 
   if (!fs.existsSync(outputDir)) fs.mkdirSync(outputDir, { recursive: true });
   const before = fs.readdirSync(outputDir);
 
   const ytdl = ytdlFactory(ytdlpPath);
-  const options = {
-    output: path.join(outputDir, "%(title)s.%(ext)s"),
-    format: "bestvideo[height=720][ext=mp4][vcodec^=avc]+bestaudio[ext=m4a]/best[height=720][ext=mp4][vcodec^=avc]",
-    mergeOutputFormat: "mp4",
-    writeThumbnail: true,
-    convertThumbnails: "jpg",
-    noOverwrites: true,
-    limitRate: "2M",
-    addHeader: [
-      "referer:youtube.com",
-      "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
-    ],
-  };
-  // Cấu hình trong app (ytdlp-settings.json). Để trống = cố ý không truyền cờ.
-  const extractor = parseExtractorArgs(extractorArgs);
-  if (extractor.length) options.extractorArgs = extractor;
-  if (cookiesFile && fs.existsSync(cookiesFile)) options.cookies = cookiesFile;
-  if (proxyUrl) options.proxy = proxyUrl;
+  // Bộ cờ dựng ở download-options.js — bản chép của luồng tải thủ công.
+  const options = buildYtdlOptions({
+    outputDir,
+    cookiesFile,
+    proxyUrl,
+    downloadDrive,
+    driveLanguage,
+    descDir,
+    extractorArgs,
+    jsRuntime,
+  });
 
   await ytdl(url, options);
 

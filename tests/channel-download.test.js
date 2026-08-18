@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { pickDownloadedFile, downloadOne, copyLocalOverlay } from "../sheet/channel-download.js";
 import { DEFAULT_EXTRACTOR_ARGS } from "../sheet/ytdlp-config.js";
+import { DOWNLOAD_FORMAT } from "../sheet/download-options.js";
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "dl-"));
@@ -114,4 +115,65 @@ test("copyLocalOverlay throws when source file missing", () => {
   assert.throws(() => copyLocalOverlay("nope.mp4", inputs, overlays), /nope\.mp4/);
   fs.rmSync(inputs, { recursive: true, force: true });
   fs.rmSync(overlays, { recursive: true, force: true });
+});
+
+// --- tải theo Sheet phải giống hệt tải thủ công ------------------------------
+// Trước đây bên Sheet khoá cứng height=720, không cookies, không JS runtime nên
+// hay trượt trong khi tải thủ công cùng URL lại được.
+
+test("downloadOne dùng đúng bộ cờ của luồng tải thủ công", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, { ytdlFactory: fakeYtdlFactory(seen) });
+  assert.equal(seen[0].format, DOWNLOAD_FORMAT);
+  assert.equal(seen[0].limitRate, "2M");
+  assert.equal(seen[0].mergeOutputFormat, "mp4");
+  assert.equal(seen[0].writeThumbnail, true);
+  assert.equal(seen[0].convertThumbnails, "jpg");
+  assert.equal(seen[0].noOverwrites, true);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("downloadOne gắn cookies khi file cookies có thật", async () => {
+  const dir = tmpDir();
+  const ck = path.join(dir, "cookies.txt");
+  fs.writeFileSync(ck, "# Netscape HTTP Cookie File");
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, { cookiesFile: ck, ytdlFactory: fakeYtdlFactory(seen) });
+  assert.equal(seen[0].cookies, ck);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("downloadOne vẫn tải khi đường dẫn cookies trỏ vào file không tồn tại", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, {
+    cookiesFile: path.join(dir, "khong-co.txt"),
+    ytdlFactory: fakeYtdlFactory(seen),
+  });
+  assert.equal("cookies" in seen[0], false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("downloadOne truyền js-runtime kèm tên runtime để yt-dlp nhận ra node", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, {
+    jsRuntime: "D:\\app\\bin\\node.exe",
+    ytdlFactory: fakeYtdlFactory(seen),
+  });
+  assert.equal(seen[0].jsRuntime, "node:D:\\app\\bin\\node.exe");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("downloadOne giới hạn byte tên file khi bật tải Drive", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, {
+    downloadDrive: true,
+    driveLanguage: "jp",
+    ytdlFactory: fakeYtdlFactory(seen),
+  });
+  assert.equal(seen[0].output, path.join(dir, "%(title).240B.%(ext)s"));
+  fs.rmSync(dir, { recursive: true, force: true });
 });

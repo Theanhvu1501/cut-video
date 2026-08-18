@@ -1,5 +1,7 @@
 // Tính giờ lên lịch đăng cho video — mô hình "cửa sổ 1 ngày".
 // - Slot giờ lấy từ cột postTimes trong Sheet ⚙config (vd "8:00, 18:00").
+// - MỖI LẦN XUẤT HIỆN là một chỗ: "8:00, 8:00, 8:00" = 3 video cùng đăng 8h.
+//   Muốn dồn cả ngày vào một giờ thì lặp giờ đó đúng bằng số video.
 // - Mỗi lần chỉ cấp slot TRỐNG của NGÀY MAI; video dư thì KHÔNG cấp (chờ lượt sau).
 //   → tại mọi thời điểm chỉ có lịch tối đa 1 ngày tới, dễ kiểm soát, không mất video.
 // - Hàm thuần, không phụ thuộc DOM/thời gian thực (bơm `now` để test).
@@ -65,8 +67,9 @@ function atTime(dateOnly, hhmm) {
 
 /**
  * Cấp các slot giờ TRỐNG của NGÀY MAI để gán cho video (cửa sổ 1 ngày).
- * @param {string[]|string} postTimes - giờ trong ngày, vd "8:00, 18:00".
- * @param {string[]} usedSlots - các slot ISO đã đặt (để không đặt trùng).
+ * @param {string[]|string} postTimes - giờ trong ngày, vd "8:00, 18:00"; lặp giờ = thêm chỗ.
+ * @param {string[]} usedSlots - các slot ISO đã đặt; ĐẾM theo lượt (giữ nguyên bản trùng),
+ *   mỗi ISO đã đặt trừ đi đúng một chỗ của giờ tương ứng.
  * @param {Date} now - hiện tại (bơm để test).
  * @param {number} wantCount - số video đang chờ muốn lấy slot.
  * @returns {string[]} - tối đa wantCount slot ISO trống của ngày mai (theo thứ tự giờ);
@@ -78,11 +81,18 @@ export function assignTomorrowSlots(postTimes, usedSlots, now, wantCount) {
   if (!times.length || want <= 0) return [];
 
   const tomorrow = startOfTomorrow(now);
-  const used = new Set(usedSlots || []);
+  // Đếm lượt, không phải tập hợp: mỗi lần một giờ xuất hiện trong postTimes là MỘT chỗ
+  // cho một video. "8:00, 8:00" = hai video cùng 8h. usedSlots (đọc từ cột C) cũng giữ
+  // nguyên bản trùng, nên mỗi ISO đã đặt chỉ trừ đi đúng một chỗ.
+  const usedCount = new Map();
+  for (const iso of usedSlots || []) usedCount.set(iso, (usedCount.get(iso) ?? 0) + 1);
+
   const free = [];
   for (const t of times) {
     const iso = fmt(atTime(tomorrow, t));
-    if (!used.has(iso)) free.push(iso);
+    const left = usedCount.get(iso) ?? 0;
+    if (left > 0) { usedCount.set(iso, left - 1); continue; } // chỗ này đã có video cũ
+    free.push(iso);
     if (free.length >= want) break;
   }
   return free;

@@ -65,6 +65,51 @@ test("queue: chạy tuần tự, 2 video cùng kênh vào 2 slot khác nhau (cac
   ]);
 });
 
+test("queue: giờ lặp -> 3 video cùng kênh vào CÙNG một giờ", async () => {
+  const calls = [];
+  const q = createUploadQueue({
+    readChannelUploads: emptyUploads,
+    connect: async () => ({ page: {} }),
+    runUpload: async ({ title, scheduleISO }) => { calls.push({ title, scheduleISO }); },
+    now: () => NOW,
+    listFiles: () => [],
+  });
+
+  for (const n of [1, 2, 3]) {
+    q.enqueue({
+      sheetName: "K", gpmHost: "h", profileId: "p", videoPath: `/o/v${n}.mp4`,
+      overlaysDir: "/ov", title: `v${n}`, postTimes: "8:00, 8:00, 8:00", sourceUrl: `http://u/${n}`,
+    });
+  }
+  await q.drain();
+
+  assert.deepEqual(calls, [
+    { title: "v1", scheduleISO: "2026-07-09T08:00:00" },
+    { title: "v2", scheduleISO: "2026-07-09T08:00:00" },
+    { title: "v3", scheduleISO: "2026-07-09T08:00:00" },
+  ]);
+});
+
+test("queue: giờ lặp — video thứ 4 vượt số lượt khai báo thì chờ", async () => {
+  const statuses = [];
+  const q = createUploadQueue({
+    readChannelUploads: async () => ({
+      scheduledUrls: new Set(),
+      usedSlots: ["2026-07-09T08:00:00", "2026-07-09T08:00:00", "2026-07-09T08:00:00"],
+    }),
+    connect: async () => ({ page: {} }),
+    runUpload: async () => {},
+    now: () => NOW, listFiles: () => [], flushMs: 5000,
+    setUploadStatus: async (ch, row, st) => { statuses.push(st); },
+  });
+  await q.enqueue({
+    sheetName: "K", gpmHost: "h", profileId: "p", videoPath: "/o/v4.mp4",
+    overlaysDir: "/ov", title: "v4", postTimes: "8:00, 8:00, 8:00", rowIndex: 5, sourceUrl: "http://u/4",
+  });
+  await q.drain();
+  assert.equal(statuses.at(-1), `${ST.WAIT_UPLOAD} hết slot ngày mai`);
+});
+
 test("queue: URL đã lên lịch trên Sheet thì bỏ qua (tránh trùng)", async () => {
   let ran = false;
   const q = createUploadQueue({

@@ -42,6 +42,26 @@ test("chỉ cấp đúng số video đang chờ", () => {
   assert.deepEqual(r, ["2026-07-09T08:00:00"]);
 });
 
+test("giờ lặp N lần -> N video CÙNG giờ đó", () => {
+  const r = assignTomorrowSlots(["08:00", "08:00", "08:00"], [], NOW, 3);
+  assert.deepEqual(r, ["2026-07-09T08:00:00", "2026-07-09T08:00:00", "2026-07-09T08:00:00"]);
+});
+
+test("giờ lặp: đã dùng 1 lượt thì vẫn còn lượt cho video sau", () => {
+  const r = assignTomorrowSlots(["08:00", "08:00"], ["2026-07-09T08:00:00"], NOW, 5);
+  assert.deepEqual(r, ["2026-07-09T08:00:00"]);
+});
+
+test("giờ lặp: dùng hết số lượt của giờ đó -> không cấp nữa", () => {
+  const used = ["2026-07-09T08:00:00", "2026-07-09T08:00:00"];
+  assert.deepEqual(assignTomorrowSlots(["08:00", "08:00"], used, NOW, 3), []);
+});
+
+test("giờ lặp xen kẽ: chỉ trừ đúng lượt đã dùng của từng giờ", () => {
+  const r = assignTomorrowSlots(["08:00", "18:00", "08:00"], ["2026-07-09T08:00:00"], NOW, 5);
+  assert.deepEqual(r, ["2026-07-09T18:00:00", "2026-07-09T08:00:00"]);
+});
+
 test("hết slot ngày mai -> rỗng (video chờ lượt sau)", () => {
   const used = ["2026-07-09T08:00:00", "2026-07-09T18:00:00"];
   assert.deepEqual(assignTomorrowSlots(["08:00", "18:00"], used, NOW, 3), []);

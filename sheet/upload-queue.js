@@ -87,6 +87,7 @@ export function createUploadQueue({
   async function getConn(gpmHost, profileId) {
     if (closing) await closing;
     if (conns.has(profileId)) return conns.get(profileId);
+    // connectProfile tự đóng phiên đang mở của profile trước khi start (gpm-client).
     const c = await connect(gpmHost, profileId);
     conns.set(profileId, { ...c, gpmHost });
     return conns.get(profileId);

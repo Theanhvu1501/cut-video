@@ -141,11 +141,52 @@ export async function closeProfile(gpmHost, profileId, conn = {}, deps = {}) {
   if (!res.ok) { forgetVersionOn404(gpmHost, res.status); throw new Error(`GPM HTTP ${res.status}`); }
 }
 
-async function connectOverCDPWithRetry(address, retries = 10, intervalMs = 1000) {
+// Dọn profile TRƯỚC khi chạy: Chrome của profile có thể đang mở vì người dùng tự bấm
+// trong GPM, hoặc còn sót sau lần app chết giữa chừng. Start đè lên phiên đó thì GPM trả
+// địa chỉ CDP của cửa sổ cũ (đang ở tab người dùng để lại), và upload chạy trên trạng
+// thái không lường trước.
+//
+// Khác closeProfile ở chỗ KHÔNG BAO GIỜ NÉM: "đóng cái chưa mở" là chuyện bình thường ở
+// đây, không phải lỗi — caller chỉ cần biết có thật sự đóng cái gì không để chờ Chrome
+// thoát hẳn rồi mới start.
+export async function resetProfile(gpmHost, profileId, deps = {}) {
+  const fetchFn = deps.fetch || globalThis.fetch;
+
+  // Ngắt CDP mà chính app này còn giữ trước đã, rồi mới bảo GPM hạ tiến trình.
+  const existing = openedBrowsers.get(profileId);
+  if (existing) {
+    try { await existing.browser.close(); } catch { /* CDP đã chết — kệ */ }
+    openedBrowsers.delete(profileId);
+  }
+
+  try {
+    const version = await versionFor(gpmHost, fetchFn);
+    const res = await fetchFn(ADAPTERS[version].closeUrl(gpmHost, profileId));
+    if (!res.ok) {
+      forgetVersionOn404(gpmHost, res.status);
+      return { ok: false, error: `GPM HTTP ${res.status}` };
+    }
+    const data = await res.json().catch(() => ({}));
+    if (data?.success === false) return { ok: false, error: data.message || "GPM từ chối đóng profile" };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+}
+
+// Chrome cần vài giây để thoát hẳn sau lệnh đóng; start ngay có thể vớ phải tiến trình
+// đang tắt dở hoặc thư mục profile còn khoá.
+const PROFILE_RESET_WAIT_MS = 3000;
+
+const defaultSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function connectOverCDPWithRetry(address, deps = {}, retries = 10, intervalMs = 1000) {
+  const connect = deps.connectOverCDP || ((a) => chromium.connectOverCDP(`http://${a}`));
+  const sleep = deps.sleep || defaultSleep;
   let lastErr;
   for (let i = 0; i < retries; i++) {
     try {
-      return await chromium.connectOverCDP(`http://${address}`);
+      return await connect(address);
     } catch (err) {
       lastErr = err;
       await new Promise((r) => setTimeout(r, intervalMs));
@@ -154,16 +195,11 @@ async function connectOverCDPWithRetry(address, retries = 10, intervalMs = 1000)
   throw new Error(`Không thể kết nối CDP tới ${address}: ${lastErr.message}`);
 }
 
-export async function connectAndOpenStudio(gpmHost, profileId) {
-  // Đóng phiên cũ của cùng profile nếu có (tránh khoá thư mục profile).
-  const existing = openedBrowsers.get(profileId);
-  if (existing) {
-    try { await existing.browser.close(); } catch {}
-    openedBrowsers.delete(profileId);
-  }
-
-  const address = await startProfile(gpmHost, profileId);
-  const browser = await connectOverCDPWithRetry(address);
+export async function connectAndOpenStudio(gpmHost, profileId, deps = {}) {
+  // Đóng phiên đang mở của profile (kể cả phiên người dùng tự mở trong GPM) rồi mới start.
+  await openFresh(gpmHost, profileId, deps);
+  const address = await startProfile(gpmHost, profileId, deps);
+  const browser = await connectOverCDPWithRetry(address, deps);
   openedBrowsers.set(profileId, { browser });
 
   const ctx = browser.contexts()[0] ?? await browser.newContext();
@@ -172,11 +208,23 @@ export async function connectAndOpenStudio(gpmHost, profileId) {
   return { ok: true };
 }
 
+// Dọn trước khi mở: profile có thể đang chạy vì người dùng tự bấm trong GPM, hoặc còn sót
+// sau lần app chết giữa chừng. Start đè lên phiên đó thì GPM trả CDP của cửa sổ cũ và mọi
+// thao tác chạy trên trạng thái không ai lường trước. Đóng hụt thì kệ — có gì đâu mà đóng.
+async function openFresh(gpmHost, profileId, deps = {}) {
+  const sleep = deps.sleep || defaultSleep;
+  const r = await resetProfile(gpmHost, profileId, deps);
+  if (!r.ok) return; // chưa mở sẵn (hoặc GPM không đóng được) — start thẳng, khỏi chờ vô ích
+  deps.log?.(`Đã đóng profile ${profileId} đang mở trước khi chạy`);
+  await sleep(deps.resetWaitMs ?? PROFILE_RESET_WAIT_MS);
+}
+
 // Kết nối tới profile GPM và trả về { browser, page } để tự động hoá (upload-queue dùng).
 // Không mở trang sẵn — caller (uploadAndSchedule) tự goto Studio.
-export async function connectProfile(gpmHost, profileId) {
-  const address = await startProfile(gpmHost, profileId);
-  const browser = await connectOverCDPWithRetry(address);
+export async function connectProfile(gpmHost, profileId, deps = {}) {
+  await openFresh(gpmHost, profileId, deps);
+  const address = await startProfile(gpmHost, profileId, deps);
+  const browser = await connectOverCDPWithRetry(address, deps);
   const ctx = browser.contexts()[0] ?? (await browser.newContext());
   const page = ctx.pages()[0] ?? (await ctx.newPage());
   return { browser, page };

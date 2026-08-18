@@ -12,7 +12,7 @@ import { createSheetRunner } from "./sheet/sheet-runner.js";
 import { createSheetsClient, readConfigSheet, readConfigValues, parseConfigRows, findStatsColumns, STATS_KEYS, writeChannelStats, appendUrls, readChannelUrls, setUrlStatus, setUploadStatus, readUploadStatuses, testSheetConnection } from "./sheet/sheets-service.js";
 import { createYoutubeClient, fetchChannelStats, fetchSourceVideos, pickNewUrls, DEFAULT_YT_API_KEY } from "./sheet/youtube-api.js";
 import { parseScheduledISO, formatStamp } from "./sheet/schedule-slots.js";
-import { testGpmConnection, connectAndOpenStudio, getGpmApiVersion } from "./sheet/gpm-client.js";
+import { testGpmConnection, connectAndOpenStudio, connectProfile, getGpmApiVersion } from "./sheet/gpm-client.js";
 import { createUploadQueue } from "./sheet/upload-queue.js";
 import { sendTelegram, sendTelegramPhoto, buildDigest, buildChannelReport, parseTopicId } from "./sheet/telegram-notify.js";
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
@@ -1384,6 +1384,10 @@ function buildSheetRunner(win) {
     },
     log: (message) => emitEvent({ type: "log", message }),
     emit: emitEvent, // phát sự kiện upload-status lên bảng UI
+    // connectProfile tự đóng phiên đang mở của profile trước khi start — truyền log để
+    // người dùng thấy nó có thật sự đóng cái gì hay không.
+    connect: (gpmHost, profileId) =>
+      connectProfile(gpmHost, profileId, { log: (message) => emitEvent({ type: "log", message }) }),
     // Rảnh bấy lâu thì tắt trình duyệt GPM (0 = luôn giữ mở). Đọc 1 lần lúc dựng runner:
     // đổi cấu hình khi đang chạy thì phải Dừng → Chạy lại.
     idleCloseMs: Math.max(0, Number(s.gpmIdleCloseMin ?? 10) || 0) * 60_000,

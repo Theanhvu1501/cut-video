@@ -4,6 +4,8 @@ import {
   testGpmConnection,
   startProfile,
   closeProfile,
+  connectProfile,
+  resetProfile,
   resetGpmVersionCache,
   getGpmApiVersion,
 } from "../sheet/gpm-client.js";
@@ -268,5 +270,111 @@ test("closeProfile: HTTP không ok -> ném lỗi", async () => {
   await assert.rejects(
     () => closeProfile("h", "p1", {}, { fetch: fakeFetch(500, {}) }),
     /GPM HTTP 500/,
+  );
+});
+
+// ---- resetProfile: dọn profile đang mở trước khi chạy kênh ----
+
+test("resetProfile gọi đúng đường dẫn đóng của bản GPM đang chạy", async () => {
+  const calls = [];
+  await resetProfile("127.0.0.1:19995", "p1", { fetch: fakeGpm("v1", { calls }) });
+  assert.ok(calls.some((u) => u === "http://127.0.0.1:19995/api/v1/profiles/stop/p1"));
+});
+
+test("resetProfile: đóng được -> ok true", async () => {
+  const r = await resetProfile("h", "p1", { fetch: fakeGpm("v3") });
+  assert.equal(r.ok, true);
+});
+
+test("resetProfile: GPM lỗi -> KHÔNG ném, trả ok false kèm lý do", async () => {
+  const r = await resetProfile("h", "p1", { fetch: fakeFetch(500, {}) });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /500/);
+});
+
+test("resetProfile: GPM từ chối (profile chưa mở) -> ok false, không ném", async () => {
+  const fetch = async (url) => /\/profiles\?/.test(url)
+    ? { ok: true, status: 200, json: async () => ({ success: true, data: [{ id: "p1" }] }) }
+    : { ok: true, status: 200, json: async () => ({ success: false, message: "Profile is not running" }) };
+  const r = await resetProfile("h", "p1", { fetch });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /not running/);
+});
+
+test("resetProfile: mạng chết -> KHÔNG ném, trả ok false", async () => {
+  const r = await resetProfile("h", "p1", { fetch: async () => { throw new Error("fetch failed"); } });
+  assert.equal(r.ok, false);
+  assert.match(r.error, /fetch failed/);
+});
+
+// ---- connectProfile: luôn đóng phiên đang mở trước khi start ----
+
+// Trình duyệt giả cho CDP: chỉ cần đủ shape mà connectProfile chạm tới.
+function fakeBrowser(page = {}) {
+  return { contexts: () => [{ pages: () => [page], newPage: async () => page }] };
+}
+
+test("connectProfile: đóng profile đang mở, chờ Chrome thoát, RỒI mới start", async () => {
+  const events = [];
+  const gpm = fakeGpm("v3");
+  const page = {};
+  const out = await connectProfile("h", "p1", {
+    fetch: async (url) => { if (!/\/profiles\?/.test(url)) events.push(url); return gpm(url); },
+    sleep: async () => { events.push("sleep"); },
+    connectOverCDP: async (address) => { events.push(`cdp ${address}`); return fakeBrowser(page); },
+  });
+
+  assert.deepEqual(events, [
+    "http://h/api/v3/profiles/close/p1",
+    "sleep",
+    "http://h/api/v3/profiles/start/p1",
+    "cdp 127.0.0.1:1234",
+  ]);
+  assert.equal(out.page, page);
+});
+
+test("connectProfile: profile chưa mở -> không chờ vô ích, vẫn start bình thường", async () => {
+  const events = [];
+  const gpm = fakeGpm("v3");
+  const fetch = async (url) => {
+    if (/\/profiles\/close\//.test(url)) {
+      events.push("close (chưa mở)");
+      return { ok: true, status: 200, json: async () => ({ success: false, message: "Profile is not running" }) };
+    }
+    if (!/\/profiles\?/.test(url)) events.push(url);
+    return gpm(url);
+  };
+  await connectProfile("h", "p1", {
+    fetch,
+    sleep: async () => { events.push("sleep"); },
+    connectOverCDP: async () => fakeBrowser(),
+  });
+
+  assert.deepEqual(events, ["close (chưa mở)", "http://h/api/v3/profiles/start/p1"]);
+});
+
+test("connectProfile: GPM chết khi đóng cũng không chặn — lỗi thật phải là lỗi của start", async () => {
+  const fetch = async (url) => {
+    if (/\/profiles\/close\//.test(url)) throw new Error("GPM sập lúc đóng");
+    return { ok: false, status: 500, json: async () => ({}) };
+  };
+  await assert.rejects(
+    () => connectProfile("h", "p1", { fetch, sleep: async () => {}, connectOverCDP: async () => fakeBrowser() }),
+    /GPM HTTP 500/,
+  );
+});
+
+test("connectProfile: báo log khi thật sự đóng được phiên đang mở", async () => {
+  const logs = [];
+  const gpm = fakeGpm("v3");
+  await connectProfile("h", "p1", {
+    fetch: gpm,
+    sleep: async () => {},
+    connectOverCDP: async () => fakeBrowser(),
+    log: (m) => logs.push(m),
+  });
+  assert.ok(
+    logs.some((m) => m.includes("p1") && /đóng/i.test(m)),
+    `phải có log báo đã đóng p1, đang có: ${JSON.stringify(logs)}`,
   );
 });

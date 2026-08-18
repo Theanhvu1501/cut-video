@@ -49,6 +49,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.removeAllListeners("script-output");
   },
   detectGpuCodec: () => ipcRenderer.invoke("detect-gpu-codec"),
+  // Cài đặt yt-dlp dùng chung toàn app (không thuộc project nào).
+  ytdlp: {
+    getSettings: () => ipcRenderer.invoke("ytdlp:get-settings"),
+    saveSettings: (s) => ipcRenderer.invoke("ytdlp:save-settings", s),
+  },
   sheet: {
     testConnection: (s) => ipcRenderer.invoke("sheet:test-connection", s),
     loadSettings: () => ipcRenderer.invoke("sheet:load-settings"),

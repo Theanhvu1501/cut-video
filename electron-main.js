@@ -18,6 +18,7 @@ import { sendTelegram, sendTelegramPhoto, buildDigest, buildChannelReport, parse
 import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
+import { loadYtdlpSettings, saveYtdlpSettings } from "./sheet/ytdlp-config.js";
 import { loadState, saveState, todayStr, computeRemaining } from "./sheet/runner-state.js";
 import { loadResume, saveResume } from "./sheet/resume-state.js";
 import { registerComposerIpc, getPresetsDir } from "./sheet/composer-ipc.js";
@@ -1271,6 +1272,17 @@ ipcMain.handle("download-ytdlp", async () => {
   }
 });
 
+// Cài đặt yt-dlp dùng chung toàn app (ytdlp-settings.json). Tách khỏi project JSON để
+// YouTube đổi cơ chế thì sửa đúng MỘT chỗ, áp cho cả tải thủ công lẫn chạy theo Sheet.
+ipcMain.handle("ytdlp:get-settings", async () => loadYtdlpSettings(getConfigDir()));
+ipcMain.handle("ytdlp:save-settings", async (event, settings) => {
+  try {
+    return { success: true, ...saveYtdlpSettings(getConfigDir(), settings) };
+  } catch (error) {
+    return { success: false, error: error?.message || String(error) };
+  }
+});
+
 // IPC handler để tự động phát hiện GPU codec
 ipcMain.handle("detect-gpu-codec", async () => {
   return new Promise((resolve) => {
@@ -1428,7 +1440,15 @@ function buildSheetRunner(win) {
     },
     // Preflight đầu lượt: GPM có đang chạy không. Ném lỗi = chưa mở GPM.
     checkGpm: async () => { await testGpmConnection(s.gpmHost || "127.0.0.1:19995"); return true; },
-    downloader: (url, dir, opts) => downloadOne(url, dir, { ...opts, ytdlpPath: YTDLP_PATH }),
+    // extractorArgs đọc TỪNG LƯỢT TẢI (không cache lúc dựng runner): YouTube đổi cơ chế
+    // giữa chừng thì người dùng sửa trong app là lượt kế đã ăn ngay, khỏi Dừng → Chạy lại.
+    downloader: (url, dir, opts) => {
+      const { extractorArgs } = loadYtdlpSettings(getConfigDir());
+      // Ghi ra log giá trị đang dùng: yt-dlp BỎ QUA âm thầm key extractor lạ, gõ sai
+      // không có lỗi nào cả — nhìn log là biết nó thực sự nhận gì.
+      emitEvent({ type: "log", message: `extractor-args: ${extractorArgs || "(không truyền)"}` });
+      return downloadOne(url, dir, { ...opts, ytdlpPath: YTDLP_PATH, extractorArgs });
+    },
     copyLocalOverlay,
     listLocalInputs: (dir) => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.toLowerCase().endsWith(".mp4")).sort() : []),
     renderer: (opts) => renderOne(opts),
@@ -1770,6 +1790,8 @@ ipcMain.handle(
           CONFIG_DIR: configDir,
           PROJECT_NAME: projectName, // Truyền project name để scripts đọc từ project JSON
           PROJECTS_DIR: path.join(configDir, "projects"), // Đường dẫn đến thư mục projects
+          // Cài đặt yt-dlp dùng chung (sửa được trong app) — download.js đọc từ đây.
+          YTDLP_EXTRACTOR_ARGS: loadYtdlpSettings(configDir).extractorArgs,
           ...options.env,
         };
 

@@ -1946,12 +1946,44 @@ async function saveCurrentProjectSettings() {
   }
 }
 
+// Cài đặt yt-dlp DÙNG CHUNG toàn app (ytdlp-settings.json trong thư mục config), KHÔNG
+// thuộc dự án nào — nên nạp/lưu riêng, không đi qua luồng lưu project. YouTube đổi cơ chế
+// thì người dùng sửa ngay ở đây thay vì phải chờ bản build mới.
+async function initYtdlpExtractorArgs() {
+  const input = document.getElementById("ytdlp-extractor-args");
+  if (!input || !window.electronAPI || !window.electronAPI.ytdlp) return;
+  const status = document.getElementById("ytdlp-extractor-args-status");
+
+  try {
+    const s = await window.electronAPI.ytdlp.getSettings();
+    input.value = s?.extractorArgs ?? "";
+  } catch (error) {
+    console.error("Không nạp được cài đặt yt-dlp:", error);
+  }
+
+  // Lưu khi rời ô: người dùng gõ xong là xong, không cần bấm nút nào.
+  input.addEventListener("change", async () => {
+    try {
+      await window.electronAPI.ytdlp.saveSettings({ extractorArgs: input.value });
+      if (status) {
+        status.textContent = "✅ đã lưu";
+        setTimeout(() => {
+          status.textContent = "";
+        }, 2000);
+      }
+    } catch (error) {
+      if (status) status.textContent = `❌ lỗi lưu: ${error?.message || error}`;
+    }
+  });
+}
+
 // Tab switching
 document.addEventListener("DOMContentLoaded", async () => {
   setupUpdateListeners();
 
   await loadProjects();
   await loadSettings();
+  await initYtdlpExtractorArgs();
 
   const dashboardSearch = document.getElementById("dashboard-search");
   if (dashboardSearch) {

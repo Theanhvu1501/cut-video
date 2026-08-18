@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { create as createYoutubeDl } from "youtube-dl-exec";
 import { normalizeProxy } from "./proxy.js";
+import { DEFAULT_EXTRACTOR_ARGS, parseExtractorArgs } from "./ytdlp-config.js";
 
 export function pickDownloadedFile(dirBefore, dirAfter) {
   const beforeSet = new Set(dirBefore);
@@ -10,7 +11,11 @@ export function pickDownloadedFile(dirBefore, dirAfter) {
   return mp4 || null;
 }
 
-export async function downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPath, ytdlFactory = createYoutubeDl } = {}) {
+export async function downloadOne(
+  url,
+  outputDir,
+  { proxy, cookiesFile, ytdlpPath, extractorArgs = DEFAULT_EXTRACTOR_ARGS, ytdlFactory = createYoutubeDl } = {},
+) {
   // Proxy rỗng = cố ý tải thẳng. Proxy có giá trị mà hỏng -> ném lỗi trước khi
   // chạm mạng, không tải bằng IP thật (kết cục tệ nhất cho người né bot-check).
   const proxyUrl = String(proxy ?? "").trim() ? normalizeProxy(proxy) : null;
@@ -31,8 +36,10 @@ export async function downloadOne(url, outputDir, { proxy, cookiesFile, ytdlpPat
       "referer:youtube.com",
       "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
     ],
-    extractorArgs: ["youtube:player_client=default,-android_sdkless"],
   };
+  // Cấu hình trong app (ytdlp-settings.json). Để trống = cố ý không truyền cờ.
+  const extractor = parseExtractorArgs(extractorArgs);
+  if (extractor.length) options.extractorArgs = extractor;
   if (cookiesFile && fs.existsSync(cookiesFile)) options.cookies = cookiesFile;
   if (proxyUrl) options.proxy = proxyUrl;
 

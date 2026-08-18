@@ -6,6 +6,7 @@ import path from "path";
 import sharp from "sharp";
 import { fileURLToPath } from "url";
 import { create as createYoutubeDl } from "youtube-dl-exec";
+import { loadYtdlpSettings, parseExtractorArgs } from "./sheet/ytdlp-config.js";
 
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
@@ -37,6 +38,20 @@ let PROXY = null; // Proxy để sử dụng khi download (vd: http://proxy.exam
 let DOWNLOAD_DRIVE = false; // Bật tải Drive với giới hạn độ dài tên file
 let DRIVE_LANGUAGE = "jp"; // Ngôn ngữ cho Drive: "auto", "jp", "cn", "kr", "vi", "en", etc.
 let DESC_DIR = null; // Thư mục lưu mô tả (desc)
+
+// --extractor-args: người dùng sửa trong app (ytdlp-settings.json), KHÔNG hardcode —
+// YouTube đổi cơ chế liên tục, hardcode thì mỗi lần đổi phải build lại app.
+// Electron truyền qua env; chạy tay từ CLI thì đọc thẳng file trong CONFIG_DIR.
+// Đọc file làm dự phòng vì Windows có thể nuốt env var rỗng, mà rỗng là lựa chọn
+// cố ý "không truyền cờ" chứ không phải "chưa cấu hình".
+const EXTRACTOR_ARGS = parseExtractorArgs(
+  typeof process.env.YTDLP_EXTRACTOR_ARGS === "string"
+    ? process.env.YTDLP_EXTRACTOR_ARGS
+    : loadYtdlpSettings(process.env.CONFIG_DIR || __dirname).extractorArgs,
+);
+console.log(
+  `🧩 extractor-args: ${EXTRACTOR_ARGS.length ? EXTRACTOR_ARGS.join(" | ") : "(không truyền)"}`,
+);
 
 
 // Đọc config từ project JSON (mặc định là "default")
@@ -202,9 +217,9 @@ const downloadVideo = async (url, outputPath) => {
     cookies: COOKIES_FILE,
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
-    extractorArgs: ["youtube:player_client=default,-android_sdkless"],
     jsRuntime: getNodeExecutable(),
   };
+  if (EXTRACTOR_ARGS.length) options.extractorArgs = EXTRACTOR_ARGS;
 
   if (DESC_DIR && fs.existsSync(DESC_DIR)) {
     options.writeDescription = true;

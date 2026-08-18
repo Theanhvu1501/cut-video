@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { pickDownloadedFile, downloadOne, copyLocalOverlay } from "../sheet/channel-download.js";
+import { DEFAULT_EXTRACTOR_ARGS } from "../sheet/ytdlp-config.js";
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "dl-"));
@@ -51,6 +52,36 @@ test("downloadOne không set proxy khi để trống (cố ý tải thẳng)", a
   const seen = [];
   await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, { proxy: "  ", ytdlFactory: fakeYtdlFactory(seen) });
   assert.equal("proxy" in seen[0], false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("downloadOne dùng extractor-args mặc định khi không truyền gì", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, { ytdlFactory: fakeYtdlFactory(seen) });
+  assert.deepEqual(seen[0].extractorArgs, [DEFAULT_EXTRACTOR_ARGS]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("downloadOne truyền extractor-args người dùng cấu hình trong app", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, {
+    extractorArgs: "youtube:player_client=tv",
+    ytdlFactory: fakeYtdlFactory(seen),
+  });
+  assert.deepEqual(seen[0].extractorArgs, ["youtube:player_client=tv"]);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("downloadOne: cấu hình rỗng -> KHÔNG truyền cờ extractor-args", async () => {
+  const dir = tmpDir();
+  const seen = [];
+  await downloadOne("https://youtu.be/dQw4w9WgXcQ", dir, {
+    extractorArgs: "",
+    ytdlFactory: fakeYtdlFactory(seen),
+  });
+  assert.equal("extractorArgs" in seen[0], false);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

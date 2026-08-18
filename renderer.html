@@ -3247,6 +3247,33 @@
             </small>
           </div>
           <div class="form-group">
+            <label>Tham số extractor yt-dlp (--extractor-args):</label>
+            <input
+              type="text"
+              id="ytdlp-extractor-args"
+              placeholder="youtube:player_client=web_embedded"
+              style="
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+              "
+            />
+            <small
+              style="
+                color: #666;
+                font-size: 12px;
+                display: block;
+                margin-top: 5px;
+              "
+            >
+              💡 Cài đặt CHUNG toàn app: áp dụng cho cả tải thủ công lẫn chạy tự
+              động theo Sheet, không thuộc dự án nào. YouTube đổi cơ chế thì sửa
+              ở đây, không cần cài lại app. Để trống = không truyền cờ.
+              <span id="ytdlp-extractor-args-status" style="margin-left: 6px"></span>
+            </small>
+          </div>
+          <div class="form-group">
             <label
               style="
                 display: flex;

@@ -34,8 +34,10 @@ export function createSheetRunner(deps) {
   // chuỗi = lý do GPM không dùng được (dùng luôn làm nội dung ghi vào cột C).
   let gpmDownReason = null;
 
-  // "enqueued" | "skipped" (kênh/cấu hình không đủ) | "gpm-down" (hạ tầng chết).
+  // "enqueued" | "skipped" (kênh/cấu hình không đủ) | "gpm-down" (hạ tầng chết) | "upload-disabled" (kênh tắt upload).
   function enqueueUpload(ch, item, info, overlaysDir) {
+    // Kiểm tra uploadEnabled trước - nếu kênh không bật upload thì bỏ qua
+    if (ch.uploadEnabled === false) return "upload-disabled";
     if (!(uploadQueue && config.gpmEnabled && ch.gpmProfileId && ch.postTimes)) return "skipped";
     if (gpmDownReason) return "gpm-down";
     uploadQueue.enqueue({

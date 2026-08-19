@@ -37,6 +37,7 @@ function norm(s) {
 const HEADER_ALIASES = {
   sheetName: ["tên kênh"],
   enabled: ["bật", "kích hoạt"],
+  uploadEnabled: ["upload", "up youtube", "up yt", "đăng youtube", "đăng yt", "tự động đăng"],
   videosPerDay: ["video mỗi ngày", "số video mỗi ngày"],
   renderMode: ["kiểu render", "chế độ render"],
   presetName: ["preset", "bố cục"],
@@ -215,6 +216,7 @@ export function parseConfigRows(values) {
     const channel = {
       sheetName,
       enabled: truthy(col(row, "enabled")),
+      uploadEnabled: truthy(col(row, "uploadEnabled")),
       videosPerDay: num(col(row, "videosPerDay")) || 0,
       renderMode: col(row, "renderMode") || "topTransparent",
       cfg,

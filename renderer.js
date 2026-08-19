@@ -629,6 +629,10 @@ async function saveSettings() {
       thumbsFolder: selectedConcatThumbsFolder,
       outputFolder: selectedConcatOutputFolder,
     },
+    // Test Render settings
+    testRender: {
+      outputFolder: selectedTestRenderOutputFolder,
+    },
   };
 
   // Lưu vào localStorage (backup)
@@ -1212,6 +1216,15 @@ async function loadSettings() {
         document.getElementById("concat-output-folder").value =
           settings.concat.outputFolder;
         // Removed folder path display
+      }
+    }
+
+    // Load Test Render settings
+    if (settings.testRender) {
+      if (settings.testRender.outputFolder) {
+        selectedTestRenderOutputFolder = settings.testRender.outputFolder;
+        document.getElementById("test-render-output-folder").value =
+          settings.testRender.outputFolder;
       }
     }
   } catch (error) {
@@ -2761,6 +2774,154 @@ async function runRender() {
     }
   } catch (error) {
     showOutput("render", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
+  }
+}
+
+// ============ Test Render ============
+let selectedTestRenderOutputFolder = null;
+
+async function selectTestRenderOutputFolder() {
+  if (!checkElectronAPI()) return;
+  try {
+    const folderPath = await window.electronAPI.selectFolder();
+    if (folderPath) {
+      selectedTestRenderOutputFolder = folderPath;
+      document.getElementById("test-render-output-folder").value = folderPath;
+      saveSettings();
+    }
+  } catch (error) {
+    console.error("Error selecting folder:", error);
+    alert("Lỗi khi chọn folder: " + error.message);
+  }
+}
+
+function clearTestRenderOutputFolder() {
+  selectedTestRenderOutputFolder = null;
+  const input = document.getElementById("test-render-output-folder");
+  if (input) input.value = "";
+  saveSettings();
+}
+
+async function runTestRender() {
+  const url = document.getElementById("test-render-url")?.value?.trim();
+  const duration = parseInt(document.getElementById("test-render-duration")?.value) || 10;
+
+  if (!url) {
+    alert("Vui lòng nhập URL video YouTube!");
+    return;
+  }
+
+  if (!checkElectronAPI()) return;
+
+  clearOutput("test-render");
+  showOutput("test-render", `🧪 Bắt đầu Test Render...\n`);
+  showOutput("test-render", `📹 URL: ${url}\n`);
+  showOutput("test-render", `⏱️ Thời lượng: ${duration}s\n\n`);
+
+  try {
+    window.electronAPI.removeScriptOutputListener();
+    window.electronAPI.onScriptOutput((data) => {
+      showOutput("test-render", data);
+    });
+
+    // Lấy render config hiện tại
+    const renderMode = document.querySelector('input[name="render-mode"]:checked')?.value || "topTransparent";
+    const useGPU = document.getElementById("render-use-gpu")?.checked || false;
+    const gpuVideoCodec = document.getElementById("render-gpu-codec")?.value || "h264_nvenc";
+    const maxConcurrentProcesses = parseInt(document.getElementById("render-max-concurrent")?.value) || 2;
+    const opacity = parseFloat(document.getElementById("render-opacity")?.value) || 0.7;
+    const height = parseInt(document.getElementById("render-height")?.value) || 220;
+    const y_offset = parseInt(document.getElementById("render-y-offset")?.value) || 490;
+    const videoSpeed = document.getElementById("render-video-speed")?.value || "0.95";
+
+    // Chroma Key config
+    let chromaKeyMode = "color";
+    let chromaKeyColor = null;
+    let chromaKeyFile = null;
+    let chromaKeySimilarity = 0.3;
+    if (renderMode === "chromaKey") {
+      chromaKeyMode = document.querySelector('input[name="chromakey-mode"]:checked')?.value || "color";
+      if (chromaKeyMode === "color") {
+        chromaKeyColor = document.getElementById("render-chromakey-color")?.value || "D4F9D7";
+        chromaKeySimilarity = parseFloat(document.getElementById("render-chromakey-similarity")?.value) || 0.3;
+      } else {
+        chromaKeyFile = selectedRenderChromaKeyFile || "";
+      }
+    }
+
+    // Keep Color config
+    const keepColorColors = document.getElementById("render-keepcolor-colors")?.value || "FBFF02";
+    const keepColorCrop = document.getElementById("render-keepcolor-crop")?.checked || false;
+    const keepColorHeight = parseInt(document.getElementById("render-keepcolor-height")?.value) || 220;
+    const keepColorYOffset = parseInt(document.getElementById("render-keepcolor-y-offset")?.value) || 490;
+    const keepColorAddDarkLayer = document.getElementById("render-keepcolor-add-dark-layer")?.checked || false;
+
+    // Person overlay
+    const personEnabled = document.getElementById("render-person-enabled")?.checked || false;
+    const personPath = selectedRenderPersonPath || "";
+    const personPos = document.getElementById("render-person-pos")?.value || "center";
+    const personScale = parseFloat(document.getElementById("render-person-scale")?.value) || 0.9;
+
+    // Background blur + Frame
+    const bgBlurEnabled = document.getElementById("render-bf-blur-enabled")?.checked || false;
+    const bgBlur = parseFloat(document.getElementById("render-bf-blur")?.value) || 20;
+    const mainScale = parseFloat(document.getElementById("render-bf-main-scale")?.value) || 0.85;
+    const mainOpacity = parseFloat(document.getElementById("render-bf-main-opacity")?.value) || 0.85;
+    const frameEnabled = document.getElementById("render-bf-frame-enabled")?.checked || false;
+    const framePath = selectedRenderFramePath || "";
+    const frameScale = parseFloat(document.getElementById("render-bf-frame-scale")?.value) || 1;
+    const effectEnabled = document.getElementById("render-bf-effect-enabled")?.checked || false;
+    const effectPath = selectedRenderEffectPath || "";
+    const effectOpacity = parseFloat(document.getElementById("render-bf-effect-opacity")?.value) || 0.15;
+    const effectBlend = document.getElementById("render-bf-effect-blend")?.value || "normal";
+    const effectKeyThreshold = parseFloat(document.getElementById("render-bf-effect-key-threshold")?.value) || 0.15;
+
+    const options = {
+      testRenderConfig: {
+        url,
+        duration,
+        renderMode,
+        chromaKeyMode,
+        chromaKeyColor,
+        chromaKeySimilarity,
+        chromaKeyFile,
+        keepColorColors,
+        keepColorCrop,
+        keepColorHeight,
+        keepColorYOffset,
+        keepColorAddDarkLayer,
+        useGPU,
+        maxConcurrentProcesses,
+        gpuVideoCodec,
+        opacity,
+        height,
+        y_offset,
+        personEnabled,
+        personPath,
+        personPos,
+        personScale,
+        bgBlurEnabled,
+        bgBlur,
+        mainScale,
+        mainOpacity,
+        frameEnabled,
+        framePath,
+        frameScale,
+        effectEnabled,
+        effectPath,
+        effectOpacity,
+        effectBlend,
+        effectKeyThreshold,
+        backgroundFolder: selectedRenderBackgroundFolder || "./backgrounds",
+        outputFolder: selectedTestRenderOutputFolder || "./test-render-output",
+        videoSpeed,
+      },
+    };
+
+    await window.electronAPI.runScript("test-render.js", [], options);
+    showOutput("test-render", "\n\n✅ Test Render hoàn thành!");
+  } catch (error) {
+    showOutput("test-render", `\n\n❌ Lỗi: ${getErrorMessage(error)}\n`);
   }
 }
 

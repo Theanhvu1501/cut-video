@@ -1851,6 +1851,15 @@ ipcMain.handle(
           }
         }
 
+        // Test Render config
+        if (options.testRenderConfig) {
+          try {
+            env.TEST_RENDER_CONFIG_JSON = JSON.stringify(options.testRenderConfig);
+          } catch (err) {
+            console.error(`Error serializing test render config: ${getErrorMessage(err)}`);
+          }
+        }
+
         // KHÔNG TẠO các file .config.json riêng lẻ nữa
         // Scripts sẽ đọc trực tiếp từ projects/{PROJECT_NAME}.json
 

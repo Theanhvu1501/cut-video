@@ -69,6 +69,7 @@
     },
     "asarUnpack": [
       "render.js",
+      "test-render.js",
       "download.js",
       "get-url.js",
       "cut-bg.js",

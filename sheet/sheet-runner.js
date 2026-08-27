@@ -6,6 +6,7 @@ import { normalizeProxy } from "./proxy.js";
 import { loadPreset, applySlotOverrides } from "./preset-store.js";
 import { validatePreset } from "./layer-compiler.js";
 import { resetGpuState } from "./render-core.js";
+import { testRenderChannel } from "./test-render-channel.js";
 
 export function pickRandomBackground(files, rand = Math.random) {
   if (!files.length) return null;
@@ -27,6 +28,8 @@ export function createSheetRunner(deps) {
     config, sheetsApi, downloader, copyLocalOverlay, listLocalInputs, renderer, listBackgrounds,
     ensureDirs, stateStore, emit, now, pLimitFn, rand, unlink, detectChroma, sleep,
     uploadQueue, refreshStats, resumeStore, fileExists, checkGpm,
+    // Chỉ nhánh testRenderNow dùng: cắt clip ngắn, mở file kết quả, tạo folder test/.
+    cutClip, openFile, ensureDir,
   } = deps;
   let timer = null;
   let running = false;
@@ -392,6 +395,55 @@ export function createSheetRunner(deps) {
     }
   }
 
+  // Nút "Test render": mỗi kênh tải 1 video, cắt ngắn, render, mở lên xem. Không upload,
+  // không ghi Sheet, không tính quota — xem sheet/test-render-channel.js.
+  // Dùng CHUNG cờ `running` với runNow: hai đường đều nuốt CPU/GPU bằng ffmpeg và đều gọi
+  // yt-dlp, chạy chồng nhau là tranh tài nguyên và ăn hai lần rate-limit của YouTube.
+  async function testRenderNow(sheetName) {
+    if (running) {
+      emit({ type: "log", message: "Bỏ qua test render: lượt chạy trước chưa xong" });
+      return;
+    }
+    running = true;
+    resetGpuState();
+    try {
+      let channels = await sheetsApi.readConfigSheet();
+      channels = channels.filter((c) => c.enabled);
+      if (sheetName) channels = channels.filter((c) => c.sheetName === sheetName);
+      let first = true;
+      for (const ch of channels) {
+        // Rải các lượt tải như luồng thật: bấm "test tất cả" mà nã yt-dlp liên tiếp là
+        // tự chuốc bot-check cho đúng những kênh đang muốn xem thử.
+        if (!first) {
+          const delay = pickDownloadDelay(config, rand);
+          if (delay > 0 && sleep) {
+            emit({ type: "channel-status", channel: ch.sheetName, status: `test: chờ ${Math.round(delay / 1000)}s trước khi tải` });
+            await sleep(delay);
+          }
+        }
+        first = false;
+        try {
+          await testRenderChannel(ch, {
+            config, sheetsApi, downloader, copyLocalOverlay, listLocalInputs, cutClip, renderer,
+            openFile, listBackgrounds, ensureDirs, ensureDir, detectChroma, loadPreset, emit, unlink, rand,
+            // Tiêm chứ không để test-render-channel.js import ngược lên đây: import vòng
+            // hai chiều tuy chạy được (cả hai đều là function declaration nên ESM hoist qua)
+            // nhưng đổi một bên sang const arrow là vỡ ngay ở thời điểm nạp module.
+            pickBackground: pickRandomBackground,
+          });
+          emit({ type: "channel-status", channel: ch.sheetName, status: "test xong" });
+        } catch (e) {
+          // Kênh này hỏng không được kéo theo kênh sau: người dùng bấm "test tất cả" là
+          // muốn xem được kênh nào hay kênh nấy.
+          emit({ type: "error", channel: ch.sheetName, message: String(e?.message || e).slice(0, 200) });
+        }
+      }
+      emit({ type: "done" });
+    } finally {
+      running = false;
+    }
+  }
+
   function start(intervalMs) {
     stop();
     runNow().catch((e) => emit({ type: "error", message: String(e?.message || e) }));
@@ -399,5 +451,5 @@ export function createSheetRunner(deps) {
   }
   function stop() { if (timer) { clearInterval(timer); timer = null; } }
 
-  return { runNow, start, stop };
+  return { runNow, testRenderNow, start, stop };
 }

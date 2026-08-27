@@ -4840,8 +4840,17 @@ async function runConcat() {
         sortSel.disabled = false;
       }
     });
+    // Test render riêng kênh này. Không phụ thuộc @handle nguồn như nút bên cạnh:
+    // nó lấy dòng đầu cột A, kênh đã chạy xong hết vẫn test được.
+    const testBtn = document.createElement("button");
+    testBtn.className = "btn btn-secondary";
+    testBtn.textContent = "🧪 Test render";
+    testBtn.title = "Tải 1 video của kênh, cắt 30s, render thử rồi mở lên xem. Không upload, không ghi vào Sheet.";
+    testBtn.addEventListener("click", () => runSheetTestRender(c.name, testBtn));
+
     actions.appendChild(sortSel);
     actions.appendChild(btn);
+    actions.appendChild(testBtn);
     body.appendChild(actions);
   }
 
@@ -5181,6 +5190,26 @@ async function runConcat() {
   $("sw-start")?.addEventListener("click", async () => { await saveNow(); await api.start(); log("▶ Bắt đầu theo dõi."); });
   $("sw-stop")?.addEventListener("click", async () => { await api.stop(); log("⏹ Đã dừng."); });
   $("sw-run-now")?.addEventListener("click", async () => { await saveNow(); log("Chạy tất cả ngay…"); await api.runNow(); });
+
+  // Test render: xem thử bản render của từng kênh (1 video, 30s), KHÔNG upload và không
+  // ghi gì vào Sheet. Khoá nút trong lúc chạy — mỗi lượt là một dây yt-dlp + ffmpeg, bấm
+  // chồng chỉ nhận lại câu "lượt chạy trước chưa xong".
+  async function runSheetTestRender(sheetName, btn) {
+    const label = btn ? btn.textContent : null;
+    if (btn) { btn.disabled = true; btn.textContent = "⏳ đang test…"; }
+    try {
+      await saveNow();
+      log(sheetName ? `🧪 Test render kênh "${sheetName}"…` : "🧪 Test render tất cả kênh đang bật…");
+      const r = await api.testRender(sheetName);
+      if (r && r.success === false) log(`❌ Test render: ${r.error}`);
+    } catch (err) {
+      log(`❌ Test render lỗi: ${err.message}`);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+    }
+  }
+
+  $("sw-test-render")?.addEventListener("click", (e) => runSheetTestRender(undefined, e.currentTarget));
   $("sw-stats-refresh")?.addEventListener("click", async () => {
     const btn = $("sw-stats-refresh");
     btn.disabled = true;

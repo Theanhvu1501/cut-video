@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
 import fs from "fs";
 import https from "https";
 import { createRequire } from "module";
@@ -23,6 +23,7 @@ import { loadDownloadConfig, getNodeExecutable } from "./sheet/download-options.
 import { loadState, saveState, todayStr, computeRemaining } from "./sheet/runner-state.js";
 import { loadResume, saveResume } from "./sheet/resume-state.js";
 import { registerComposerIpc, getPresetsDir } from "./sheet/composer-ipc.js";
+import { pickClipStart } from "./sheet/test-render-channel.js";
 
 const require = createRequire(import.meta.url);
 const { autoUpdater } = require("electron-updater");
@@ -1512,6 +1513,49 @@ function buildSheetRunner(win) {
     rand: () => Math.random(),
     unlink: (p) => { try { fs.unlinkSync(p); } catch { /* ignore */ } },
     sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    // ===== Ba dep dưới đây CHỈ nhánh "Test render" dùng =====
+    ensureDir: (d) => { if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true }); },
+    cutClip: (opts) => cutClip(opts),
+    // shell.openPath nuốt lỗi vào giá trị trả về (chuỗi rỗng = ok) chứ không ném — không
+    // mở được player thì cũng chỉ là phiền, file render vẫn nằm đó, đừng để nó giết cả lượt.
+    openFile: (p) => {
+      shell.openPath(p).then((err) => {
+        if (err) emitEvent({ type: "log", message: `Không mở được video: ${err}` });
+      });
+    },
+  });
+}
+
+// Cắt <seconds> giây ở đoạn giữa video. RE-ENCODE chứ không -c copy: copy cắt theo
+// keyframe nên hay ra vài giây đen/đứng hình ở đầu — mà đầu clip lại đúng là chỗ người
+// dùng nhìn để đánh giá bản render. 30 giây ultrafast chỉ tốn vài giây.
+function cutClip({ input, output, seconds }) {
+  const { ffmpegPath, ffprobePath } = resolveFfmpegPaths();
+  return new Promise((resolve, reject) => {
+    const probe = spawn(ffprobePath, [
+      "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", input,
+    ]);
+    let out = "";
+    probe.stdout.on("data", (d) => { out += d.toString(); });
+    probe.on("error", reject);
+    probe.on("close", () => {
+      const start = pickClipStart(parseFloat(out.trim()), seconds);
+      // -ss ĐẶT SAU -i (output seek): chậm hơn input seek một chút nhưng cắt đúng mốc,
+      // không phụ thuộc keyframe gần nhất.
+      const ff = spawn(ffmpegPath, [
+        "-y", "-i", input, "-ss", String(start), "-t", String(seconds),
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18",
+        "-c:a", "aac", "-b:a", "192k", output,
+      ]);
+      let err = "";
+      ff.stderr.on("data", (d) => { err += d.toString().slice(-2000); });
+      ff.on("error", reject);
+      ff.on("close", (code) => {
+        if (code === 0) resolve(output);
+        // Vài trăm ký tự cuối của stderr: dòng cuối mới là câu ffmpeg nói vì sao nó chết.
+        else reject(new Error(`cắt clip thất bại (ffmpeg mã ${code}): ${err.trim().slice(-300)}`));
+      });
+    });
   });
 }
 
@@ -1659,6 +1703,18 @@ ipcMain.handle("sheet:start", async (e) => {
   return { success: true };
 });
 ipcMain.handle("sheet:stop", async () => { if (sheetRunner) sheetRunner.stop(); return { success: true }; });
+// Test render: xem thử 1 video/kênh. Dùng lại runner đang chạy nếu có (để chia chung cờ
+// running, không giẫm lên lượt thật); chưa chạy thì dựng runner tạm như sheet:run-now.
+ipcMain.handle("sheet:test-render", async (e, sheetName) => {
+  try {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const runner = sheetRunner || buildSheetRunner(win);
+    await runner.testRenderNow(sheetName || undefined);
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err?.message || err) };
+  }
+});
 ipcMain.handle("sheet:run-now", async (e, sheetName) => {
   const win = BrowserWindow.fromWebContents(e.sender);
   const runner = sheetRunner || buildSheetRunner(win);

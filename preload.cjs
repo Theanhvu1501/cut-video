@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     start: () => ipcRenderer.invoke("sheet:start"),
     stop: () => ipcRenderer.invoke("sheet:stop"),
     runNow: (sheetName) => ipcRenderer.invoke("sheet:run-now", sheetName),
+    testRender: (sheetName) => ipcRenderer.invoke("sheet:test-render", sheetName),
     listStatsChannels: () => ipcRenderer.invoke("yt:list-channels"),
     refreshStats: () => ipcRenderer.invoke("yt:refresh-stats"),
     fetchSourceUrls: (sheetName, sortBy) => ipcRenderer.invoke("yt:fetch-source-urls", { sheetName, sortBy }),

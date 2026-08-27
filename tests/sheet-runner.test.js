@@ -112,7 +112,7 @@ test("kênh local: proxy hỏng vẫn chạy (không dừng kênh)", async () =>
 });
 
 function makeDeps(overrides = {}) {
-  const calls = { status: [], rendered: [], errors: [], downloaded: [], unlinked: [] };
+  const calls = { status: [], rendered: [], errors: [], downloaded: [], unlinked: [], cut: [], opened: [] };
   let savedState = {};
   let savedResume = {};
   const files = new Set(overrides.existingFiles || []);
@@ -156,6 +156,12 @@ function makeDeps(overrides = {}) {
     unlink: (p) => { calls.unlinked.push(p); files.delete(p); },
     detectChroma: async () => "000000",
     sleep: async () => {},
+    // Chỉ nhánh testRenderNow dùng ba dep này; runNow không đụng tới.
+    // (loadPreset KHÔNG nằm ở đây: cả runChannel lẫn testRenderNow đều dùng bản import
+    // ở đầu sheet-runner.js, muốn kiểm nhánh composer thì trỏ config.presetsDir đi chỗ khác.)
+    cutClip: async (o) => { calls.cut.push(o); },
+    openFile: (p) => calls.opened.push(p),
+    ensureDir: () => {},
   };
   delete overrides.existingFiles;
   return { deps: { ...deps, ...overrides }, calls, getState: () => savedState, getResume: () => savedResume, files };
@@ -1101,4 +1107,125 @@ test("endChannel: được gọi cho MỌI kênh, kể cả kênh thoát sớm v
   });
   await createSheetRunner(deps).runNow();
   assert.deepEqual(ended, ["Kênh A", "Kênh B", "Kênh C"]);
+});
+
+// ===================== testRenderNow: nút "Test render" của tab Sheet =====================
+// Nhánh xem thử: mỗi kênh 1 video, cắt ngắn, render, mở lên xem. Không upload, không
+// ghi Sheet, không tính quota. Lõi nằm ở sheet/test-render-channel.js; ở đây chỉ kiểm
+// phần điều phối: chọn kênh nào, chạy tuần tự, lỗi kênh này không giết kênh kia.
+
+function makeTestRenderDeps(overrides = {}) {
+  const { deps, calls } = makeDeps({
+    // ensureDirs của makeDeps trả "/bg","/ov","/out" cố định cho mọi kênh — nhánh
+    // test-render cần đường dẫn theo từng kênh mới phân biệt được kênh nào ra kênh nào.
+    ensureDirs: (root) => ({
+      backgroundsDir: path.join(root, "backgrounds"),
+      overlaysDir: path.join(root, "overlays"),
+      outputDir: path.join(root, "output"),
+      inputsDir: path.join(root, "inputs"),
+    }),
+    sheetsApi: {
+      readConfigSheet: async () => [
+        { sheetName: "Kênh A", enabled: true, videosPerDay: 2, renderMode: "topTransparent", cfg: {}, proxy: "" },
+        { sheetName: "Kênh B", enabled: true, videosPerDay: 2, renderMode: "topTransparent", cfg: {}, proxy: "" },
+        { sheetName: "Kênh tắt", enabled: false, videosPerDay: 2, renderMode: "topTransparent", cfg: {}, proxy: "" },
+      ],
+      readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "done", uploadStatus: "✅" }],
+      setUrlStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status }),
+      setUploadStatus: async (sheetName, rowIndex, status) => calls.status.push({ sheetName, rowIndex, status, col: "C" }),
+      appendUrls: async () => {},
+    },
+    ...overrides,
+  });
+  return { deps, calls };
+}
+
+test("testRenderNow: chạy mọi kênh ĐANG BẬT, bỏ kênh tắt", async () => {
+  const { deps, calls } = makeTestRenderDeps();
+  await createSheetRunner(deps).testRenderNow();
+  assert.equal(calls.opened.length, 2, "hai kênh bật thì mở hai video, kênh tắt không chạy");
+  assert.ok(calls.opened[0].includes("Kênh A"));
+  assert.ok(calls.opened[1].includes("Kênh B"));
+  assert.ok(!calls.opened.some((f) => f.includes("Kênh tắt")));
+});
+
+test("testRenderNow(tên kênh): chỉ chạy đúng kênh đó", async () => {
+  const { deps, calls } = makeTestRenderDeps();
+  await createSheetRunner(deps).testRenderNow("Kênh B");
+  assert.equal(calls.opened.length, 1);
+  assert.ok(calls.opened[0].includes("Kênh B"));
+});
+
+test("testRenderNow: không ghi cột B/C, không tính quota, không enqueue upload", async () => {
+  const enqueued = [];
+  const { deps, calls, getState } = (() => {
+    const made = makeDeps({
+      sheetsApi: {
+        readConfigSheet: async () => [
+          { sheetName: "Kênh A", enabled: true, videosPerDay: 2, renderMode: "topTransparent", cfg: {}, proxy: "", gpmProfileId: "p1", postTimes: "08:00" },
+        ],
+        readChannelUrls: async () => [{ rowIndex: 2, url: "u1", status: "", uploadStatus: "" }],
+        setUrlStatus: async (n, r, s) => made.calls.status.push({ n, r, s }),
+        setUploadStatus: async (n, r, s) => made.calls.status.push({ n, r, s, col: "C" }),
+        appendUrls: async () => {},
+      },
+      config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/s.json", renderConcurrency: 2, gpmEnabled: true, gpmHost: "h" },
+      uploadQueue: { enqueue: (j) => enqueued.push(j), endChannel: () => {}, beginRun: () => {}, endRun: () => {} },
+    });
+    return made;
+  })();
+  await createSheetRunner(deps).testRenderNow();
+  assert.deepEqual(calls.status, [], "không được ghi vào Sheet");
+  assert.deepEqual(enqueued, [], "không được đưa vào hàng đợi upload");
+  assert.deepEqual(getState(), {}, "không được tính vào quota hôm nay");
+});
+
+test("testRenderNow: kênh lỗi chỉ báo lỗi kênh đó, kênh sau vẫn chạy", async () => {
+  const { deps, calls } = makeTestRenderDeps({
+    listBackgrounds: (dir) => (String(dir).includes("Kênh A") ? [] : ["bg1.mp4"]),
+  });
+  await createSheetRunner(deps).testRenderNow();
+  assert.equal(calls.errors.length, 1);
+  assert.equal(calls.errors[0].channel, "Kênh A");
+  assert.equal(calls.opened.length, 1);
+  assert.ok(calls.opened[0].includes("Kênh B"));
+});
+
+test("testRenderNow: chờ giữa hai lượt tải như luồng thật (né bot-check)", async () => {
+  const slept = [];
+  const { deps } = makeTestRenderDeps({
+    config: { spreadsheetId: "SID", channelsRoot: "/root", statePath: "/root/s.json", renderConcurrency: 2, downloadDelayMinMs: 90000, downloadDelayMaxMs: 90000 },
+    sleep: async (ms) => { slept.push(ms); },
+  });
+  await createSheetRunner(deps).testRenderNow();
+  assert.deepEqual(slept, [90000], "kênh đầu tải ngay, kênh thứ hai mới phải chờ");
+});
+
+test("testRenderNow: bỏ qua khi lượt chạy thật đang chạy dở", async () => {
+  let release;
+  const blocked = new Promise((r) => { release = r; });
+  const { deps, calls } = makeTestRenderDeps({
+    renderer: async ({ outputPath }) => { await blocked; calls0.rendered.push(outputPath); return { outputPath }; },
+  });
+  const calls0 = calls;
+  const runner = createSheetRunner(deps);
+  const real = runner.runNow();
+  await runner.testRenderNow();
+  assert.deepEqual(calls.opened, [], "không được chạy test chồng lên lượt thật");
+  release();
+  await real;
+});
+
+test("runNow bỏ qua khi testRenderNow đang chạy dở", async () => {
+  let release;
+  const blocked = new Promise((r) => { release = r; });
+  const { deps, calls } = makeTestRenderDeps({
+    cutClip: async () => { await blocked; },
+  });
+  const runner = createSheetRunner(deps);
+  const test1 = runner.testRenderNow("Kênh A");
+  await runner.runNow();
+  assert.deepEqual(calls.rendered, [], "không được chạy lượt thật chồng lên test");
+  release();
+  await test1;
 });

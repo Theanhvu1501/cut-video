@@ -21,6 +21,12 @@ import {
   resolvePersonAsset,
   resolvePresetAssets,
   renderOne,
+  dualFrameLayers,
+  resolveDualFrameAssets,
+  dualFrameMainGeometry,
+  dualFrameSmallGeometry,
+  dualFrameFrameGeometry,
+  roundedCornerAlphaExpr,
 } from "../sheet/render-core.js";
 
 test("topTransparent uses opacity and overlay at 0:0", () => {
@@ -447,6 +453,183 @@ test("resolveBlurFrameAssets im lặng khi cả hai công tắc đều tắt", (
   const r = resolveBlurFrameAssets({ framePath: "/khong/co/that.png" });
   assert.deepEqual(r.warnings, []);
   assert.equal(r.frameFile, "");
+});
+
+// ===== dualFrame: ảnh nền + video overlay (khung to) + video nền (khung nhỏ) + khung viền =====
+
+const DF = {
+  dualFrameBgFile: "nen.png",
+  dualFrameFrameEnabled: true,
+  dualFrameFrameFile: "khung.png",
+};
+
+test("dualFrame: cả 4 lớp — chỉ số input và thứ tự chồng lớp", () => {
+  const f = buildComplexFilter("dualFrame", DF);
+  assert.ok(f.includes("[2:v]scale=1280:720[df_bg]"));
+  assert.ok(f.includes("[1:v]scale=960:560,format=yuva420p,colorchannelmixer=aa=1[df_main]"));
+  assert.ok(f.includes("[df_bg][df_main]overlay=40:40:shortest=1[df_stage1]"));
+  assert.ok(f.includes("[3:v]scale=960:560[df_frame]"));
+  assert.ok(f.includes("[df_stage1][df_frame]overlay=40:40:shortest=1[df_stage2]"));
+  assert.ok(f.includes("[0:v]scale=240:160,format=yuva420p,colorchannelmixer=aa=1[df_small]"));
+  assert.ok(f.includes("[df_stage2][df_small]overlay=1000:520:shortest=1[combined_video]"));
+  assert.ok(f.includes("[1:a]volume=1.0[overlay_audio]"));
+});
+
+test("dualFrame: thiếu ảnh nền -> phát nền đen thẳng trong filter, không chiếm input", () => {
+  const f = buildComplexFilter("dualFrame", {});
+  assert.ok(f.includes("color=c=black:s=1280x720:r=30[df_bg]"));
+  assert.ok(!f.join("|").includes("[2:v]"));
+  // Khung viền tắt mặc định -> video nền (khung nhỏ) đè thẳng lên stage1.
+  assert.ok(f.includes("[df_stage1][df_small]overlay=1000:520:shortest=1[combined_video]"));
+});
+
+test("dualFrame: tắt khung viền -> video nền (khung nhỏ) là lớp cuối, không có df_frame", () => {
+  const f = buildComplexFilter("dualFrame", { ...DF, dualFrameFrameEnabled: false });
+  const joined = f.join("|");
+  assert.ok(!joined.includes("df_frame"));
+  assert.ok(!joined.includes("[3:v]"));
+  assert.ok(f.includes("[df_stage1][df_small]overlay=1000:520:shortest=1[combined_video]"));
+});
+
+test("dualFrame: mọi tổ hợp bg/khung đều có đúng một [combined_video]", () => {
+  for (const hasBg of [false, true]) {
+    for (const frameEnabled of [false, true]) {
+      const f = buildComplexFilter("dualFrame", {
+        dualFrameBgFile: hasBg ? "nen.png" : "",
+        dualFrameFrameEnabled: frameEnabled,
+        dualFrameFrameFile: "khung.png",
+      });
+      const outs = f.join("|").match(/\[combined_video\]/g) || [];
+      assert.equal(outs.length, 1, `tổ hợp bg=${hasBg}/khung=${frameEnabled}`);
+    }
+  }
+});
+
+test("dualFrame: mainOpacity/smallOpacity tuỳ chỉnh được", () => {
+  const f = buildComplexFilter("dualFrame", { dualFrameMainOpacity: 0.9, dualFrameSmallOpacity: 0.5 });
+  assert.ok(f.some((s) => s.includes("colorchannelmixer=aa=0.9[df_main]")));
+  assert.ok(f.some((s) => s.includes("colorchannelmixer=aa=0.5[df_small]")));
+});
+
+test("dualFrameLayers: cần cả công tắc lẫn file đã chốt", () => {
+  assert.equal(dualFrameLayers(DF).frame, true);
+  assert.equal(dualFrameLayers({ ...DF, dualFrameFrameEnabled: false }).frame, false);
+  assert.equal(dualFrameLayers({ ...DF, dualFrameFrameFile: "" }).frame, false);
+});
+
+test("dualFrameMainGeometry/dualFrameSmallGeometry: mặc định khớp layout đã chốt", () => {
+  assert.deepEqual(dualFrameMainGeometry(), { w: 960, h: 560, x: 40, y: 40 });
+  assert.deepEqual(dualFrameSmallGeometry(), { w: 240, h: 160, x: 1000, y: 520 });
+});
+
+test("dualFrameFrameGeometry: scale=1 phủ khít đúng khung to", () => {
+  assert.deepEqual(dualFrameFrameGeometry(), { w: 960, h: 560, x: 40, y: 40 });
+});
+
+test("dualFrameFrameGeometry: scale>1 phóng khung quanh cùng tâm với khung to", () => {
+  const g = dualFrameFrameGeometry({ dualFrameFrameScale: 1.2 });
+  // 960*1.2=1152 (chẵn); 560*1.2=672 (chẵn)
+  assert.deepEqual(g, { w: 1152, h: 672, x: -56, y: -16 });
+  // Tâm khung to: cx=40+960/2=520, cy=40+560/2=320 -> khung viền phải giữ đúng tâm đó.
+  assert.equal(g.x * 2 + g.w, 2 * 520);
+  assert.equal(g.y * 2 + g.h, 2 * 320);
+});
+
+test("resolveDualFrameAssets: đường dẫn hỏng -> cảnh báo, KHÔNG ném lỗi, nền rơi về đen", () => {
+  const r = resolveDualFrameAssets({ dualFrameBgPath: "/khong/co/that.png" });
+  assert.equal(r.bgFile, "");
+  assert.equal(r.warnings.length, 1);
+  assert.match(r.warnings[0], /nền đen/);
+});
+
+test("resolveDualFrameAssets: khung viền tắt thì không cảnh báo dù path hỏng", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "df-bg-"));
+  const bg = path.join(dir, "nen.png");
+  fs.writeFileSync(bg, "x");
+  try {
+    const r = resolveDualFrameAssets({ dualFrameBgPath: bg, dualFrameFramePath: "/khong/co" });
+    assert.deepEqual(r.warnings, []);
+    assert.equal(r.frameFile, "");
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("resolveDualFrameAssets: bật khung viền nhưng path hỏng -> cảnh báo riêng", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "df-bg-"));
+  const bg = path.join(dir, "nen.png");
+  fs.writeFileSync(bg, "x");
+  try {
+    const r = resolveDualFrameAssets({
+      dualFrameBgPath: bg,
+      dualFrameFrameEnabled: true,
+      dualFrameFramePath: "/khong/co",
+    });
+    assert.equal(r.frameFile, "");
+    assert.equal(r.warnings.length, 1);
+    assert.ok(r.warnings[0].includes("khung"));
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("roundedCornerAlphaExpr: bo = 0 -> null (giữ góc vuông, không qua geq)", () => {
+  assert.equal(roundedCornerAlphaExpr(240, 160, 0), null);
+  assert.equal(roundedCornerAlphaExpr(240, 160, -5), null);
+  assert.equal(roundedCornerAlphaExpr(240, 160, undefined), null);
+});
+
+test("roundedCornerAlphaExpr: kẹp bán kính tối đa bằng nửa cạnh ngắn hơn", () => {
+  // min(240,160)/2 = 80 -> r=200 phải kẹp về 80
+  const clamped = roundedCornerAlphaExpr(240, 160, 200);
+  const exact = roundedCornerAlphaExpr(240, 160, 80);
+  assert.equal(clamped, exact);
+});
+
+test("roundedCornerAlphaExpr: biểu thức đúng công thức 4 góc", () => {
+  const expr = roundedCornerAlphaExpr(100, 50, 20);
+  assert.equal(
+    expr,
+    "if(lt(X,20)*lt(Y,20)*gt((20-X)*(20-X)+(20-Y)*(20-Y),20*20),0," +
+      "if(lt(X,20)*gt(Y,30)*gt((20-X)*(20-X)+(Y-30)*(Y-30),20*20),0," +
+      "if(gt(X,80)*lt(Y,20)*gt((X-80)*(X-80)+(20-Y)*(20-Y),20*20),0," +
+      "if(gt(X,80)*gt(Y,30)*gt((X-80)*(X-80)+(Y-30)*(Y-30),20*20),0,255))))",
+  );
+});
+
+test("dualFrame: dualFrameSmallRadius mặc định (0) -> không có geq, giữ nguyên hành vi cũ", () => {
+  const f = buildComplexFilter("dualFrame", DF);
+  assert.ok(f.some((s) => s.includes("[df_small]") && !s.includes("geq")));
+  assert.ok(!f.join("|").includes("geq"));
+});
+
+test("dualFrame: dualFrameSmallRadius > 0 -> thêm geq bo góc vào đúng lớp khung nhỏ", () => {
+  const f = buildComplexFilter("dualFrame", { ...DF, dualFrameSmallRadius: 24 });
+  const smallLine = f.find((s) => s.includes("[df_small]"));
+  // geq bắt buộc phải có lum_expr (ffmpeg từ chối "A luminance or RGB expression is
+  // mandatory" nếu thiếu) — lum/cb/cr phải khai rõ để giữ nguyên màu, chỉ alpha bị đổi.
+  assert.ok(smallLine.includes("geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='"));
+  assert.ok(smallLine.includes("alpha(X,Y)*("));
+  // Vẫn đúng thứ tự: scale rồi format/opacity rồi mới geq, kết thúc bằng nhãn [df_small]
+  assert.match(
+    smallLine,
+    /^\[0:v\]scale=240:160,format=yuva420p,colorchannelmixer=aa=1,geq=lum='lum\(X,Y\)':cb='cb\(X,Y\)':cr='cr\(X,Y\)':a='.*'\[df_small\]$/,
+  );
+});
+
+test("buildStudioInputs: dualFrame theo đúng thứ tự bg rồi khung, rỗng khi thiếu cả hai", () => {
+  assert.deepEqual(buildStudioInputs("dualFrame", DF), [
+    { file: "nen.png", inputOptions: ["-loop", "1"] },
+    { file: "khung.png", inputOptions: ["-loop", "1"] },
+  ]);
+  assert.deepEqual(buildStudioInputs("dualFrame", { dualFrameBgFile: "nen.png" }), [
+    { file: "nen.png", inputOptions: ["-loop", "1"] },
+  ]);
+  assert.deepEqual(
+    buildStudioInputs("dualFrame", { dualFrameFrameEnabled: true, dualFrameFrameFile: "khung.png" }),
+    [{ file: "khung.png", inputOptions: ["-loop", "1"] }],
+  );
+  assert.deepEqual(buildStudioInputs("dualFrame", {}), []);
 });
 
 test("resolveFfmpegPaths returns string paths", () => {

@@ -9,7 +9,12 @@ import { fileURLToPath } from "url";
 // build.asarUnpack của package.json nên import này an toàn khi đóng gói
 // (xem tests/packaging.test.js).
 import { compilePreset, validatePreset } from "./sheet/layer-compiler.js";
-import { resolvePresetAssets } from "./sheet/render-core.js";
+import {
+  resolvePresetAssets,
+  buildComplexFilter as buildDualFrameFilter,
+  buildStudioInputs as buildDualFrameInputs,
+  resolveDualFrameAssets,
+} from "./sheet/render-core.js";
 
 // Thêm hệ thống log tối ưu
 const LOG_LEVEL = {
@@ -293,7 +298,7 @@ let videoSpeed = 0.95;
 // VPS
 const useAutoUploadVps = false;
 
-// Chế độ render (topTransparent, chromaKey, crop, keepColor)
+// Chế độ render (topTransparent, chromaKey, crop, keepColor, blurFrame, dualFrame, composer)
 let renderMode = "topTransparent";
 let opacity = 0.7;
 
@@ -345,6 +350,24 @@ let effectOpacity = 0.15;
 let effectBlend = "normal";
 let effectKeyThreshold = 0.15;
 const EFFECT_BLENDS = ["normal", "screen", "lumakey"];
+
+// Chế độ khung đôi (dualFrame): ảnh nền + video overlay (khung to) + video nền (khung
+// nhỏ) + khung viền tuỳ chọn. Công tắc khung viền tách khỏi path, giống frameEnabled.
+let dualFrameBgPath = "";
+let dualFrameFrameEnabled = false;
+let dualFrameFramePath = "";
+let dualFrameFrameScale = 1;
+let dualFrameMainWidth = 960;
+let dualFrameMainHeight = 560;
+let dualFrameMainX = 40;
+let dualFrameMainY = 40;
+let dualFrameMainOpacity = 1.0;
+let dualFrameSmallWidth = 240;
+let dualFrameSmallHeight = 160;
+let dualFrameSmallX = 1000;
+let dualFrameSmallY = 520;
+let dualFrameSmallOpacity = 1.0;
+let dualFrameSmallRadius = 0;
 
 // Đọc config từ project JSON hoặc từ environment variable RENDER_CONFIG_JSON
 // Ưu tiên RENDER_CONFIG_JSON (từ options) nếu có, sau đó mới đọc từ project JSON
@@ -435,6 +458,34 @@ if (config) {
     effectBlend = config.effectBlend;
   if (config.effectKeyThreshold !== undefined)
     effectKeyThreshold = parseFloat(config.effectKeyThreshold) || 0.15;
+  if (config.dualFrameBgPath) dualFrameBgPath = config.dualFrameBgPath;
+  if (config.dualFrameFrameEnabled !== undefined)
+    dualFrameFrameEnabled = config.dualFrameFrameEnabled;
+  if (config.dualFrameFramePath) dualFrameFramePath = config.dualFrameFramePath;
+  if (config.dualFrameFrameScale !== undefined)
+    dualFrameFrameScale = parseFloat(config.dualFrameFrameScale) || 1;
+  if (config.dualFrameMainWidth !== undefined)
+    dualFrameMainWidth = parseInt(config.dualFrameMainWidth) || 960;
+  if (config.dualFrameMainHeight !== undefined)
+    dualFrameMainHeight = parseInt(config.dualFrameMainHeight) || 560;
+  if (config.dualFrameMainX !== undefined)
+    dualFrameMainX = parseInt(config.dualFrameMainX) || 40;
+  if (config.dualFrameMainY !== undefined)
+    dualFrameMainY = parseInt(config.dualFrameMainY) || 40;
+  if (config.dualFrameMainOpacity !== undefined)
+    dualFrameMainOpacity = parseFloat(config.dualFrameMainOpacity) || 1;
+  if (config.dualFrameSmallWidth !== undefined)
+    dualFrameSmallWidth = parseInt(config.dualFrameSmallWidth) || 240;
+  if (config.dualFrameSmallHeight !== undefined)
+    dualFrameSmallHeight = parseInt(config.dualFrameSmallHeight) || 160;
+  if (config.dualFrameSmallX !== undefined)
+    dualFrameSmallX = parseInt(config.dualFrameSmallX) || 1000;
+  if (config.dualFrameSmallY !== undefined)
+    dualFrameSmallY = parseInt(config.dualFrameSmallY) || 520;
+  if (config.dualFrameSmallOpacity !== undefined)
+    dualFrameSmallOpacity = parseFloat(config.dualFrameSmallOpacity) || 1;
+  if (config.dualFrameSmallRadius !== undefined)
+    dualFrameSmallRadius = parseInt(config.dualFrameSmallRadius) || 0;
   // Đọc đường dẫn từ config
   if (config.overlayFolder) {
     // Nếu là path tuyệt đối, dùng trực tiếp; nếu là tương đối, resolve từ __dirname
@@ -1031,6 +1082,25 @@ const processVideo = async (
         filterConfig = complexFilterCrop(personFile);
         if (personFile)
           studioInputs = [{ file: personFile, inputOptions: ["-loop", "1"] }];
+      } else if (renderMode === "dualFrame") {
+        log(
+          `🖼️ Sử dụng chế độ Khung đôi (nhỏ + lớn) cho ${path.basename(outputPath)}`,
+          LOG_LEVEL.DEBUG
+        );
+        // Chốt ảnh nền + khung viền MỘT LẦN rồi mới dựng filter, cùng lý do với
+        // blurFrame/crop ở trên: filter và danh sách input phải khớp chỉ số [n:v].
+        const dfCfg = {
+          dualFrameBgPath, dualFrameFrameEnabled, dualFrameFramePath, dualFrameFrameScale,
+          dualFrameMainWidth, dualFrameMainHeight, dualFrameMainX, dualFrameMainY, dualFrameMainOpacity,
+          dualFrameSmallWidth, dualFrameSmallHeight, dualFrameSmallX, dualFrameSmallY, dualFrameSmallOpacity,
+          dualFrameSmallRadius,
+        };
+        const { bgFile, frameFile, warnings } = resolveDualFrameAssets(dfCfg);
+        warnings.forEach((w) => log(w, LOG_LEVEL.WARN));
+        dfCfg.dualFrameBgFile = bgFile;
+        dfCfg.dualFrameFrameFile = frameFile;
+        filterConfig = buildDualFrameFilter("dualFrame", dfCfg);
+        studioInputs = buildDualFrameInputs("dualFrame", dfCfg);
       } else if (renderMode === "composer") {
         log(
           `🧩 Dùng bố cục composer "${composerPreset?.name || "?"}" cho ${path.basename(outputPath)}`,

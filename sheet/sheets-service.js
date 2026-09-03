@@ -69,6 +69,21 @@ const HEADER_ALIASES = {
   effectOpacity: ["độ mạnh hiệu ứng"],
   effectBlend: ["cách ghép hiệu ứng", "blend hiệu ứng"],
   effectKeyThreshold: ["ngưỡng khử nền tối", "ngưỡng khử nền đen"],
+  dualFrameBgPath: ["ảnh nền khung đôi", "nền khung đôi"],
+  dualFrameFrameEnabled: ["dùng khung viền", "bật khung viền"],
+  dualFrameFramePath: ["khung viền", "đường dẫn khung viền"],
+  dualFrameFrameScale: ["phóng khung viền", "hệ số khung viền"],
+  dualFrameMainX: ["khung to x"],
+  dualFrameMainY: ["khung to y"],
+  dualFrameMainWidth: ["khung to rộng", "khung to chiều rộng"],
+  dualFrameMainHeight: ["khung to cao", "khung to chiều cao"],
+  dualFrameMainOpacity: ["độ đục khung to"],
+  dualFrameSmallX: ["khung nhỏ x"],
+  dualFrameSmallY: ["khung nhỏ y"],
+  dualFrameSmallWidth: ["khung nhỏ rộng", "khung nhỏ chiều rộng"],
+  dualFrameSmallHeight: ["khung nhỏ cao", "khung nhỏ chiều cao"],
+  dualFrameSmallOpacity: ["độ đục khung nhỏ"],
+  dualFrameSmallRadius: ["độ bo viền khung nhỏ", "bo viền khung nhỏ"],
   proxy: ["proxy tải", "proxy"],
   gpmProfileId: ["gpm profile id", "gpm", "profile gpm"],
   postTimes: ["giờ đăng", "lịch đăng", "post times", "giờ post"],
@@ -199,6 +214,37 @@ export function parseConfigRows(values) {
       cfg.effectBlend = effectBlend;
     const effectKeyThreshold = num(col(row, "effectKeyThreshold"));
     if (effectKeyThreshold !== undefined) cfg.effectKeyThreshold = effectKeyThreshold;
+    // Mode dualFrame: ảnh nền + khung to (video overlay) + khung nhỏ (video nền) + khung viền
+    const dualFrameBgPath = col(row, "dualFrameBgPath");
+    if (dualFrameBgPath) cfg.dualFrameBgPath = dualFrameBgPath;
+    const dualFrameFrameEnabledRaw = col(row, "dualFrameFrameEnabled");
+    if (dualFrameFrameEnabledRaw) cfg.dualFrameFrameEnabled = boolFalse(dualFrameFrameEnabledRaw);
+    const dualFrameFramePath = col(row, "dualFrameFramePath");
+    if (dualFrameFramePath) cfg.dualFrameFramePath = dualFrameFramePath;
+    const dualFrameFrameScale = num(col(row, "dualFrameFrameScale"));
+    if (dualFrameFrameScale !== undefined) cfg.dualFrameFrameScale = dualFrameFrameScale;
+    const dualFrameMainX = num(col(row, "dualFrameMainX"));
+    if (dualFrameMainX !== undefined) cfg.dualFrameMainX = dualFrameMainX;
+    const dualFrameMainY = num(col(row, "dualFrameMainY"));
+    if (dualFrameMainY !== undefined) cfg.dualFrameMainY = dualFrameMainY;
+    const dualFrameMainWidth = num(col(row, "dualFrameMainWidth"));
+    if (dualFrameMainWidth !== undefined) cfg.dualFrameMainWidth = dualFrameMainWidth;
+    const dualFrameMainHeight = num(col(row, "dualFrameMainHeight"));
+    if (dualFrameMainHeight !== undefined) cfg.dualFrameMainHeight = dualFrameMainHeight;
+    const dualFrameMainOpacity = num(col(row, "dualFrameMainOpacity"));
+    if (dualFrameMainOpacity !== undefined) cfg.dualFrameMainOpacity = dualFrameMainOpacity;
+    const dualFrameSmallX = num(col(row, "dualFrameSmallX"));
+    if (dualFrameSmallX !== undefined) cfg.dualFrameSmallX = dualFrameSmallX;
+    const dualFrameSmallY = num(col(row, "dualFrameSmallY"));
+    if (dualFrameSmallY !== undefined) cfg.dualFrameSmallY = dualFrameSmallY;
+    const dualFrameSmallWidth = num(col(row, "dualFrameSmallWidth"));
+    if (dualFrameSmallWidth !== undefined) cfg.dualFrameSmallWidth = dualFrameSmallWidth;
+    const dualFrameSmallHeight = num(col(row, "dualFrameSmallHeight"));
+    if (dualFrameSmallHeight !== undefined) cfg.dualFrameSmallHeight = dualFrameSmallHeight;
+    const dualFrameSmallOpacity = num(col(row, "dualFrameSmallOpacity"));
+    if (dualFrameSmallOpacity !== undefined) cfg.dualFrameSmallOpacity = dualFrameSmallOpacity;
+    const dualFrameSmallRadius = num(col(row, "dualFrameSmallRadius"));
+    if (dualFrameSmallRadius !== undefined) cfg.dualFrameSmallRadius = dualFrameSmallRadius;
     const chromaPalette = col(row, "chromaPalette")
       .split(",")
       .map((p) => p.trim().replace("#", "").toUpperCase())

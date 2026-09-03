@@ -52,6 +52,26 @@ export const DEFAULT_RENDER_CFG = {
   // thành trong suốt rồi chồng thẳng.
   effectBlend: "normal",
   effectKeyThreshold: 0.15,
+  // Mode dualFrame: 4 lớp — ảnh nền full khung, video overlay (khung to, giữa),
+  // video background (khung nhỏ, góc dưới phải), ảnh khung viền khung to (tuỳ chọn).
+  dualFrameBgPath: "",
+  dualFrameBgFile: "",
+  dualFrameFrameEnabled: false,
+  dualFrameFramePath: "",
+  dualFrameFrameFile: "",
+  dualFrameFrameScale: 1,
+  dualFrameMainWidth: 960,
+  dualFrameMainHeight: 560,
+  dualFrameMainX: 40,
+  dualFrameMainY: 40,
+  dualFrameMainOpacity: 1.0,
+  dualFrameSmallWidth: 240,
+  dualFrameSmallHeight: 160,
+  dualFrameSmallX: 1000,
+  dualFrameSmallY: 520,
+  dualFrameSmallOpacity: 1.0,
+  // 0 = góc vuông (mặc định, không đổi hành vi cũ). >0 = bo tròn 4 góc, đơn vị px.
+  dualFrameSmallRadius: 0,
 };
 
 export const EFFECT_BLENDS = ["normal", "screen", "lumakey"];
@@ -310,6 +330,16 @@ export function buildStudioInputs(renderMode, cfgIn = {}) {
       ? [{ file: { ...DEFAULT_RENDER_CFG, ...cfgIn }.personFile, inputOptions: ["-loop", "1"] }]
       : [];
   }
+  if (renderMode === "dualFrame") {
+    const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+    const layers = dualFrameLayers(cfg);
+    const inputs = [];
+    // Thiếu ảnh nền thì dualFrame() tự phát sinh nền đen ngay trong filter_complex
+    // (không chiếm input phụ nào) — chỉ chiếm input khi đã chốt được file thật.
+    if (cfg.dualFrameBgFile) inputs.push({ file: cfg.dualFrameBgFile, inputOptions: ["-loop", "1"] });
+    if (layers.frame) inputs.push({ file: cfg.dualFrameFrameFile, inputOptions: ["-loop", "1"] });
+    return inputs;
+  }
   if (renderMode !== "blurFrame") return [];
   const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
   const layers = blurFrameLayers(cfg);
@@ -376,6 +406,139 @@ function blurFrame(cfg) {
   return filters;
 }
 
+// ── Mode dualFrame: nền ảnh + video overlay (khung to) + video nền (khung nhỏ) + khung viền ──
+
+// Nguồn sự thật duy nhất về "khung viền có bật không" — buildStudioInputs và dualFrame
+// đều hỏi hàm này, nên chỉ số input không bao giờ lệch.
+export function dualFrameLayers(cfgIn = {}) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  return { frame: Boolean(cfg.dualFrameFrameEnabled) && Boolean(cfg.dualFrameFrameFile) };
+}
+
+// Biến dualFrameBgPath/dualFrameFramePath (file hoặc thư mục) thành file cụ thể cho lần
+// render này. Ảnh nền không có công tắc riêng (nó là lớp lõi của cả mode) nên thiếu/hỏng vẫn
+// cảnh báo, nhưng KHÔNG ném lỗi: dualFrame() tự phủ nền đen thay thế để không hỏng cả mẻ video.
+export function resolveDualFrameAssets(cfgIn = {}, rand = Math.random) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  const warnings = [];
+  const bgFile = pickAsset(cfg.dualFrameBgPath, FRAME_EXTS, rand);
+  if (!bgFile) {
+    warnings.push(
+      `⚠️ Không tìm được ảnh nền hợp lệ tại: ${cfg.dualFrameBgPath || "(trống)"} — dùng nền đen thay thế`
+    );
+  }
+  let frameFile = "";
+  if (cfg.dualFrameFrameEnabled) {
+    frameFile = pickAsset(cfg.dualFrameFramePath, FRAME_EXTS, rand);
+    if (!frameFile) {
+      warnings.push(
+        `⚠️ Bật khung viền nhưng không tìm được ảnh khung hợp lệ tại: ${cfg.dualFrameFramePath || "(trống)"} — bỏ qua lớp khung`
+      );
+    }
+  }
+  return { bgFile, frameFile, warnings };
+}
+
+// Hình học khung to (chứa video overlay) — toạ độ/kích thước khai trực tiếp, không suy ra
+// từ tỉ lệ như frameGeometry, vì khung to ở đây neo theo layout cố định (góc trái trên).
+export function dualFrameMainGeometry(cfgIn = {}) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  const w = Math.max(2, evenDown(cfg.dualFrameMainWidth));
+  const h = Math.max(2, evenDown(cfg.dualFrameMainHeight));
+  return { w, h, x: Math.round(cfg.dualFrameMainX), y: Math.round(cfg.dualFrameMainY) };
+}
+
+// Hình học khung nhỏ (chứa video nền) — luôn ở lớp TRÊN CÙNG nên không cần logic isLast.
+export function dualFrameSmallGeometry(cfgIn = {}) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  const w = Math.max(2, evenDown(cfg.dualFrameSmallWidth));
+  const h = Math.max(2, evenDown(cfg.dualFrameSmallHeight));
+  return { w, h, x: Math.round(cfg.dualFrameSmallX), y: Math.round(cfg.dualFrameSmallY) };
+}
+
+// Hình học khung viền: phóng to/thu nhỏ quanh cùng tâm với khung to, giống frameOverlayGeometry
+// của blurFrame — dualFrameFrameScale > 1 bù phần viền trong suốt quanh hình vẽ khung PNG.
+export function dualFrameFrameGeometry(cfgIn = {}) {
+  const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
+  const { w, h, x, y } = dualFrameMainGeometry(cfg);
+  const raw = Number(cfg.dualFrameFrameScale);
+  const s = raw > 0 ? raw : DEFAULT_RENDER_CFG.dualFrameFrameScale;
+  const fw = Math.max(2, evenDown(w * s));
+  const fh = Math.max(2, evenDown(h * s));
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  return { w: fw, h: fh, x: Math.round(cx - fw / 2), y: Math.round(cy - fh / 2) };
+}
+
+// Biểu thức alpha bo 4 góc bằng geq: trong bán kính R tính từ mỗi góc, pixel ngoài
+// đường tròn góc thì cho trong suốt (0), còn lại giữ nguyên alpha đã có (255 = không đổi,
+// nhân với alpha gốc ở nơi gọi). R kẹp tối đa bằng nửa cạnh ngắn hơn — bo quá nửa cạnh
+// biến hình chữ nhật thành hình dạng vô nghĩa (2 vòng tròn góc đè lên nhau).
+// Trả về null khi bo = 0 (sau khi kẹp): nơi gọi bỏ qua bước geq, giữ nguyên hành vi góc
+// vuông cũ — không có test/video nào trước đây phải chạy qua geq nếu không cấu hình bo.
+export function roundedCornerAlphaExpr(w, h, r) {
+  const rr = Math.max(0, Math.min(Math.round(Number(r) || 0), Math.floor(Math.min(w, h) / 2)));
+  if (rr <= 0) return null;
+  const right = w - rr;
+  const bottom = h - rr;
+  return (
+    `if(lt(X,${rr})*lt(Y,${rr})*gt((${rr}-X)*(${rr}-X)+(${rr}-Y)*(${rr}-Y),${rr}*${rr}),0,` +
+    `if(lt(X,${rr})*gt(Y,${bottom})*gt((${rr}-X)*(${rr}-X)+(Y-${bottom})*(Y-${bottom}),${rr}*${rr}),0,` +
+    `if(gt(X,${right})*lt(Y,${rr})*gt((X-${right})*(X-${right})+(${rr}-Y)*(${rr}-Y),${rr}*${rr}),0,` +
+    `if(gt(X,${right})*gt(Y,${bottom})*gt((X-${right})*(X-${right})+(Y-${bottom})*(Y-${bottom}),${rr}*${rr}),0,255))))`
+  );
+}
+
+function dualFrame(cfg) {
+  const main = dualFrameMainGeometry(cfg);
+  const small = dualFrameSmallGeometry(cfg);
+  const layers = dualFrameLayers(cfg);
+  const filters = [];
+
+  // Ảnh nền chiếm input kế tiếp sau [0:v] (video nền, khung nhỏ) và [1:v] (video overlay,
+  // khung to) CHỈ KHI đã chốt được file thật — thiếu/hỏng thì phát nền đen thẳng trong
+  // filter_complex (không chiếm input nào), cùng kỹ thuật lớp "solid" của layer-compiler.js.
+  let idx = 2;
+  if (cfg.dualFrameBgFile) {
+    filters.push(`[${idx}:v]scale=${BASE_W}:${BASE_H}[df_bg]`);
+    idx++;
+  } else {
+    filters.push(`color=c=black:s=${BASE_W}x${BASE_H}:r=${FIXED_FPS}[df_bg]`);
+  }
+
+  filters.push(
+    `[1:v]scale=${main.w}:${main.h},format=yuva420p,colorchannelmixer=aa=${cfg.dualFrameMainOpacity}[df_main]`
+  );
+  // shortest=1: nền và video nền (khung nhỏ) lặp vô hạn, chỉ video overlay là hữu hạn.
+  filters.push(`[df_bg][df_main]overlay=${main.x}:${main.y}:shortest=1[df_stage1]`);
+  let stage = "[df_stage1]";
+
+  if (layers.frame) {
+    const fr = dualFrameFrameGeometry(cfg);
+    filters.push(`[${idx}:v]scale=${fr.w}:${fr.h}[df_frame]`);
+    idx++;
+    filters.push(`${stage}[df_frame]overlay=${fr.x}:${fr.y}:shortest=1[df_stage2]`);
+    stage = "[df_stage2]";
+  }
+
+  // Video nền (khung nhỏ) luôn là lớp CUỐI: không bao giờ để khung viền che mất nó.
+  // geq ĐÒI HỎI bắt buộc phải có lum_expr (hoặc r_expr) — không tự pass-through khi chỉ
+  // khai a=, khác với suy đoán ban đầu (đã thấy ffmpeg từ chối bằng "A luminance or RGB
+  // expression is mandatory" nếu bỏ qua). Khai lum/cb/cr giữ nguyên qua lum(X,Y)/cb(X,Y)/
+  // cr(X,Y) để chỉ alpha bị đổi, màu giữ nguyên như trước khi bo góc.
+  const radiusExpr = roundedCornerAlphaExpr(small.w, small.h, cfg.dualFrameSmallRadius);
+  const roundSuffix = radiusExpr
+    ? `,geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*(${radiusExpr})/255'`
+    : "";
+  filters.push(
+    `[0:v]scale=${small.w}:${small.h},format=yuva420p,colorchannelmixer=aa=${cfg.dualFrameSmallOpacity}${roundSuffix}[df_small]`
+  );
+  filters.push(`${stage}[df_small]overlay=${small.x}:${small.y}:shortest=1[combined_video]`);
+
+  filters.push("[1:a]volume=1.0[overlay_audio]");
+  return filters;
+}
+
 export function buildComplexFilter(renderMode, cfgIn = {}) {
   const cfg = { ...DEFAULT_RENDER_CFG, ...cfgIn };
   switch (renderMode) {
@@ -384,6 +547,7 @@ export function buildComplexFilter(renderMode, cfgIn = {}) {
     case "crop": return crop(cfg);
     case "keepColor": return keepColor(cfg);
     case "blurFrame": return blurFrame(cfg);
+    case "dualFrame": return dualFrame(cfg);
     case "topTransparent":
     default: return topTransparent(cfg);
   }
@@ -483,6 +647,14 @@ export function renderOne({
     const { frameFile, effectFile, warnings } = resolveBlurFrameAssets(cfg);
     cfg.frameFile = frameFile;
     cfg.effectFile = effectFile;
+    if (onProgress) warnings.forEach((w) => onProgress(w));
+  }
+  if (renderMode === "dualFrame") {
+    // Chốt ảnh nền + khung viền NGAY TẠI ĐÂY, cùng lý do với blurFrame/crop: run() có thể
+    // gọi lại lần hai khi GPU lỗi phải lùi về CPU, chốt muộn hơn sẽ bốc ra ảnh khác.
+    const { bgFile, frameFile, warnings } = resolveDualFrameAssets(cfg);
+    cfg.dualFrameBgFile = bgFile;
+    cfg.dualFrameFrameFile = frameFile;
     if (onProgress) warnings.forEach((w) => onProgress(w));
   }
   if (renderMode === "crop") {

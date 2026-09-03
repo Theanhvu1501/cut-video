@@ -156,6 +156,55 @@ test("parseConfigRows đọc cột cách ghép hiệu ứng", () => {
   assert.equal("effectKeyThreshold" in out[2].cfg, false);
 });
 
+test("parseConfigRows đọc cột dualFrame, mỗi kênh một layout riêng", () => {
+  const header = [
+    "sheetName","renderMode","dualFrameBgPath",
+    "dualFrameMainX","dualFrameMainY","dualFrameMainWidth","dualFrameMainHeight","dualFrameMainOpacity",
+    "dualFrameSmallX","dualFrameSmallY","dualFrameSmallWidth","dualFrameSmallHeight","dualFrameSmallOpacity",
+    "dualFrameFrameEnabled","dualFrameFramePath","dualFrameFrameScale",
+  ];
+  const rows = [header,
+    ["Kênh A","dualFrame","D:/nen.png","40","40","960","560","0.9","1000","520","240","160","0.8","true","D:/khung.png","1.05"],
+    ["Kênh B","dualFrame","D:/nen-b.png","","","","","","","","","","","","",""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].renderMode, "dualFrame");
+  assert.deepEqual(out[0].cfg, {
+    dualFrameBgPath: "D:/nen.png",
+    dualFrameMainX: 40, dualFrameMainY: 40, dualFrameMainWidth: 960, dualFrameMainHeight: 560, dualFrameMainOpacity: 0.9,
+    dualFrameSmallX: 1000, dualFrameSmallY: 520, dualFrameSmallWidth: 240, dualFrameSmallHeight: 160, dualFrameSmallOpacity: 0.8,
+    dualFrameFrameEnabled: true, dualFrameFramePath: "D:/khung.png", dualFrameFrameScale: 1.05,
+  });
+  // ô trống -> không set, dùng mặc định của render-core; ảnh nền vẫn riêng theo kênh
+  assert.deepEqual(out[1].cfg, { dualFrameBgPath: "D:/nen-b.png" });
+});
+
+test("parseConfigRows đọc cột dualFrame qua alias tiếng Việt", () => {
+  const header = ["Tên kênh","Chế độ render","Ảnh nền khung đôi","Dùng khung viền","Khung viền","Phóng khung viền","Khung to X","Độ đục khung to"];
+  const rows = [header,
+    ["Kênh A","dualFrame","D:/nen.png","true","D:/khung.png","1.1","50","0.95"],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].cfg.dualFrameBgPath, "D:/nen.png");
+  assert.equal(out[0].cfg.dualFrameFrameEnabled, true);
+  assert.equal(out[0].cfg.dualFrameFramePath, "D:/khung.png");
+  assert.equal(out[0].cfg.dualFrameFrameScale, 1.1);
+  assert.equal(out[0].cfg.dualFrameMainX, 50);
+  assert.equal(out[0].cfg.dualFrameMainOpacity, 0.95);
+});
+
+test("parseConfigRows đọc cột độ bo viền khung nhỏ", () => {
+  const header = ["Tên kênh", "Chế độ render", "Độ bo viền khung nhỏ"];
+  const rows = [header,
+    ["Kênh A", "dualFrame", "24"],
+    ["Kênh B", "dualFrame", ""],
+  ];
+  const out = parseConfigRows(rows);
+  assert.equal(out[0].cfg.dualFrameSmallRadius, 24);
+  // ô trống -> không set, dùng mặc định 0 (góc vuông) của render-core
+  assert.equal("dualFrameSmallRadius" in out[1].cfg, false);
+});
+
 // Task 10: cột "preset" (mode composer) + ghi đè asset theo khe.
 test("parseConfigRows đọc cột preset", () => {
   const values = [

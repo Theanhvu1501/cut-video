@@ -521,6 +521,30 @@ async function saveSettings() {
       effectKeyThreshold:
         document.getElementById("render-bf-effect-key-threshold")?.value ||
         "0.15",
+      dualFrameBgPath: selectedRenderDualFrameBgPath,
+      dualFrameMainX: document.getElementById("render-df-main-x")?.value || "40",
+      dualFrameMainY: document.getElementById("render-df-main-y")?.value || "40",
+      dualFrameMainWidth:
+        document.getElementById("render-df-main-width")?.value || "960",
+      dualFrameMainHeight:
+        document.getElementById("render-df-main-height")?.value || "560",
+      dualFrameMainOpacity:
+        document.getElementById("render-df-main-opacity")?.value || "1",
+      dualFrameSmallX: document.getElementById("render-df-small-x")?.value || "1000",
+      dualFrameSmallY: document.getElementById("render-df-small-y")?.value || "520",
+      dualFrameSmallWidth:
+        document.getElementById("render-df-small-width")?.value || "240",
+      dualFrameSmallHeight:
+        document.getElementById("render-df-small-height")?.value || "160",
+      dualFrameSmallOpacity:
+        document.getElementById("render-df-small-opacity")?.value || "1",
+      dualFrameSmallRadius:
+        document.getElementById("render-df-small-radius")?.value || "0",
+      dualFrameFrameEnabled:
+        document.getElementById("render-df-frame-enabled")?.checked || false,
+      dualFrameFramePath: selectedRenderDualFrameFramePath,
+      dualFrameFrameScale:
+        document.getElementById("render-df-frame-scale")?.value || "1",
       overlayFolder: selectedRenderOverlayFolder,
       backgroundFolder: selectedRenderBackgroundFolder,
       outputFolder: selectedRenderOutputFolder,
@@ -715,6 +739,7 @@ async function loadSettings() {
           crop: "render-mode-crop",
           keepColor: "render-mode-keepcolor",
           blurFrame: "render-mode-blurframe",
+          dualFrame: "render-mode-dualframe",
         };
         const modeId =
           modeIdMap[settings.render.renderMode] ||
@@ -778,6 +803,53 @@ async function loadSettings() {
         document.getElementById("render-bf-effect-key-threshold").value =
           settings.render.effectKeyThreshold;
       toggleBlurFrameLayers();
+      // Khung đôi (dualFrame): nạp giá trị trước, rồi mới đồng bộ hiện/ẩn theo công tắc
+      if (settings.render.dualFrameBgPath) {
+        selectedRenderDualFrameBgPath = settings.render.dualFrameBgPath;
+        document.getElementById("render-df-bg-path").value =
+          settings.render.dualFrameBgPath;
+      }
+      if (settings.render.dualFrameMainX)
+        document.getElementById("render-df-main-x").value = settings.render.dualFrameMainX;
+      if (settings.render.dualFrameMainY)
+        document.getElementById("render-df-main-y").value = settings.render.dualFrameMainY;
+      if (settings.render.dualFrameMainWidth)
+        document.getElementById("render-df-main-width").value =
+          settings.render.dualFrameMainWidth;
+      if (settings.render.dualFrameMainHeight)
+        document.getElementById("render-df-main-height").value =
+          settings.render.dualFrameMainHeight;
+      if (settings.render.dualFrameMainOpacity)
+        document.getElementById("render-df-main-opacity").value =
+          settings.render.dualFrameMainOpacity;
+      if (settings.render.dualFrameSmallX)
+        document.getElementById("render-df-small-x").value = settings.render.dualFrameSmallX;
+      if (settings.render.dualFrameSmallY)
+        document.getElementById("render-df-small-y").value = settings.render.dualFrameSmallY;
+      if (settings.render.dualFrameSmallWidth)
+        document.getElementById("render-df-small-width").value =
+          settings.render.dualFrameSmallWidth;
+      if (settings.render.dualFrameSmallHeight)
+        document.getElementById("render-df-small-height").value =
+          settings.render.dualFrameSmallHeight;
+      if (settings.render.dualFrameSmallOpacity)
+        document.getElementById("render-df-small-opacity").value =
+          settings.render.dualFrameSmallOpacity;
+      if (settings.render.dualFrameSmallRadius !== undefined)
+        document.getElementById("render-df-small-radius").value =
+          settings.render.dualFrameSmallRadius;
+      if (settings.render.dualFrameFrameEnabled !== undefined)
+        document.getElementById("render-df-frame-enabled").checked =
+          settings.render.dualFrameFrameEnabled;
+      if (settings.render.dualFrameFramePath) {
+        selectedRenderDualFrameFramePath = settings.render.dualFrameFramePath;
+        document.getElementById("render-df-frame-path").value =
+          settings.render.dualFrameFramePath;
+      }
+      if (settings.render.dualFrameFrameScale)
+        document.getElementById("render-df-frame-scale").value =
+          settings.render.dualFrameFrameScale;
+      toggleDualFrameLayers();
       if (settings.render.chromaKeyMode) {
         document.getElementById(
           settings.render.chromaKeyMode === "color"
@@ -2168,6 +2240,8 @@ let selectedRenderChromaKeyFile = null;
 let selectedRenderFramePath = null;
 let selectedRenderEffectPath = null;
 let selectedRenderPersonPath = null;
+let selectedRenderDualFrameBgPath = null;
+let selectedRenderDualFrameFramePath = null;
 
 // Toggle functions for render options
 function toggleRenderMode() {
@@ -2181,6 +2255,7 @@ function toggleRenderMode() {
   document.getElementById("render-crop-group").style.display = "none";
   document.getElementById("render-keepcolor-group").style.display = "none";
   document.getElementById("render-blurframe-group").style.display = "none";
+  document.getElementById("render-dualframe-group").style.display = "none";
 
   // Show relevant option group based on mode
   if (mode === "topTransparent") {
@@ -2195,7 +2270,17 @@ function toggleRenderMode() {
   } else if (mode === "blurFrame") {
     document.getElementById("render-blurframe-group").style.display = "block";
     toggleBlurFrameLayers();
+  } else if (mode === "dualFrame") {
+    document.getElementById("render-dualframe-group").style.display = "block";
+    toggleDualFrameLayers();
   }
+}
+
+// Công tắc khung viền: tắt chỉ ẩn tham số, không xoá đường dẫn đã chọn.
+function toggleDualFrameLayers() {
+  const on = document.getElementById("render-df-frame-enabled")?.checked || false;
+  const group = document.getElementById("render-df-frame-group");
+  if (group) group.style.display = on ? "block" : "none";
 }
 
 // 3 công tắc của mode Nền mờ + Khung: tắt chỉ ẩn tham số, không xoá đường dẫn
@@ -2297,6 +2382,81 @@ function setRenderFramePath(value) {
 function clearRenderFramePath() {
   selectedRenderFramePath = null;
   const input = document.getElementById("render-bf-frame-path");
+  if (input) input.value = "";
+  saveSettings();
+}
+
+// ===== Khung đôi (dualFrame): ảnh nền và ảnh khung viền =====
+// Cả hai đều nhận file lẻ hoặc thư mục: trỏ vào thư mục thì mỗi video render ra
+// sẽ bốc ngẫu nhiên một file trong đó.
+async function selectRenderDualFrameBgFile() {
+  if (!checkElectronAPI()) return;
+  try {
+    const filePath = await window.electronAPI.selectFile({
+      filters: [
+        { name: "Ảnh nền", extensions: ["png", "webp"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (filePath) setRenderDualFrameBgPath(filePath);
+  } catch (error) {
+    console.error("Error selecting dualFrame bg file:", error);
+    alert("Lỗi khi chọn ảnh nền: " + error.message);
+  }
+}
+
+async function selectRenderDualFrameBgFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) setRenderDualFrameBgPath(folder);
+}
+
+function setRenderDualFrameBgPath(value) {
+  selectedRenderDualFrameBgPath = value;
+  const input = document.getElementById("render-df-bg-path");
+  if (input) input.value = value;
+  saveSettings();
+}
+
+function clearRenderDualFrameBgPath() {
+  selectedRenderDualFrameBgPath = null;
+  const input = document.getElementById("render-df-bg-path");
+  if (input) input.value = "";
+  saveSettings();
+}
+
+async function selectRenderDualFrameFrameFile() {
+  if (!checkElectronAPI()) return;
+  try {
+    const filePath = await window.electronAPI.selectFile({
+      filters: [
+        { name: "Ảnh khung viền", extensions: ["png", "webp"] },
+        { name: "All Files", extensions: ["*"] },
+      ],
+    });
+    if (filePath) setRenderDualFrameFramePath(filePath);
+  } catch (error) {
+    console.error("Error selecting dualFrame frame file:", error);
+    alert("Lỗi khi chọn ảnh khung viền: " + error.message);
+  }
+}
+
+async function selectRenderDualFrameFrameFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) setRenderDualFrameFramePath(folder);
+}
+
+function setRenderDualFrameFramePath(value) {
+  selectedRenderDualFrameFramePath = value;
+  const input = document.getElementById("render-df-frame-path");
+  if (input) input.value = value;
+  saveSettings();
+}
+
+function clearRenderDualFrameFramePath() {
+  selectedRenderDualFrameFramePath = null;
+  const input = document.getElementById("render-df-frame-path");
   if (input) input.value = "";
   saveSettings();
 }
@@ -2652,6 +2812,36 @@ async function runRender() {
       document.getElementById("render-bf-effect-key-threshold").value,
     ) || 0.15;
 
+  // Khung đôi (dualFrame) config
+  const dualFrameBgPath = selectedRenderDualFrameBgPath || "";
+  const dualFrameMainX =
+    parseInt(document.getElementById("render-df-main-x")?.value) || 40;
+  const dualFrameMainY =
+    parseInt(document.getElementById("render-df-main-y")?.value) || 40;
+  const dualFrameMainWidth =
+    parseInt(document.getElementById("render-df-main-width")?.value) || 960;
+  const dualFrameMainHeight =
+    parseInt(document.getElementById("render-df-main-height")?.value) || 560;
+  const dualFrameMainOpacity =
+    parseFloat(document.getElementById("render-df-main-opacity")?.value) || 1;
+  const dualFrameSmallX =
+    parseInt(document.getElementById("render-df-small-x")?.value) || 1000;
+  const dualFrameSmallY =
+    parseInt(document.getElementById("render-df-small-y")?.value) || 520;
+  const dualFrameSmallWidth =
+    parseInt(document.getElementById("render-df-small-width")?.value) || 240;
+  const dualFrameSmallHeight =
+    parseInt(document.getElementById("render-df-small-height")?.value) || 160;
+  const dualFrameSmallOpacity =
+    parseFloat(document.getElementById("render-df-small-opacity")?.value) || 1;
+  const dualFrameSmallRadius =
+    parseInt(document.getElementById("render-df-small-radius")?.value) || 0;
+  const dualFrameFrameEnabled =
+    document.getElementById("render-df-frame-enabled")?.checked || false;
+  const dualFrameFramePath = selectedRenderDualFrameFramePath || "";
+  const dualFrameFrameScale =
+    parseFloat(document.getElementById("render-df-frame-scale")?.value) || 1;
+
   // Chroma Key config
   let chromaKeyMode = "color";
   let chromaKeyColor = null;
@@ -2758,6 +2948,21 @@ async function runRender() {
         effectOpacity,
         effectBlend,
         effectKeyThreshold,
+        dualFrameBgPath,
+        dualFrameMainX,
+        dualFrameMainY,
+        dualFrameMainWidth,
+        dualFrameMainHeight,
+        dualFrameMainOpacity,
+        dualFrameSmallX,
+        dualFrameSmallY,
+        dualFrameSmallWidth,
+        dualFrameSmallHeight,
+        dualFrameSmallOpacity,
+        dualFrameSmallRadius,
+        dualFrameFrameEnabled,
+        dualFrameFramePath,
+        dualFrameFrameScale,
         // Sử dụng path trực tiếp từ GUI, không copy
         overlayFolder: selectedRenderOverlayFolder || "./overlays",
         backgroundFolder: selectedRenderBackgroundFolder || "./backgrounds",
@@ -2803,19 +3008,14 @@ function clearTestRenderOutputFolder() {
 }
 
 async function runTestRender() {
-  const url = document.getElementById("test-render-url")?.value?.trim();
   const duration = parseInt(document.getElementById("test-render-duration")?.value) || 10;
-
-  if (!url) {
-    alert("Vui lòng nhập URL video YouTube!");
-    return;
-  }
+  const overlayFolder = selectedRenderOverlayFolder || "./overlays";
 
   if (!checkElectronAPI()) return;
 
   clearOutput("test-render");
   showOutput("test-render", `🧪 Bắt đầu Test Render...\n`);
-  showOutput("test-render", `📹 URL: ${url}\n`);
+  showOutput("test-render", `📁 Overlay folder: ${overlayFolder}\n`);
   showOutput("test-render", `⏱️ Thời lượng: ${duration}s\n\n`);
 
   try {
@@ -2876,9 +3076,26 @@ async function runTestRender() {
     const effectBlend = document.getElementById("render-bf-effect-blend")?.value || "normal";
     const effectKeyThreshold = parseFloat(document.getElementById("render-bf-effect-key-threshold")?.value) || 0.15;
 
+    // Khung đôi (dualFrame)
+    const dualFrameBgPath = selectedRenderDualFrameBgPath || "";
+    const dualFrameMainX = parseInt(document.getElementById("render-df-main-x")?.value) || 40;
+    const dualFrameMainY = parseInt(document.getElementById("render-df-main-y")?.value) || 40;
+    const dualFrameMainWidth = parseInt(document.getElementById("render-df-main-width")?.value) || 960;
+    const dualFrameMainHeight = parseInt(document.getElementById("render-df-main-height")?.value) || 560;
+    const dualFrameMainOpacity = parseFloat(document.getElementById("render-df-main-opacity")?.value) || 1;
+    const dualFrameSmallX = parseInt(document.getElementById("render-df-small-x")?.value) || 1000;
+    const dualFrameSmallY = parseInt(document.getElementById("render-df-small-y")?.value) || 520;
+    const dualFrameSmallWidth = parseInt(document.getElementById("render-df-small-width")?.value) || 240;
+    const dualFrameSmallHeight = parseInt(document.getElementById("render-df-small-height")?.value) || 160;
+    const dualFrameSmallOpacity = parseFloat(document.getElementById("render-df-small-opacity")?.value) || 1;
+    const dualFrameSmallRadius = parseInt(document.getElementById("render-df-small-radius")?.value) || 0;
+    const dualFrameFrameEnabled = document.getElementById("render-df-frame-enabled")?.checked || false;
+    const dualFrameFramePath = selectedRenderDualFrameFramePath || "";
+    const dualFrameFrameScale = parseFloat(document.getElementById("render-df-frame-scale")?.value) || 1;
+
     const options = {
       testRenderConfig: {
-        url,
+        overlayFolder,
         duration,
         renderMode,
         chromaKeyMode,
@@ -2912,6 +3129,21 @@ async function runTestRender() {
         effectOpacity,
         effectBlend,
         effectKeyThreshold,
+        dualFrameBgPath,
+        dualFrameMainX,
+        dualFrameMainY,
+        dualFrameMainWidth,
+        dualFrameMainHeight,
+        dualFrameMainOpacity,
+        dualFrameSmallX,
+        dualFrameSmallY,
+        dualFrameSmallWidth,
+        dualFrameSmallHeight,
+        dualFrameSmallOpacity,
+        dualFrameSmallRadius,
+        dualFrameFrameEnabled,
+        dualFrameFramePath,
+        dualFrameFrameScale,
         backgroundFolder: selectedRenderBackgroundFolder || "./backgrounds",
         outputFolder: selectedTestRenderOutputFolder || "./test-render-output",
         videoSpeed,

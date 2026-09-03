@@ -3,13 +3,16 @@ import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { create as createYoutubeDl } from "youtube-dl-exec";
-import { loadYtdlpSettings, parseExtractorArgs } from "./sheet/ytdlp-config.js";
 import { compilePreset, validatePreset } from "./sheet/layer-compiler.js";
-import { resolvePresetAssets } from "./sheet/render-core.js";
+import {
+  resolvePresetAssets,
+  buildComplexFilter as buildDualFrameFilter,
+  buildStudioInputs as buildDualFrameInputs,
+  resolveDualFrameAssets,
+} from "./sheet/render-core.js";
 
 // =================================================================
-// Test Render - Tải video, cut ngắn, render test
+// Test Render - Bốc 1 video có sẵn trong overlays, cut ngắn, render test
 // =================================================================
 
 const __filename = fileURLToPath(import.meta.url);
@@ -18,9 +21,7 @@ const __dirname = path.dirname(__filename);
 // Paths
 const FFMPEG_PATH = path.join(__dirname, "bin", "ffmpeg.exe");
 const FFPROBE_PATH = path.join(__dirname, "bin", "ffprobe.exe");
-const YTDLP_PATH = path.join(__dirname, "bin", "yt-dlp.exe");
 
-const getYoutubeDl = () => createYoutubeDl(YTDLP_PATH);
 ffmpeg.setFfmpegPath(FFMPEG_PATH);
 ffmpeg.setFfprobePath(FFPROBE_PATH);
 
@@ -34,7 +35,7 @@ try {
 }
 
 const {
-  url,
+  overlayFolder = "./overlays",
   duration = 10,
   renderMode = "topTransparent",
   chromaKeyMode = "color",
@@ -67,6 +68,21 @@ const {
   effectOpacity = 0.15,
   effectBlend = "normal",
   effectKeyThreshold = 0.15,
+  dualFrameBgPath = "",
+  dualFrameFrameEnabled = false,
+  dualFrameFramePath = "",
+  dualFrameFrameScale = 1,
+  dualFrameMainWidth = 960,
+  dualFrameMainHeight = 560,
+  dualFrameMainX = 40,
+  dualFrameMainY = 40,
+  dualFrameMainOpacity = 1.0,
+  dualFrameSmallWidth = 240,
+  dualFrameSmallHeight = 160,
+  dualFrameSmallX = 1000,
+  dualFrameSmallY = 520,
+  dualFrameSmallOpacity = 1.0,
+  dualFrameSmallRadius = 0,
   backgroundFolder = "./backgrounds",
   outputFolder = "./test-render-output",
   videoSpeed = 0.95,
@@ -78,58 +94,28 @@ if (!fs.existsSync(TEST_OUTPUT_DIR)) {
   fs.mkdirSync(TEST_OUTPUT_DIR, { recursive: true });
 }
 
-if (!url) {
-  console.error("❌ Thiếu URL video!");
-  process.exit(1);
-}
-
-// Extractor args
-const EXTRACTOR_ARGS = parseExtractorArgs(
-  typeof process.env.YTDLP_EXTRACTOR_ARGS === "string"
-    ? process.env.YTDLP_EXTRACTOR_ARGS
-    : loadYtdlpSettings(process.env.CONFIG_DIR || __dirname).extractorArgs
-);
-
 console.log(`🧪 Test Render bắt đầu...`);
-console.log(`📹 URL: ${url}`);
 console.log(`⏱️ Duration: ${duration}s`);
 console.log(`🎨 Mode: ${renderMode}`);
 
-// ============ Step 1: Download video ============
-async function downloadVideo(videoUrl) {
-  console.log(`\n📥 Đang tải video...`);
-
-  const timestamp = Date.now();
-  const outputPath = path.join(TEST_OUTPUT_DIR, `test_download_${timestamp}.mp4`);
-
-  const ytdlpOptions = {
-    output: outputPath,
-    format: "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-    mergeOutputFormat: "mp4",
-    noPlaylist: true,
-    quiet: false,
-    progress: true,
-  };
-
-  if (EXTRACTOR_ARGS.length) {
-    ytdlpOptions.extractorArgs = EXTRACTOR_ARGS.join(",");
+// ============ Step 1: Chọn ngẫu nhiên 1 video có sẵn trong folder overlays ============
+// Test render là để xem thử NHANH config render trông thế nào, không cần tải video mới —
+// dùng luôn 1 video đã có sẵn (ví dụ tải qua Sheet trước đó) là đủ.
+function pickRandomOverlayVideo() {
+  const dir = path.isAbsolute(overlayFolder) ? overlayFolder : path.join(__dirname, overlayFolder);
+  if (!fs.existsSync(dir)) {
+    throw new Error(`Không tìm thấy folder overlays: ${dir}`);
   }
-
-  // Check cookies
-  const cookiesFile = path.join(__dirname, "cookies.txt");
-  if (fs.existsSync(cookiesFile)) {
-    ytdlpOptions.cookies = cookiesFile;
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => path.extname(f).toLowerCase() === ".mp4")
+    .map((f) => path.join(dir, f));
+  if (!files.length) {
+    throw new Error(`Không có video .mp4 nào trong folder overlays: ${dir}`);
   }
-
-  try {
-    const youtubedl = getYoutubeDl();
-    await youtubedl(videoUrl, ytdlpOptions);
-    console.log(`✅ Tải xong: ${outputPath}`);
-    return outputPath;
-  } catch (error) {
-    console.error(`❌ Lỗi tải video: ${error.message}`);
-    throw error;
-  }
+  const chosen = files[Math.floor(Math.random() * files.length)];
+  console.log(`📁 Video overlay: ${path.basename(chosen)}`);
+  return chosen;
 }
 
 // ============ Step 2: Cut video to duration ============
@@ -213,7 +199,14 @@ async function renderVideo(overlayPath) {
 
       const command = ffmpeg(bgPath)
         .inputOptions(["-stream_loop", "-1"])
-        .input(overlayPath)
+        .input(overlayPath);
+
+      // Input phụ của dualFrame (ảnh nền, khung viền); rỗng với các mode còn lại.
+      for (const extra of dualFrameStudioInputs) {
+        command.input(extra.file).inputOptions(extra.inputOptions);
+      }
+
+      command
         .complexFilter(filterConfig)
         .outputOptions("-t", newDuration)
         .audioCodec("aac")
@@ -253,18 +246,43 @@ async function renderVideo(overlayPath) {
   });
 }
 
+// Input phụ (ảnh nền, khung viền) mà mode dualFrame cần — buildFilter() nạp lại mỗi lần gọi,
+// renderVideo() đọc ra ngay sau đó để thêm đúng input vào ffmpeg command.
+let dualFrameStudioInputs = [];
+
 // Build filter based on render mode
 function buildFilter() {
+  dualFrameStudioInputs = [];
   if (renderMode === "chromaKey") {
     return buildChromaKeyFilter();
   } else if (renderMode === "keepColor") {
     return buildKeepColorFilter();
   } else if (renderMode === "blurFrame") {
     return buildBlurFrameFilter();
+  } else if (renderMode === "dualFrame") {
+    return buildDualFrameModeFilter();
   } else {
     // Default: topTransparent
     return buildTopTransparentFilter();
   }
+}
+
+// Dùng thẳng render-core.js thay vì viết lại filter riêng: mode mới nên tránh nhân bản
+// logic sang file thứ 3 (topTransparent/chromaKey/keepColor/blurFrame ở đây là bản cũ,
+// đã trùng lặp với render.js và sheet/render-core.js từ trước khi mode này tồn tại).
+function buildDualFrameModeFilter() {
+  const dfCfg = {
+    dualFrameBgPath, dualFrameFrameEnabled, dualFrameFramePath, dualFrameFrameScale,
+    dualFrameMainWidth, dualFrameMainHeight, dualFrameMainX, dualFrameMainY, dualFrameMainOpacity,
+    dualFrameSmallWidth, dualFrameSmallHeight, dualFrameSmallX, dualFrameSmallY, dualFrameSmallOpacity,
+    dualFrameSmallRadius,
+  };
+  const { bgFile, frameFile, warnings } = resolveDualFrameAssets(dfCfg);
+  warnings.forEach((w) => console.warn(w));
+  dfCfg.dualFrameBgFile = bgFile;
+  dfCfg.dualFrameFrameFile = frameFile;
+  dualFrameStudioInputs = buildDualFrameInputs("dualFrame", dfCfg);
+  return buildDualFrameFilter("dualFrame", dfCfg);
 }
 
 function buildTopTransparentFilter() {
@@ -356,11 +374,11 @@ async function main() {
     // Cleanup old files first
     cleanupOldFiles();
 
-    // Step 1: Download
-    const downloadedPath = await downloadVideo(url);
+    // Step 1: Chọn video overlay có sẵn (không tải mới)
+    const overlayPath = pickRandomOverlayVideo();
 
     // Step 2: Cut
-    const cutPath = await cutVideo(downloadedPath, duration);
+    const cutPath = await cutVideo(overlayPath, duration);
 
     // Step 3: Render
     const renderedPath = await renderVideo(cutPath);
@@ -368,9 +386,8 @@ async function main() {
     // Step 4: Open result
     openResult(renderedPath);
 
-    // Cleanup downloaded and cut files (keep only final render)
+    // Chỉ xoá file cut tạm — overlayPath là video thật của người dùng, không được đụng vào.
     try {
-      fs.unlinkSync(downloadedPath);
       fs.unlinkSync(cutPath);
     } catch (e) {
       // ignore cleanup errors

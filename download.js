@@ -7,6 +7,10 @@ import sharp from "sharp";
 import { fileURLToPath } from "url";
 import { create as createYoutubeDl } from "youtube-dl-exec";
 import { loadYtdlpSettings, parseExtractorArgs } from "./sheet/ytdlp-config.js";
+import { createCookiePool } from "./sheet/cookie-pool.js";
+import { downloadWithRetry } from "./sheet/download-retry.js";
+import { chunkIntoBatches } from "./sheet/download-batch.js";
+import { getBgutilPaths } from "./sheet/download-options.js";
 
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
@@ -32,7 +36,10 @@ const FAILED_URLS_LOG = "./failed_urls.txt"; // File log chứa các URL bị l�
 let DOWNLOAD_DIR = "./overlays"; // Thư mục lưu video tải về và thumbnail gốc
 let OVERLAY_IMAGES_DIR = "./images"; // Thư mục chứa các ảnh overlay
 let OUTPUT_THUMBS_BASE_DIR = "./thumbs"; // Thư mục gốc lưu ảnh đã xử lý
-let COOKIES_FILE = "./cookies.txt"; // File cookies.txt
+let COOKIES_FILE = "./cookies.txt"; // File cookies.txt (1 cookie, hành vi cũ)
+let COOKIES_FOLDER = null; // Thư mục nhiều cookie .txt — có thì xoay vòng khi bị chặn
+let BATCH_SIZE = 30; // Số video mỗi lô trước khi nghỉ
+let BATCH_BREAK_SECONDS = 120; // Số giây nghỉ giữa hai lô
 let MAX_CONCURRENT = 2; // Số video tải song song
 let PROXY = null; // Proxy để sử dụng khi download (vd: http://proxy.example.com:8080)
 let DOWNLOAD_DRIVE = false; // Bật tải Drive với giới hạn độ dài tên file
@@ -75,6 +82,16 @@ if (fs.existsSync(projectConfigPath)) {
         OVERLAY_IMAGES_DIR = config.overlayImagesFolder;
       if (config.thumbsFolder) OUTPUT_THUMBS_BASE_DIR = config.thumbsFolder;
       if (config.cookiesFile !== undefined) COOKIES_FILE = config.cookiesFile;
+      if (config.cookiesFolder !== undefined) COOKIES_FOLDER = config.cookiesFolder;
+      // 0 là lựa chọn cố ý "tắt chia lô", nên phải phân biệt với "không cấu hình".
+      if (config.batchSize !== undefined && config.batchSize !== null && config.batchSize !== "")
+        BATCH_SIZE = parseInt(config.batchSize, 10) || 0;
+      if (
+        config.batchBreakSeconds !== undefined &&
+        config.batchBreakSeconds !== null &&
+        config.batchBreakSeconds !== ""
+      )
+        BATCH_BREAK_SECONDS = parseInt(config.batchBreakSeconds, 10) || 0;
       if (config.maxConcurrent !== undefined) MAX_CONCURRENT = parseInt(config.maxConcurrent) || 2;
       if (config.proxy !== undefined && config.proxy) {
         // Trim và validate proxy
@@ -102,6 +119,28 @@ if (fs.existsSync(projectConfigPath)) {
     console.error(`Lỗi khi đọc project config: ${error.message}`);
   }
 }
+
+// Thư mục plugin bgutil sinh PO token. Thiếu nó thì yt-dlp báo "PO Token Providers:
+// none" và YouTube âm thầm chỉ trả về format rác thay vì báo lỗi.
+// Electron truyền địa chỉ server đã dựng sẵn qua env; chạy tay từ CLI thì không có
+// server, yt-dlp tự lùi sang script mode nhờ potScriptPath.
+const BGUTIL = getBgutilPaths(__dirname);
+const POT_BASE_URL = process.env.POT_BASE_URL || null;
+console.log(
+  BGUTIL.pluginDir
+    ? `🔑 PO token: plugin ${BGUTIL.pluginDir}${POT_BASE_URL ? `, server ${POT_BASE_URL}` : " (không có server, dùng script mode)"}`
+    : "⚠️ PO token: chưa chép bgutil vào bin/ — chạy `node scripts/setup-bgutil.mjs` để tránh bị chặn",
+);
+
+// Nhiều cookie thì xoay vòng khi bị chặn; không có thư mục thì lùi về file đơn.
+const COOKIE_POOL = createCookiePool({ folder: COOKIES_FOLDER, file: COOKIES_FILE });
+console.log(
+  COOKIE_POOL.size > 1
+    ? `🍪 ${COOKIE_POOL.size} cookie, sẽ xoay vòng khi bị chặn`
+    : COOKIE_POOL.size === 1
+      ? `🍪 1 cookie: ${COOKIE_POOL.current()}`
+      : "🍪 Không có cookie — dễ bị YouTube chặn, nên bỏ vài file .txt vào thư mục cookies",
+);
 
 // =================================================================
 // 1. CÁC HÀM CỐT LÕI
@@ -189,7 +228,9 @@ function getNodeExecutable() {
 /**
  * Tải một video YouTube duy nhất.
  */
-const downloadVideo = async (url, outputPath) => {
+// cookiesFile do downloadWithRetry truyền vào (cookie đang tới lượt trong pool), chứ
+// không đọc thẳng COOKIES_FILE nữa — có thế mới đổi được cookie khi bị chặn.
+const downloadVideo = async (url, outputPath, cookiesFile = COOKIES_FILE) => {
   let output;
 
   if (DOWNLOAD_DRIVE) {
@@ -214,12 +255,21 @@ const downloadVideo = async (url, outputPath) => {
       "user-agent:Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36",
     ],
     limitRate: "2M",
-    cookies: COOKIES_FILE,
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
     jsRuntime: getNodeExecutable(),
   };
-  if (EXTRACTOR_ARGS.length) options.extractorArgs = EXTRACTOR_ARGS;
+
+  // Cookie hỏng/mất thì tải trần thay vì để yt-dlp chết vì --cookies trỏ vào hư không.
+  if (cookiesFile && fs.existsSync(cookiesFile)) options.cookies = cookiesFile;
+
+  // Cờ PO token cộng thêm vào cấu hình người dùng gõ, không đè mất.
+  const extractor = [...EXTRACTOR_ARGS];
+  if (BGUTIL.pluginDir) options.pluginDirs = BGUTIL.pluginDir;
+  if (POT_BASE_URL) extractor.push(`youtubepot-bgutilhttp:base_url=${POT_BASE_URL}`);
+  if (BGUTIL.scriptPath)
+    extractor.push(`youtubepot-bgutilscript:script_path=${BGUTIL.scriptPath}`);
+  if (extractor.length) options.extractorArgs = extractor;
 
   if (DESC_DIR && fs.existsSync(DESC_DIR)) {
     options.writeDescription = true;
@@ -296,11 +346,21 @@ const downloadVideosFromList = async (urls, savePath) => {
 
   const limit = pLimit(MAX_CONCURRENT); // Giới hạn 3 video tải song song
 
-  const downloadPromises = urls.map((url) =>
+  const makeTask = (url) =>
     limit(async () => {
       try {
         await sleepRandom(1000, 2500);
-        await downloadVideo(url, savePath);
+        // Bị chặn thì đổi sang cookie kế tiếp rồi thử lại; lỗi khác ném thẳng.
+        await downloadWithRetry(
+          (cookiesFile) => downloadVideo(url, savePath, cookiesFile),
+          COOKIE_POOL,
+          {
+            onRotate: ({ to, attempt, total }) =>
+              console.warn(
+                `🔄 Bị chặn ở ${url} — đổi cookie (${attempt}/${total}): ${to ? path.basename(to) : "không có"}`,
+              ),
+          },
+        );
         return { status: "fulfilled", url: url };
       } catch (error) {
         // Lấy thông tin lỗi chi tiết hơn
@@ -326,10 +386,27 @@ const downloadVideosFromList = async (urls, savePath) => {
         }
         return { status: "rejected", url: url, reason: reason };
       }
-    }),
-  );
+    });
 
-  const results = await Promise.all(downloadPromises);
+  // Chia lô để có điểm "hạ nhiệt": tải liên tục hàng trăm URL từ một IP là cách
+  // nhanh nhất để bị gắn cờ, kể cả khi đã có PO token và cookie sạch.
+  const batches = chunkIntoBatches(urls, BATCH_SIZE);
+  const results = [];
+
+  for (let i = 0; i < batches.length; i++) {
+    if (batches.length > 1) {
+      console.log(`📦 Lô ${i + 1}/${batches.length} — ${batches[i].length} video`);
+    }
+    results.push(...(await Promise.all(batches[i].map(makeTask))));
+
+    // Không nghỉ sau lô cuối: hết việc rồi, nghỉ chỉ làm người dùng đợi vô ích.
+    const isLast = i === batches.length - 1;
+    if (!isLast && BATCH_BREAK_SECONDS > 0) {
+      console.log(`⏸️ Nghỉ ${BATCH_BREAK_SECONDS}s trước lô tiếp theo...`);
+      await new Promise((r) => setTimeout(r, BATCH_BREAK_SECONDS * 1000));
+    }
+  }
+
   const failedTasks = results.filter((result) => result.status === "rejected");
   return failedTasks.map((task) => task.url); // Trả về chỉ URL bị lỗi
 };

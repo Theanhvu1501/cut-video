@@ -14,8 +14,11 @@ function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "ytcfg-"));
 }
 
-test("mặc định là player_client=web_embedded", () => {
-  assert.equal(DEFAULT_EXTRACTOR_ARGS, "youtube:player_client=web_embedded");
+// Mặc định phải RỖNG: có PO token rồi thì để yt-dlp tự chọn client. Ép cứng client
+// nào cũng là tự bó tay khi YouTube đổi — và cờ android từng âm thầm kéo video
+// xuống 360p (format 18) vì client đó không dùng PO token web.
+test("mặc định không ép player_client", () => {
+  assert.equal(DEFAULT_EXTRACTOR_ARGS, "");
 });
 
 test("parseExtractorArgs: một dòng -> mảng một phần tử, giữ nguyên dấu : = ,", () => {

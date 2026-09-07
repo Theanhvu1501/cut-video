@@ -19,7 +19,9 @@ import { renderOne, resolveFfmpegPaths } from "./sheet/render-core.js";
 import { detectChromaColor } from "./sheet/chroma-detect.js";
 import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
 import { loadYtdlpSettings, saveYtdlpSettings } from "./sheet/ytdlp-config.js";
-import { loadDownloadConfig, getNodeExecutable } from "./sheet/download-options.js";
+import { loadDownloadConfig, getNodeExecutable, getBgutilPaths } from "./sheet/download-options.js";
+import { startPotServer } from "./sheet/pot-provider.js";
+import { createCookiePool } from "./sheet/cookie-pool.js";
 import { loadState, saveState, todayStr, computeRemaining } from "./sheet/runner-state.js";
 import { loadResume, saveResume } from "./sheet/resume-state.js";
 import { registerComposerIpc, getPresetsDir } from "./sheet/composer-ipc.js";
@@ -695,6 +697,15 @@ app.whenReady().then(async () => {
     startPeriodicLicenseCheck();
     // Kiểm tra và hiển thị thông báo update thành công
     checkAndShowUpdateSuccess();
+
+    // Làm nóng server PO token ngay lúc mở app: lần đầu trên máy mới, antivirus quét
+    // node.exe nên server lên chậm — dựng sẵn ở đây thì lúc bấm tải là đã có token.
+    // KHÔNG await: server lên chậm không được chặn cửa sổ hiện ra.
+    ensurePotServer((message) => {
+      const win = BrowserWindow.getAllWindows()[0];
+      if (win && !win.isDestroyed()) win.webContents.send("sheet:event", { type: "log", message });
+      console.log(message);
+    });
   }
 });
 
@@ -709,6 +720,9 @@ app.on("window-all-closed", () => {
 app.on("before-quit", () => {
   // Dừng kiểm tra license trước khi quit
   stopPeriodicLicenseCheck();
+  // Tắt server PO token, không để tiến trình node mồ côi giữ cổng 4416 — lần mở app
+  // sau sẽ tưởng cổng bận và nhảy sang 4417.
+  stopPotServer();
 });
 
 app.on("activate", () => {
@@ -1374,6 +1388,65 @@ function saveSheetSettings(s) { fs.writeFileSync(sheetSettingsPath(), JSON.strin
 const YTDLP_PATH = path.join(getAppPath(), "bin", "yt-dlp.exe");
 let sheetRunner = null;
 
+// --- PO token (bgutil) ------------------------------------------------------
+// Một server duy nhất cho cả app, dựng lúc mở và tắt lúc thoát. Không có nó thì
+// yt-dlp báo "PO Token Providers: none" và YouTube hoặc chặn thẳng, hoặc âm thầm
+// chỉ trả về format rác (đo được: 360p thay vì 2160p).
+let potServer = null;
+
+function bgutilPaths() {
+  return getBgutilPaths(getAppPath());
+}
+
+async function ensurePotServer(log = () => {}) {
+  if (potServer) return potServer;
+  const { serverDir } = bgutilPaths();
+  if (!serverDir) {
+    log("⚠️ Chưa có bin/bgutil — chạy `node scripts/setup-bgutil.mjs` để tránh bị YouTube chặn");
+    return null;
+  }
+  potServer = await startPotServer({
+    nodePath: getNodeExecutable(getAppPath()),
+    serverDir,
+    log,
+  });
+  return potServer;
+}
+
+async function stopPotServer() {
+  try {
+    await potServer?.stop?.();
+  } catch {
+    // Tắt app rồi, tiến trình con chết theo cũng được.
+  }
+  potServer = null;
+}
+
+// Cờ PO token truyền cho yt-dlp. Gom một chỗ để hai luồng tải không trôi khác nhau.
+function potOptions() {
+  const { pluginDir, scriptPath } = bgutilPaths();
+  return {
+    pluginDirs: pluginDir,
+    potBaseUrl: potServer?.baseUrl || null,
+    potScriptPath: scriptPath,
+  };
+}
+
+// --- pool cookie ------------------------------------------------------------
+// Giữ vị trí xoay vòng GIỮA các lần tải: dựng pool mới cho mỗi video thì cookie đã
+// cháy lại bị thử đầu tiên ở mọi video, tốn một lượt bị chặn mỗi lần.
+// Nhưng vẫn phải dựng lại khi người dùng đổi cấu hình giữa chừng, nên khoá theo
+// chính cặp (thư mục, file).
+let cookiePoolCache = { key: null, pool: null };
+
+function getCookiePool({ cookiesFolder, cookiesFile }) {
+  const key = `${cookiesFolder || ""}|${cookiesFile || ""}`;
+  if (cookiePoolCache.key !== key) {
+    cookiePoolCache = { key, pool: createCookiePool({ folder: cookiesFolder, file: cookiesFile }) };
+  }
+  return cookiePoolCache.pool;
+}
+
 function buildSheetRunner(win) {
   const s = loadSheetSettings();
   const sheets = createSheetsClient(s.credentialsPath);
@@ -1472,13 +1545,16 @@ function buildSheetRunner(win) {
       const cookiesNote = dl.cookiesFile
         ? (fs.existsSync(dl.cookiesFile) ? path.basename(dl.cookiesFile) : `${dl.cookiesFile} (KHÔNG THẤY FILE)`)
         : "không dùng";
+      // Nhiều cookie thì xoay vòng khi bị chặn; thư mục rỗng thì lùi về file đơn.
+      const cookiePool = getCookiePool(dl);
+      const pot = potOptions();
       emitEvent({
         type: "log",
-        message: `tải: extractor-args=${extractorArgs || "(không truyền)"} | cookies=${cookiesNote} | js-runtime=${jsRuntime}`,
+        message: `tải: extractor-args=${extractorArgs || "(không truyền)"} | cookies=${cookiePool.size > 1 ? `${cookiePool.size} file (xoay vòng)` : cookiesNote} | js-runtime=${jsRuntime} | PO token=${pot.potBaseUrl || (pot.pluginDirs ? "script mode" : "KHÔNG CÓ")}`,
       });
       return downloadOne(url, dir, {
         ...opts,
-        cookiesFile: dl.cookiesFile,
+        cookiePool,
         downloadDrive: dl.downloadDrive,
         driveLanguage: dl.driveLanguage,
         // descDir cố tình bỏ trống: kênh chạy theo Sheet lấy tiêu đề/mô tả từ cột trong
@@ -1486,6 +1562,12 @@ function buildSheetRunner(win) {
         jsRuntime,
         ytdlpPath: YTDLP_PATH,
         extractorArgs,
+        ...pot,
+        onRotate: ({ to, attempt, total }) =>
+          emitEvent({
+            type: "log",
+            message: `🔄 Bị chặn — đổi cookie (${attempt}/${total}): ${to ? path.basename(to) : "không có"}`,
+          }),
       });
     },
     copyLocalOverlay,
@@ -1886,6 +1968,9 @@ ipcMain.handle(
           PROJECTS_DIR: path.join(configDir, "projects"), // Đường dẫn đến thư mục projects
           // Cài đặt yt-dlp dùng chung (sửa được trong app) — download.js đọc từ đây.
           YTDLP_EXTRACTOR_ARGS: loadYtdlpSettings(configDir).extractorArgs,
+          // Địa chỉ server PO token đã dựng sẵn. Chuỗi rỗng khi chưa lên: download.js
+          // vẫn tải được nhờ script mode, chỉ chậm hơn.
+          POT_BASE_URL: potServer?.baseUrl || "",
           ...options.env,
         };
 

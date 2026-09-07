@@ -8,7 +8,15 @@
 import fs from "fs";
 import path from "path";
 
-export const DEFAULT_EXTRACTOR_ARGS = "youtube:player_client=web_embedded";
+// Mặc định KHÔNG ép player_client. Có PO token (bgutil) rồi thì để yt-dlp tự chọn
+// client là tốt nhất; ép cứng client nào cũng là tự bó tay khi YouTube đổi cơ chế.
+//
+// Đo trên máy này, cùng một video, cùng yt-dlp 2026.08.19:
+//   ép player_client=android  -> "Downloading 1 format(s): 18"      (360p, không xin PO token)
+//   không ép, có bgutil       -> "Downloading 1 format(s): 401+251" (2160p)
+// Cờ android vừa làm PO token vô nghĩa (client android không dùng PO token web) vừa
+// âm thầm kéo chất lượng xuống mà không báo lỗi gì.
+export const DEFAULT_EXTRACTOR_ARGS = "";
 
 const FILE_NAME = "ytdlp-settings.json";
 

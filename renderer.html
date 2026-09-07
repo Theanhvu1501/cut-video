@@ -3464,6 +3464,61 @@
             ></div>
           </div>
           <div class="form-group">
+            <label>Thư mục nhiều cookie (chống bot-check):</label>
+            <div class="folder-select">
+              <div class="folder-input-wrap">
+                <input
+                  type="text"
+                  id="download-cookies-folder"
+                  placeholder="Chọn thư mục chứa nhiều file .txt — bị chặn thì tự đổi cookie"
+                  readonly
+                />
+                <button
+                  class="folder-clear"
+                  type="button"
+                  title="Xóa thư mục đã chọn"
+                  onclick="clearDownloadCookiesFolder()"
+                >
+                  ×
+                </button>
+              </div>
+              <button
+                class="btn btn-secondary"
+                onclick="selectDownloadCookiesFolder()"
+              >
+                Chọn Folder
+              </button>
+            </div>
+            <small style="color: #888">
+              Bỏ 5–7 file cookie .txt (định dạng Netscape) vào đây. Cookie nào bị
+              YouTube gắn cờ "not a bot" thì app tự chuyển sang cookie kế tiếp.
+              Để trống thì dùng file cookies đơn ở trên.
+            </small>
+          </div>
+          <div class="form-group">
+            <label>Số video mỗi lô:</label>
+            <input
+              type="number"
+              id="download-batch-size"
+              value="30"
+              min="0"
+              placeholder="30"
+            />
+            <small style="color: #888">
+              Tải hết một lô thì nghỉ. Đặt 0 để tắt chia lô.
+            </small>
+          </div>
+          <div class="form-group">
+            <label>Nghỉ giữa hai lô (giây):</label>
+            <input
+              type="number"
+              id="download-batch-break"
+              value="120"
+              min="0"
+              placeholder="120"
+            />
+          </div>
+          <div class="form-group">
             <label>Số lượng video tải song song:</label>
             <input
               type="number"

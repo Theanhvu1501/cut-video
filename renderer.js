@@ -559,6 +559,9 @@ async function saveSettings() {
       overlayImagesFolder: selectedDownloadOverlayImagesFolder,
       thumbsFolder: selectedDownloadThumbsFolder,
       cookiesFile: selectedDownloadCookiesFile,
+      cookiesFolder: selectedDownloadCookiesFolder,
+      batchSize: document.getElementById("download-batch-size")?.value ?? "30",
+      batchBreakSeconds: document.getElementById("download-batch-break")?.value ?? "120",
       maxConcurrent: document.getElementById("download-max-concurrent")?.value || "2",
       proxy: (() => {
         const proxyInput = document.getElementById("download-proxy");
@@ -982,6 +985,21 @@ async function loadSettings() {
         document.getElementById("download-cookies-file").value =
           settings.download.cookiesFile;
         // Removed folder path display
+      }
+      if (settings.download.cookiesFolder) {
+        selectedDownloadCookiesFolder = settings.download.cookiesFolder;
+        const el = document.getElementById("download-cookies-folder");
+        if (el) el.value = settings.download.cookiesFolder;
+      }
+      // != null chứ không phải truthy: 0 là lựa chọn cố ý (tắt chia lô / không nghỉ),
+      // dùng truthy thì 0 bị coi như "chưa cấu hình" và bị nhét lại mặc định 30/120.
+      if (settings.download.batchSize != null) {
+        const el = document.getElementById("download-batch-size");
+        if (el) el.value = settings.download.batchSize;
+      }
+      if (settings.download.batchBreakSeconds != null) {
+        const el = document.getElementById("download-batch-break");
+        if (el) el.value = settings.download.batchBreakSeconds;
       }
       if (settings.download.maxConcurrent) {
         document.getElementById("download-max-concurrent").value =
@@ -1933,6 +1951,9 @@ async function saveCurrentProjectSettings() {
         overlayImagesFolder: selectedDownloadOverlayImagesFolder,
         thumbsFolder: selectedDownloadThumbsFolder,
         cookiesFile: selectedDownloadCookiesFile,
+        cookiesFolder: selectedDownloadCookiesFolder,
+        batchSize: document.getElementById("download-batch-size")?.value ?? "30",
+        batchBreakSeconds: document.getElementById("download-batch-break")?.value ?? "120",
         maxConcurrent: document.getElementById("download-max-concurrent")?.value || "2",
         proxy: (() => {
           const proxyInput = document.getElementById("download-proxy");
@@ -3164,6 +3185,9 @@ let selectedDownloadDescFolder = null;
 let selectedDownloadOverlayImagesFolder = null;
 let selectedDownloadThumbsFolder = null;
 let selectedDownloadCookiesFile = null;
+// Thư mục nhiều cookie: bị chặn thì app tự đổi sang cookie kế tiếp. Để trống thì lùi
+// về file cookie đơn ở trên, nên project cũ mở lên vẫn chạy y như trước.
+let selectedDownloadCookiesFolder = null;
 let selectedDownloadProxy = null;
 let selectedDownloadDrive = false;
 let selectedDriveLanguage = "jp"; // Mặc định là tiếng Nhật
@@ -3294,6 +3318,23 @@ function clearDownloadCookiesFile() {
   saveSettings();
 }
 
+async function selectDownloadCookiesFolder() {
+  if (!checkElectronAPI()) return;
+  const folder = await window.electronAPI.selectFolder();
+  if (folder) {
+    selectedDownloadCookiesFolder = folder;
+    document.getElementById("download-cookies-folder").value = folder;
+    saveSettings();
+  }
+}
+
+function clearDownloadCookiesFolder() {
+  selectedDownloadCookiesFolder = null;
+  const input = document.getElementById("download-cookies-folder");
+  if (input) input.value = "";
+  saveSettings();
+}
+
 function toggleDownloadDrive() {
   const driveCheckbox = document.getElementById("download-drive");
   const languageGroup = document.getElementById("drive-language-group");
@@ -3392,6 +3433,9 @@ async function runDownload() {
         }
         if (result.config.download.cookiesFile) {
           selectedDownloadCookiesFile = result.config.download.cookiesFile;
+        }
+        if (result.config.download.cookiesFolder) {
+          selectedDownloadCookiesFolder = result.config.download.cookiesFolder;
         }
         // Không ghi đè input field proxy ở đây - để user có thể update proxy
         // và giá trị đó sẽ được ưu tiên khi lấy từ input field bên dưới
@@ -3564,6 +3608,9 @@ async function runRetry() {
         }
         if (result.config.download.cookiesFile) {
           selectedDownloadCookiesFile = result.config.download.cookiesFile;
+        }
+        if (result.config.download.cookiesFolder) {
+          selectedDownloadCookiesFolder = result.config.download.cookiesFolder;
         }
       }
     } catch (error) {

@@ -10,10 +10,12 @@ import {
   DOWNLOAD_FORMAT,
   buildOutputTemplate,
   buildYtdlOptions,
+  getBgutilPaths,
   getDriveFilenameLimit,
   getNodeExecutable,
   jsRuntimeArg,
   loadDownloadConfig,
+  resolveBinDir,
 } from "../sheet/download-options.js";
 
 function tmpDir() {
@@ -204,4 +206,78 @@ test("buildYtdlOptions chỉ ghi mô tả khi thư mục desc có thật", () =>
 test("buildYtdlOptions chỉ gắn proxy khi được truyền", () => {
   assert.equal(buildYtdlOptions({ outputDir: "C:\\out", proxyUrl: "http://1.2.3.4:8080" }).proxy, "http://1.2.3.4:8080");
   assert.equal("proxy" in buildYtdlOptions({ outputDir: "C:\\out" }), false);
+});
+
+// --- PO token (bgutil) ------------------------------------------------------
+// Thiếu --plugin-dirs thì yt-dlp báo "PO Token Providers: none" và YouTube âm thầm
+// chỉ trả về format rác (đo được: 360p thay vì 2160p), không có lỗi nào rõ ràng.
+test("buildYtdlOptions truyền plugin-dirs khi được chỉ đường", () => {
+  const o = buildYtdlOptions({ outputDir: "C:\out", pluginDirs: "D:\bin\bgutil\plugins" });
+  assert.equal(o.pluginDirs, "D:\bin\bgutil\plugins");
+  assert.equal("pluginDirs" in buildYtdlOptions({ outputDir: "C:\out" }), false);
+});
+
+// Truyền base_url cả khi đúng cổng mặc định: plugin chỉ tự đoán 4416, mà pot-provider
+// có thể đã phải nhảy sang 4417/4418 vì cổng bận.
+test("buildYtdlOptions gắn base_url của server PO token vào extractor-args", () => {
+  const o = buildYtdlOptions({ outputDir: "C:\out", potBaseUrl: "http://127.0.0.1:4417" });
+  assert.deepEqual(o.extractorArgs, ["youtubepot-bgutilhttp:base_url=http://127.0.0.1:4417"]);
+});
+
+test("buildYtdlOptions gắn script_path làm đường lùi khi server không chạy", () => {
+  const o = buildYtdlOptions({ outputDir: "C:\out", potScriptPath: "D:\bin\bgutil\server\build\generate_once.js" });
+  assert.deepEqual(o.extractorArgs, [
+    "youtubepot-bgutilscript:script_path=D:\bin\bgutil\server\build\generate_once.js",
+  ]);
+});
+
+// Cờ PO token phải CỘNG THÊM vào cấu hình người dùng gõ, không được đè mất.
+test("buildYtdlOptions giữ extractor-args của người dùng khi thêm cờ PO token", () => {
+  const o = buildYtdlOptions({
+    outputDir: "C:\out",
+    extractorArgs: "youtube:player_client=tv",
+    potBaseUrl: "http://127.0.0.1:4416",
+    potScriptPath: "D:\s\generate_once.js",
+  });
+  assert.deepEqual(o.extractorArgs, [
+    "youtube:player_client=tv",
+    "youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416",
+    "youtubepot-bgutilscript:script_path=D:\s\generate_once.js",
+  ]);
+});
+
+// --- dò thư mục bgutil ------------------------------------------------------
+test("resolveBinDir tìm bin/ ở thư mục hiện tại rồi mới lên cấp trên", () => {
+  const root = tmpDir();
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin);
+  assert.equal(resolveBinDir(root), path.normalize(bin));
+  // Từ thư mục con vẫn phải tìm ra bin/ của cấp trên (bản đóng gói nằm sâu hơn).
+  const sub = path.join(root, "resources", "app.asar.unpacked");
+  fs.mkdirSync(sub, { recursive: true });
+  assert.equal(resolveBinDir(sub), path.normalize(bin));
+  assert.equal(resolveBinDir(""), null);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+// Chưa chép bgutil sang thì trả null hết -> tải không cờ PO token, chậm và dễ dính
+// bot-check, nhưng vẫn chạy. Ném lỗi ở đây là chặn cả app không cho tải gì.
+test("getBgutilPaths trả null khi chưa chép bgutil sang bin/", () => {
+  const root = tmpDir();
+  fs.mkdirSync(path.join(root, "bin"));
+  assert.deepEqual(getBgutilPaths(root), { serverDir: null, pluginDir: null, scriptPath: null });
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test("getBgutilPaths tìm đúng server, plugin và script khi đã chép", () => {
+  const root = tmpDir();
+  const bg = path.join(root, "bin", "bgutil");
+  fs.mkdirSync(path.join(bg, "server", "build"), { recursive: true });
+  fs.mkdirSync(path.join(bg, "plugins", "bgutil-pot"), { recursive: true });
+  fs.writeFileSync(path.join(bg, "server", "build", "generate_once.js"), "x");
+  const got = getBgutilPaths(root);
+  assert.equal(got.serverDir, path.join(bg, "server"));
+  assert.equal(got.pluginDir, path.join(bg, "plugins"));
+  assert.equal(got.scriptPath, path.join(bg, "server", "build", "generate_once.js"));
+  fs.rmSync(root, { recursive: true, force: true });
 });

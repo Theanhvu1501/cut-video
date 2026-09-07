@@ -4,6 +4,8 @@ import { create as createYoutubeDl } from "youtube-dl-exec";
 import { normalizeProxy } from "./proxy.js";
 import { DEFAULT_EXTRACTOR_ARGS } from "./ytdlp-config.js";
 import { buildYtdlOptions } from "./download-options.js";
+import { createCookiePool } from "./cookie-pool.js";
+import { downloadWithRetry } from "./download-retry.js";
 
 export function pickDownloadedFile(dirBefore, dirAfter) {
   const beforeSet = new Set(dirBefore);
@@ -18,12 +20,17 @@ export async function downloadOne(
   {
     proxy,
     cookiesFile,
+    cookiePool = null,
     downloadDrive = false,
     driveLanguage = "jp",
     descDir = null,
     jsRuntime = null,
     ytdlpPath,
     extractorArgs = DEFAULT_EXTRACTOR_ARGS,
+    pluginDirs = null,
+    potBaseUrl = null,
+    potScriptPath = null,
+    onRotate = null,
     ytdlFactory = createYoutubeDl,
   } = {},
 ) {
@@ -37,19 +44,34 @@ export async function downloadOne(
   const before = fs.readdirSync(outputDir);
 
   const ytdl = ytdlFactory(ytdlpPath);
-  // Bộ cờ dựng ở download-options.js — bản chép của luồng tải thủ công.
-  const options = buildYtdlOptions({
-    outputDir,
-    cookiesFile,
-    proxyUrl,
-    downloadDrive,
-    driveLanguage,
-    descDir,
-    extractorArgs,
-    jsRuntime,
-  });
 
-  await ytdl(url, options);
+  // Không truyền pool thì dựng pool một cookie từ cookiesFile — lời gọi cũ và test cũ
+  // giữ nguyên hành vi, chỉ là không có gì để xoay khi bị chặn.
+  const pool = cookiePool ?? createCookiePool({ file: cookiesFile });
+
+  // Bộ cờ dựng ở download-options.js — bản chép của luồng tải thủ công.
+  // Dựng lại options mỗi lần thử vì cookie đổi theo từng lượt retry.
+  await downloadWithRetry(
+    (ck) =>
+      ytdl(
+        url,
+        buildYtdlOptions({
+          outputDir,
+          cookiesFile: ck,
+          proxyUrl,
+          downloadDrive,
+          driveLanguage,
+          descDir,
+          extractorArgs,
+          jsRuntime,
+          pluginDirs,
+          potBaseUrl,
+          potScriptPath,
+        }),
+      ),
+    pool,
+    { onRotate },
+  );
 
   const after = fs.readdirSync(outputDir);
   const newMp4 = pickDownloadedFile(before, after);

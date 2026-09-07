@@ -71,6 +71,49 @@ export function getNodeExecutable(baseDir) {
   return "node";
 }
 
+// Khác getNodeExecutable: bgutil KHÔNG có bản "hệ thống" để lùi về, dev hay đóng gói
+// đều phải trỏ vào bin/ đi kèm, nên dò bin/ ở cả hai trường hợp.
+export function resolveBinDir(baseDir) {
+  const dir = String(baseDir ?? "");
+  if (!dir) return null;
+  const candidates = [
+    path.join(dir, "bin"),
+    path.join(dir, "..", "bin"),
+    path.join(dir, "..", "..", "bin"),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return path.normalize(p);
+  }
+  return null;
+}
+
+// bin/bgutil chép từ bản portable (xem scripts/setup-bgutil.mjs). Thiếu thì trả null
+// để lời gọi tải không cờ PO token — chậm và dễ dính bot-check, nhưng vẫn chạy, hơn
+// là ném lỗi chặn cả app.
+//
+// pluginDir phải là thư mục MẸ của <tên-package>/yt_dlp_plugins/. Đã đo trên
+// yt-dlp.exe 2026.08.19: chỉ layout này được nạp, hai layout còn lại đều cho
+// "Plugin directories: none":
+//   --plugin-dirs <DIR>  với  <DIR>/bgutil-pot/yt_dlp_plugins/extractor/*.py   OK
+//   <DIR>/yt_dlp_plugins/extractor/*.py                                        KHÔNG
+//   cwd/yt-dlp-plugins/<pkg>/yt_dlp_plugins/extractor/*.py                     KHÔNG
+export function getBgutilPaths(baseDir) {
+  const empty = { serverDir: null, pluginDir: null, scriptPath: null };
+  const bin = resolveBinDir(baseDir);
+  if (!bin) return empty;
+
+  const root = path.join(bin, "bgutil");
+  const serverDir = path.join(root, "server");
+  const pluginDir = path.join(root, "plugins");
+  const scriptPath = path.join(serverDir, "build", "generate_once.js");
+
+  return {
+    serverDir: fs.existsSync(serverDir) ? serverDir : null,
+    pluginDir: fs.existsSync(pluginDir) ? pluginDir : null,
+    scriptPath: fs.existsSync(scriptPath) ? scriptPath : null,
+  };
+}
+
 // Đọc settings.download trong projects/<tên>.json — đúng nơi tab "Tải video" ghi
 // xuống, để tải theo Sheet ăn cùng một cấu hình với tải thủ công.
 // Thiếu file / JSON hỏng -> mặc định, không ném lỗi: cấu hình sai không được làm
@@ -78,6 +121,7 @@ export function getNodeExecutable(baseDir) {
 export function loadDownloadConfig(projectsDir, projectName) {
   const fallback = {
     cookiesFile: null,
+    cookiesFolder: null,
     downloadDrive: false,
     driveLanguage: "jp",
     descFolder: null,
@@ -94,6 +138,9 @@ export function loadDownloadConfig(projectsDir, projectName) {
 
     return {
       cookiesFile: cfg.cookiesFile || null,
+      // Thư mục nhiều cookie: có thì xoay vòng khi bị chặn, rỗng thì lùi về file đơn
+      // -> project cũ (chỉ có cookiesFile) mở lên vẫn chạy y như trước.
+      cookiesFolder: cfg.cookiesFolder || null,
       downloadDrive: cfg.downloadDrive === undefined ? false : !!cfg.downloadDrive,
       driveLanguage: cfg.driveLanguage || "jp",
       descFolder: cfg.descFolder || null,
@@ -121,6 +168,9 @@ export function buildYtdlOptions({
   descDir = null,
   extractorArgs,
   jsRuntime = null,
+  pluginDirs = null,
+  potBaseUrl = null,
+  potScriptPath = null,
 } = {}) {
   const options = {
     output: buildOutputTemplate(outputDir, { downloadDrive, driveLanguage }),
@@ -134,6 +184,20 @@ export function buildYtdlOptions({
   };
 
   const extractor = parseExtractorArgs(extractorArgs);
+
+  // Thư mục plugin bgutil. Không có nó thì yt-dlp báo "PO Token Providers: none" và
+  // YouTube hoặc chặn thẳng, hoặc âm thầm chỉ trả về format rác.
+  if (pluginDirs) options.pluginDirs = pluginDirs;
+
+  // Địa chỉ server PO token. Truyền cả khi đúng cổng mặc định: plugin chỉ tự đoán
+  // 127.0.0.1:4416, mà ta có thể đã phải nhảy sang 4417/4418 vì cổng bận.
+  if (potBaseUrl) extractor.push(`youtubepot-bgutilhttp:base_url=${potBaseUrl}`);
+
+  // Đường lùi khi server không chạy (server chết, hoặc chạy download.js thẳng từ CLI
+  // nên không ai spawn server). Mặc định plugin tìm ở C:\Users\<user>\bgutil-ytdlp-pot-provider
+  // — không tồn tại ở đây, nên không chỉ đường thì script mode báo "unavailable".
+  if (potScriptPath) extractor.push(`youtubepot-bgutilscript:script_path=${potScriptPath}`);
+
   if (extractor.length) options.extractorArgs = extractor;
 
   const runtime = jsRuntimeArg(jsRuntime);

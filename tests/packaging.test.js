@@ -78,3 +78,32 @@ test("resolveFfmpegPaths không bao giờ trả đường dẫn nằm trong app.
     assert.ok(!/[\\/]app\.asar[\\/]/.test(p), `không được spawn từ trong asar: ${p}`);
   }
 });
+
+// 3. electron-builder tự chèn luật "!**/node_modules" loại MỌI node_modules lồng
+//    nhau (nó dựng cây phụ thuộc riêng từ package.json gốc). bgutil mang theo
+//    node_modules của chính nó (262 gói: express, jsdom, youtubei.js, canvas...),
+//    nên nếu đi đường `files` thì build ra chỉ còn main.js trần -> server PO token
+//    không khởi động được -> YouTube chặn bot trở lại.
+//
+//    Lỗi này IM LẶNG: build thành công, app mở bình thường, chỉ có tải là hỏng.
+//    Đã đo trên bản build thật: qua `files` còn 0 gói / 424KB, qua `extraResources`
+//    đủ 262 gói / 173MB.
+test("bgutil phải đi đường extraResources, không qua files", () => {
+  const pkg = readPkg();
+  const extra = pkg.build?.extraResources ?? [];
+
+  const entry = extra.find((e) => (typeof e === "string" ? e : e?.from) === "bin/bgutil");
+  assert.ok(
+    entry,
+    "build.extraResources phải chép bin/bgutil, nếu không node_modules của nó bị lột sạch",
+  );
+  assert.equal(entry.to, "bgutil", "phải rơi vào resources/bgutil — getBgutilPaths tìm ở '../bgutil'");
+
+  // Không để bản cụt lọt qua `files` nữa: hai bản bgutil trong cùng một build thì
+  // getBgutilPaths có thể vớ phải bản không có node_modules.
+  const files = pkg.build?.files ?? [];
+  assert.ok(
+    files.includes("!bin/bgutil/**"),
+    "build.files phải loại bin/bgutil để không ship kèm bản đã bị lột node_modules",
+  );
+});

@@ -97,12 +97,41 @@ export function resolveBinDir(baseDir) {
 //   --plugin-dirs <DIR>  với  <DIR>/bgutil-pot/yt_dlp_plugins/extractor/*.py   OK
 //   <DIR>/yt_dlp_plugins/extractor/*.py                                        KHÔNG
 //   cwd/yt-dlp-plugins/<pkg>/yt_dlp_plugins/extractor/*.py                     KHÔNG
+// bgutil nằm ở HAI chỗ khác nhau tuỳ dev hay đóng gói:
+//   dev       -> <repo>/bin/bgutil
+//   đóng gói  -> <resources>/bgutil
+// Không đi chung đường với ffmpeg/node trong bin/ được vì electron-builder tự chèn
+// luật "!**/node_modules" loại mọi node_modules lồng nhau: qua ngả files thì
+// bin/bgutil/server/node_modules (262 gói) bị lột sạch, còn lại mỗi main.js không có
+// express/jsdom/youtubei.js -> server không lên -> dính bot-check trở lại. Nên nó
+// đi đường extraResources (chép nguyên văn) và rơi cạnh resources/, không vào bin/.
+//
+// Cả tiến trình Electron lẫn download.js (tiến trình node riêng) đều có baseDir là
+// resources/app.asar.unpacked khi đóng gói, nên "../bgutil" đúng cho cả hai.
+function bgutilRootCandidates(baseDir) {
+  const dir = String(baseDir ?? "");
+  if (!dir) return [];
+  return [
+    path.join(dir, "bin", "bgutil"), // dev
+    path.join(dir, "..", "bgutil"), // đóng gói: resources/bgutil
+    path.join(dir, "..", "..", "bgutil"),
+    path.join(dir, "..", "bin", "bgutil"),
+    path.join(dir, "..", "..", "bin", "bgutil"),
+  ];
+}
+
 export function getBgutilPaths(baseDir) {
   const empty = { serverDir: null, pluginDir: null, scriptPath: null };
-  const bin = resolveBinDir(baseDir);
-  if (!bin) return empty;
 
-  const root = path.join(bin, "bgutil");
+  // Chỉ nhận thư mục có ĐỦ server lẫn plugin: thiếu một trong hai thì chép sang cũng
+  // không tải được, mà lỗi lại chỉ hiện lúc tải chứ không phải lúc khởi động.
+  const root = bgutilRootCandidates(baseDir).find(
+    (c) =>
+      fs.existsSync(path.join(c, "server", "build", "main.js")) &&
+      fs.existsSync(path.join(c, "plugins")),
+  );
+  if (!root) return empty;
+
   const serverDir = path.join(root, "server");
   const pluginDir = path.join(root, "plugins");
   const scriptPath = path.join(serverDir, "build", "generate_once.js");

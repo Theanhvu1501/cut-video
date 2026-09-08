@@ -1,6 +1,6 @@
 {
   "name": "vid-master",
-  "version": "1.2.0",
+  "version": "1.4.3",
   "main": "electron-main.js",
   "type": "module",
   "scripts": {
@@ -85,8 +85,15 @@
       "bin/**",
       "node_modules/**"
     ],
+    "extraResources": [
+      {
+        "from": "bin/bgutil",
+        "to": "bgutil"
+      }
+    ],
     "files": [
       "**/*",
+      "!bin/bgutil/**",
       "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
       "!node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
       "!node_modules/*.d.ts",

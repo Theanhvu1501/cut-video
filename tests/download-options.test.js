@@ -269,15 +269,49 @@ test("getBgutilPaths trả null khi chưa chép bgutil sang bin/", () => {
   fs.rmSync(root, { recursive: true, force: true });
 });
 
-test("getBgutilPaths tìm đúng server, plugin và script khi đã chép", () => {
+// Dựng một cây bgutil tối thiểu nhưng đủ thật: thiếu main.js thì server không chạy
+// được, nên hàm dò phải coi thư mục đó là không hợp lệ.
+function makeBgutil(root) {
+  fs.mkdirSync(path.join(root, "server", "build"), { recursive: true });
+  fs.mkdirSync(path.join(root, "plugins", "bgutil-pot"), { recursive: true });
+  fs.writeFileSync(path.join(root, "server", "build", "main.js"), "x");
+  fs.writeFileSync(path.join(root, "server", "build", "generate_once.js"), "x");
+  return root;
+}
+
+test("getBgutilPaths tìm đúng server, plugin và script khi chạy dev (bin/bgutil)", () => {
   const root = tmpDir();
-  const bg = path.join(root, "bin", "bgutil");
-  fs.mkdirSync(path.join(bg, "server", "build"), { recursive: true });
-  fs.mkdirSync(path.join(bg, "plugins", "bgutil-pot"), { recursive: true });
-  fs.writeFileSync(path.join(bg, "server", "build", "generate_once.js"), "x");
+  const bg = makeBgutil(path.join(root, "bin", "bgutil"));
   const got = getBgutilPaths(root);
   assert.equal(got.serverDir, path.join(bg, "server"));
   assert.equal(got.pluginDir, path.join(bg, "plugins"));
   assert.equal(got.scriptPath, path.join(bg, "server", "build", "generate_once.js"));
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+// Bản đóng gói: electron-builder chèn "!**/node_modules" loại sạch node_modules lồng
+// nhau, nên bgutil đi đường extraResources và rơi ở resources/bgutil chứ không phải
+// trong bin/. Cả tiến trình Electron lẫn download.js đều có baseDir là
+// resources/app.asar.unpacked, nên phải tìm ra qua "../bgutil".
+test("getBgutilPaths tìm ra bgutil ở resources/ của bản đóng gói", () => {
+  const resources = tmpDir();
+  const bg = makeBgutil(path.join(resources, "bgutil"));
+  const unpacked = path.join(resources, "app.asar.unpacked");
+  fs.mkdirSync(unpacked, { recursive: true });
+
+  const got = getBgutilPaths(unpacked);
+  assert.equal(got.serverDir, path.join(bg, "server"));
+  assert.equal(got.pluginDir, path.join(bg, "plugins"));
+  fs.rmSync(resources, { recursive: true, force: true });
+});
+
+// Thiếu main.js = server không khởi động được. Trả null ngay lúc dò còn hơn để yt-dlp
+// đâm vào một base_url không có ai nghe rồi báo lỗi mơ hồ lúc đang tải.
+test("getBgutilPaths bỏ qua thư mục bgutil cụt (thiếu main.js)", () => {
+  const root = tmpDir();
+  const bg = path.join(root, "bin", "bgutil");
+  fs.mkdirSync(path.join(bg, "server", "build"), { recursive: true });
+  fs.mkdirSync(path.join(bg, "plugins"), { recursive: true });
+  assert.deepEqual(getBgutilPaths(root), { serverDir: null, pluginDir: null, scriptPath: null });
   fs.rmSync(root, { recursive: true, force: true });
 });

@@ -3432,39 +3432,7 @@
             ></div>
           </div>
           <div class="form-group">
-            <label>File cookies.txt:</label>
-            <div class="folder-select">
-              <div class="folder-input-wrap">
-                <input
-                  type="text"
-                  id="download-cookies-file"
-                  placeholder="Chọn file cookies.txt hoặc để trống dùng ./cookies.txt"
-                  readonly
-                />
-                <button
-                  class="folder-clear"
-                  type="button"
-                  title="Xóa file đã chọn"
-                  onclick="clearDownloadCookiesFile()"
-                >
-                  ×
-                </button>
-              </div>
-              <button
-                class="btn btn-secondary"
-                onclick="selectDownloadCookiesFile()"
-              >
-                Chọn File
-              </button>
-            </div>
-            <div
-              id="download-cookies-path"
-              class="folder-path"
-              style="display: none"
-            ></div>
-          </div>
-          <div class="form-group">
-            <label>Thư mục nhiều cookie (chống bot-check):</label>
+            <label>Thư mục cookie (chống bot-check):</label>
             <div class="folder-select">
               <div class="folder-input-wrap">
                 <input
@@ -3492,7 +3460,7 @@
             <small style="color: #888">
               Bỏ 5–7 file cookie .txt (định dạng Netscape) vào đây. Cookie nào bị
               YouTube gắn cờ "not a bot" thì app tự chuyển sang cookie kế tiếp.
-              Để trống thì dùng file cookies đơn ở trên.
+              Để trống thì tải không cookie.
             </small>
           </div>
           <div class="form-group">
@@ -4759,6 +4727,23 @@
             <button class="btn btn-secondary" id="sw-test" title="Kiểm tra kết nối tới Sheet">🔌 Kiểm tra kết nối</button>
             <span id="sw-test-status" style="font-size:13px;"></span>
           </div>
+
+          <h4 class="sw-cfg-group">Tải video</h4>
+          <div class="form-group">
+            <label>Thư mục nhiều cookie (chống bot-check)</label>
+            <div class="folder-select">
+              <div class="folder-input-wrap">
+                <input id="sw-cookies-folder" type="text" readonly style="width:100%"
+                       placeholder="Chọn thư mục chứa nhiều file .txt — bị chặn thì tự đổi cookie">
+                <button class="folder-clear" type="button" id="sw-clear-cookies-folder"
+                        title="Xoá để quay lại dùng cookie ở tab Tải video">×</button>
+              </div>
+              <button class="btn btn-secondary" id="sw-pick-cookies-folder">Chọn folder…</button>
+            </div>
+          </div>
+          <p class="sw-cfg-hint" id="sw-cookies-hint">
+            Để trống thì dùng cookie đã cấu hình ở tab "Tải video".
+          </p>
 
           <h4 class="sw-cfg-group">Render</h4>
           <div class="form-group" style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;">

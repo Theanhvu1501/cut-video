@@ -56,6 +56,37 @@ export function createCookiePool({ folder = null, file = null } = {}) {
   };
 }
 
+// Luồng Sheet lấy cookie ở đâu.
+//
+// Có người CHỈ dùng Sheet, không bao giờ mở tab "Tải video", nên cookie phải set
+// được ngay trong settings Sheet. Nhưng ai đang chạy Sheet bằng cookie ở tab Tải
+// video thì không được mất cookie sau khi cập nhật -> settings Sheet trống mới lùi
+// về đó.
+//
+// Sheet được lấy NGUYÊN CỤM (cả thư mục lẫn file, hoặc không gì cả): đặt file trong
+// Sheet mà lại đi mượn thư mục của tab Tải video thì nhìn cấu hình không ai đoán
+// được đang chạy bằng cookie nào.
+const clean = (v) => {
+  const s = String(v ?? "").trim();
+  return s || null;
+};
+
+export function resolveSheetCookieSource(sheetSettings, downloadConfig) {
+  const sheetFolder = clean(sheetSettings?.cookiesFolder);
+  const sheetFile = clean(sheetSettings?.cookiesFile);
+  if (sheetFolder || sheetFile) {
+    return { folder: sheetFolder, file: sheetFile, source: "sheet" };
+  }
+
+  const dlFolder = clean(downloadConfig?.cookiesFolder);
+  const dlFile = clean(downloadConfig?.cookiesFile);
+  if (dlFolder || dlFile) {
+    return { folder: dlFolder, file: dlFile, source: "download" };
+  }
+
+  return { folder: null, file: null, source: "none" };
+}
+
 // Dấu hiệu bị YouTube chặn, gom từ stderr yt-dlp:
 // - "Sign in to confirm you're not a bot" (dấu nháy có thể thẳng hoặc cong)
 // - 403 khi tải luồng media

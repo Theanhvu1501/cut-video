@@ -21,7 +21,7 @@ import { downloadOne, copyLocalOverlay } from "./sheet/channel-download.js";
 import { loadYtdlpSettings, saveYtdlpSettings } from "./sheet/ytdlp-config.js";
 import { loadDownloadConfig, getNodeExecutable, getBgutilPaths } from "./sheet/download-options.js";
 import { startPotServer } from "./sheet/pot-provider.js";
-import { createCookiePool } from "./sheet/cookie-pool.js";
+import { createCookiePool, resolveSheetCookieSource } from "./sheet/cookie-pool.js";
 import { loadState, saveState, todayStr, computeRemaining } from "./sheet/runner-state.js";
 import { loadResume, saveResume } from "./sheet/resume-state.js";
 import { registerComposerIpc, getPresetsDir } from "./sheet/composer-ipc.js";
@@ -1439,10 +1439,10 @@ function potOptions() {
 // chính cặp (thư mục, file).
 let cookiePoolCache = { key: null, pool: null };
 
-function getCookiePool({ cookiesFolder, cookiesFile }) {
-  const key = `${cookiesFolder || ""}|${cookiesFile || ""}`;
+function getCookiePool({ folder, file }) {
+  const key = `${folder || ""}|${file || ""}`;
   if (cookiePoolCache.key !== key) {
-    cookiePoolCache = { key, pool: createCookiePool({ folder: cookiesFolder, file: cookiesFile }) };
+    cookiePoolCache = { key, pool: createCookiePool({ folder, file }) };
   }
   return cookiePoolCache.pool;
 }
@@ -1542,15 +1542,26 @@ function buildSheetRunner(win) {
       const jsRuntime = getNodeExecutable(getAppPath());
       // Ghi ra log những gì thực sự truyền cho yt-dlp: nó BỎ QUA âm thầm key extractor lạ
       // và cookies sai đường dẫn, gõ sai không có lỗi nào cả — nhìn log là biết ngay.
-      const cookiesNote = dl.cookiesFile
-        ? (fs.existsSync(dl.cookiesFile) ? path.basename(dl.cookiesFile) : `${dl.cookiesFile} (KHÔNG THẤY FILE)`)
+      // Đọc lại settings Sheet MỖI LƯỢT như đọc lại cấu hình tải: cookie cháy giữa
+      // chừng thì người dùng bỏ cookie mới vào rồi sửa trong app là lượt kế ăn ngay,
+      // khỏi phải Dừng → Chạy lại cả lượt đang chạy dở.
+      // Cookie riêng của Sheet thắng; để trống mới lùi về cấu hình tab "Tải video",
+      // nên ai đang chạy Sheet bằng cookie ở tab đó không bị mất gì.
+      const ckSrc = resolveSheetCookieSource(loadSheetSettings(), dl);
+      const cookiesNote = ckSrc.file
+        ? (fs.existsSync(ckSrc.file) ? path.basename(ckSrc.file) : `${ckSrc.file} (KHÔNG THẤY FILE)`)
         : "không dùng";
       // Nhiều cookie thì xoay vòng khi bị chặn; thư mục rỗng thì lùi về file đơn.
-      const cookiePool = getCookiePool(dl);
+      const cookiePool = getCookiePool(ckSrc);
       const pot = potOptions();
+      // Ghi rõ cookie lấy từ ĐÂU: có hai chỗ cấu hình cookie, không nói ra thì sửa
+      // nhầm chỗ rồi ngồi đoán vì sao vẫn bị chặn.
+      const from = { sheet: " [settings Sheet]", download: ' [tab "Tải video"]', none: "" }[ckSrc.source];
+      const cookiesInfo =
+        cookiePool.size > 1 ? `${cookiePool.size} file (xoay vòng)${from}` : `${cookiesNote}${from}`;
       emitEvent({
         type: "log",
-        message: `tải: extractor-args=${extractorArgs || "(không truyền)"} | cookies=${cookiePool.size > 1 ? `${cookiePool.size} file (xoay vòng)` : cookiesNote} | js-runtime=${jsRuntime} | PO token=${pot.potBaseUrl || (pot.pluginDirs ? "script mode" : "KHÔNG CÓ")}`,
+        message: `tải: extractor-args=${extractorArgs || "(không truyền)"} | cookies=${cookiesInfo} | js-runtime=${jsRuntime} | PO token=${pot.potBaseUrl || (pot.pluginDirs ? "script mode" : "KHÔNG CÓ")}`,
       });
       return downloadOne(url, dir, {
         ...opts,

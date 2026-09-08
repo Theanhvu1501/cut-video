@@ -7,7 +7,12 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createCookiePool, isBotCheckError, listCookieFiles } from "../sheet/cookie-pool.js";
+import {
+  createCookiePool,
+  isBotCheckError,
+  listCookieFiles,
+  resolveSheetCookieSource,
+} from "../sheet/cookie-pool.js";
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "cookie-"));
@@ -94,4 +99,50 @@ test("isBotCheckError bỏ qua lỗi thường", () => {
   assert.equal(isBotCheckError("Video unavailable"), false);
   assert.equal(isBotCheckError(""), false);
   assert.equal(isBotCheckError(null), false);
+});
+
+// --- nguồn cookie cho luồng Sheet -------------------------------------------
+// Có người CHỈ dùng Sheet, không bao giờ mở tab "Tải video", nên cookie phải set
+// được ngay trong settings Sheet. Nhưng ai đang chạy Sheet bằng cookie ở tab Tải
+// video thì không được mất cookie sau khi cập nhật -> trống mới lùi về đó.
+test("settings Sheet có cookie thì thắng cấu hình tab Tải video", () => {
+  const got = resolveSheetCookieSource(
+    { cookiesFolder: "D:/ck-sheet" },
+    { cookiesFolder: "D:/ck-tab", cookiesFile: "D:/tab.txt" },
+  );
+  assert.equal(got.folder, "D:/ck-sheet");
+  assert.equal(got.file, null);
+  assert.equal(got.source, "sheet");
+});
+
+// cookiesFile không còn ô nhập trong UI (chỉ còn thư mục), nhưng giá trị cũ vẫn phải
+// dùng được: ai đang chạy bằng 1 file cookie mà mất sạch cookie sau khi cập nhật thì
+// coi như app tự làm hỏng cấu hình của họ.
+//
+// Sheet được lấy NGUYÊN CỤM: đặt file trong Sheet mà lại đi mượn thư mục của tab
+// Tải video thì không ai đoán được đang chạy bằng cookie nào.
+test("Sheet chỉ có file đơn (cấu hình cũ) thì vẫn dùng Sheet, không mượn thư mục của tab", () => {
+  const got = resolveSheetCookieSource(
+    { cookiesFile: "D:/sheet.txt" },
+    { cookiesFolder: "D:/ck-tab" },
+  );
+  assert.equal(got.folder, null);
+  assert.equal(got.file, "D:/sheet.txt");
+  assert.equal(got.source, "sheet");
+});
+
+test("settings Sheet trống thì lùi về cấu hình tab Tải video", () => {
+  const got = resolveSheetCookieSource(
+    { cookiesFolder: "  ", cookiesFile: "" },
+    { cookiesFolder: "D:/ck-tab", cookiesFile: "D:/tab.txt" },
+  );
+  assert.equal(got.folder, "D:/ck-tab");
+  assert.equal(got.file, "D:/tab.txt");
+  assert.equal(got.source, "download");
+});
+
+test("không nơi nào có cookie thì trả rỗng, tải trần chứ không ném lỗi", () => {
+  const got = resolveSheetCookieSource({}, {});
+  assert.deepEqual(got, { folder: null, file: null, source: "none" });
+  assert.deepEqual(resolveSheetCookieSource(null, null), { folder: null, file: null, source: "none" });
 });

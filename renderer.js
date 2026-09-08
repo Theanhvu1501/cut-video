@@ -980,11 +980,11 @@ async function loadSettings() {
           settings.download.thumbsFolder;
         // Removed folder path display
       }
+      // Ô chọn 1 file cookie đã bỏ khỏi UI (chỉ còn thư mục cookie), nhưng giá trị
+      // cũ vẫn giữ nguyên trong biến và được ghi lại khi lưu: người đang chạy bằng
+      // 1 file cookie không mất gì, app vẫn dùng file đó khi chưa chọn thư mục.
       if (settings.download.cookiesFile) {
         selectedDownloadCookiesFile = settings.download.cookiesFile;
-        document.getElementById("download-cookies-file").value =
-          settings.download.cookiesFile;
-        // Removed folder path display
       }
       if (settings.download.cookiesFolder) {
         selectedDownloadCookiesFolder = settings.download.cookiesFolder;
@@ -3291,33 +3291,6 @@ function clearDownloadThumbsFolder() {
   saveSettings();
 }
 
-async function selectDownloadCookiesFile() {
-  if (!checkElectronAPI()) return;
-  try {
-    const filePath = await window.electronAPI.selectFile({
-      filters: [
-        { name: "Text Files", extensions: ["txt"] },
-        { name: "All Files", extensions: ["*"] },
-      ],
-    });
-    if (filePath) {
-      selectedDownloadCookiesFile = filePath;
-      document.getElementById("download-cookies-file").value = filePath;
-      saveSettings();
-    }
-  } catch (error) {
-    console.error("Error selecting cookies file:", error);
-    alert("Lỗi khi chọn file: " + error.message);
-  }
-}
-
-function clearDownloadCookiesFile() {
-  selectedDownloadCookiesFile = null;
-  const input = document.getElementById("download-cookies-file");
-  if (input) input.value = "";
-  saveSettings();
-}
-
 async function selectDownloadCookiesFolder() {
   if (!checkElectronAPI()) return;
   const folder = await window.electronAPI.selectFolder();
@@ -5351,6 +5324,10 @@ async function runConcat() {
     $("sw-gpm-connect-all").style.display = on ? "" : "none";
   }
 
+  // Cấu hình cookie 1-file từ bản cũ. Không còn ô nhập, chỉ đọc lên rồi ghi lại
+  // nguyên vẹn để lần lưu tiếp theo không xoá mất cookie của người đang dùng nó.
+  let legacyCookiesFile = "";
+
   async function loadSettings() {
     const s = await api.loadSettings();
     $("sw-spreadsheet-id").value = s.spreadsheetId || "";
@@ -5370,7 +5347,29 @@ async function runConcat() {
     $("sw-gpm-tg-photo").checked = !!s.gpmTelegramPhoto;
     $("sw-gpm-tg-fields").style.display = s.gpmTelegramEnabled ? "" : "none";
     $("sw-yt-api-key").value = s.ytApiKey || "";
+    $("sw-cookies-folder").value = s.cookiesFolder || "";
+    // Ô chọn 1 file cookie đã bỏ khỏi UI (chỉ còn thư mục), nhưng giá trị cũ vẫn
+    // phải giữ và ghi lại: xoá đi là người đang chạy bằng 1 file cookie mất sạch
+    // cookie ngay lần lưu tiếp theo.
+    legacyCookiesFile = s.cookiesFile || "";
+    syncCookiesHint();
     syncGpmVisibility();
+  }
+
+  // Cho biết lượt tải sắp tới lấy cookie ở đâu — hai chỗ cấu hình cookie mà không
+  // nói rõ chỗ nào đang có tác dụng thì rất dễ sửa nhầm chỗ rồi tưởng app hỏng.
+  function syncCookiesHint() {
+    const hint = $("sw-cookies-hint");
+    if (!hint) return;
+    const folder = $("sw-cookies-folder").value.trim();
+    if (folder) {
+      hint.textContent =
+        'Đang dùng thư mục cookie riêng của Sheet. Xoá bằng nút × để quay lại cookie ở tab "Tải video".';
+    } else if (legacyCookiesFile) {
+      hint.textContent = `Đang dùng file cookie cũ đã cấu hình trước đây (${legacyCookiesFile}). Chọn thư mục để chuyển sang xoay vòng nhiều cookie.`;
+    } else {
+      hint.textContent = 'Để trống thì dùng cookie đã cấu hình ở tab "Tải video".';
+    }
   }
   function currentSettings() {
     return {
@@ -5390,6 +5389,11 @@ async function runConcat() {
       gpmTelegramTopicId: $("sw-gpm-tg-topic").value.trim(),
       gpmTelegramPhoto: $("sw-gpm-tg-photo").checked,
       ytApiKey: $("sw-yt-api-key").value.trim(),
+      // Trống = cố ý lùi về cookie ở tab "Tải video", nên phải ghi xuống chuỗi rỗng
+      // chứ không được bỏ khoá đi.
+      cookiesFolder: $("sw-cookies-folder").value.trim(),
+      // Không còn UI, chỉ chép lại nguyên giá trị đã lưu để không xoá mất cấu hình cũ.
+      cookiesFile: legacyCookiesFile,
     };
   }
 
@@ -5411,6 +5415,15 @@ async function runConcat() {
 
   $("sw-pick-cred")?.addEventListener("click", async () => {
     const p = await api.selectCredentials(); if (p) { $("sw-cred-path").value = p; await saveNow(); }
+  });
+  // Cookie riêng cho luồng Sheet. Dùng thẳng selectFolder/selectFile ở gốc
+  // electronAPI — cùng IPC mà tab "Tải video" đang dùng, khỏi thêm kênh sheet: mới.
+  $("sw-pick-cookies-folder")?.addEventListener("click", async () => {
+    const p = await window.electronAPI?.selectFolder();
+    if (p) { $("sw-cookies-folder").value = p; syncCookiesHint(); await saveNow(); }
+  });
+  $("sw-clear-cookies-folder")?.addEventListener("click", async () => {
+    $("sw-cookies-folder").value = ""; syncCookiesHint(); await saveNow();
   });
   $("sw-pick-root")?.addEventListener("click", async () => {
     const p = await api.selectRoot(); if (p) { $("sw-root").value = p; await saveNow(); }

@@ -12,6 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { toUnpackedPath } from "../sheet/render-core.js";
+import { jsRuntimeArg } from "../sheet/download-options.js";
 
 const REPO_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -105,5 +106,46 @@ test("bgutil phải đi đường extraResources, không qua files", () => {
   assert.ok(
     files.includes("!bin/bgutil/**"),
     "build.files phải loại bin/bgutil để không ship kèm bản đã bị lột node_modules",
+  );
+});
+
+// 4. --js-runtime nhận dạng RUNTIME[:PATH] và yt-dlp cắt ở dấu ":" ĐẦU TIÊN. Truyền
+//    đường dẫn trần "C:\...\node.exe" thì ổ đĩa thành tên runtime:
+//      WARNING: Ignoring unsupported JavaScript runtime(s): c
+//      [jsc] JS Challenge Providers: ... node (unavailable)
+//    Mất JS runtime thì YouTube trả về format cụt rồi chặn bot.
+//
+//    Bẫy ở chỗ lỗi này VÔ HÌNH khi chạy dev: getNodeExecutable trả về "node" (không
+//    có dấu ":") nên chỉ bản đóng gói mới dính — đúng loại lỗi file test này sinh ra
+//    để chặn. Trước đây download.js giữ một bản getNodeExecutable nhân bản và truyền
+//    thẳng kết quả, nên khi bản dùng chung được sửa thì nó bị bỏ quên.
+test("script spawn riêng phải bọc jsRuntimeArg quanh đường dẫn node", () => {
+  const pkg = readPkg();
+  const scripts = (pkg.build?.asarUnpack ?? []).filter((p) => p.endsWith(".js"));
+
+  const viPham = [];
+  for (const script of scripts) {
+    const full = path.join(REPO_ROOT, script);
+    if (!fs.existsSync(full)) continue;
+    const src = fs.readFileSync(full, "utf-8");
+
+    for (const m of src.matchAll(/jsRuntime:\s*([^,\n]+)/g)) {
+      const value = m[1].trim();
+      if (!value.includes("jsRuntimeArg(")) viPham.push(`${script}: jsRuntime: ${value}`);
+    }
+  }
+
+  assert.deepEqual(
+    viPham,
+    [],
+    `phải bọc jsRuntimeArg() để yt-dlp không đọc ổ đĩa thành tên runtime:\n${viPham.join("\n")}`,
+  );
+});
+
+// Ổ C: là ca thật đã gặp trên máy người dùng (app cài vào Program Files).
+test("jsRuntimeArg xử lý đúng đường dẫn ổ C: của bản cài đặt", () => {
+  assert.equal(
+    jsRuntimeArg("C:\\Program Files\\VidMaster\\resources\\app.asar.unpacked\\bin\\node.exe"),
+    "node:C:\\Program Files\\VidMaster\\resources\\app.asar.unpacked\\bin\\node.exe",
   );
 });

@@ -10,7 +10,7 @@ import { loadYtdlpSettings, parseExtractorArgs } from "./sheet/ytdlp-config.js";
 import { createCookiePool } from "./sheet/cookie-pool.js";
 import { downloadWithRetry } from "./sheet/download-retry.js";
 import { chunkIntoBatches } from "./sheet/download-batch.js";
-import { getBgutilPaths } from "./sheet/download-options.js";
+import { getBgutilPaths, getNodeExecutable, jsRuntimeArg } from "./sheet/download-options.js";
 
 // =================================================================
 // 0. CẤU HÌNH BAN ĐẦU
@@ -204,27 +204,6 @@ function normalizeProxy(raw) {
 }
 
 
-function getNodeExecutable() {
-  // Vì process được chạy độc lập, chúng ta kiểm tra đường dẫn thư mục hiện tại để biết đang chạy trong production hay không
-  const isPackaged = __dirname.includes('app.asar') || __dirname.includes('resources');
-
-  if (!isPackaged) return "node";
-
-  // Đường dẫn có thể có bin/node.exe dựa vào vị trí của app.asar.unpacked
-  const possiblePaths = [
-    path.join(__dirname, "bin", "node.exe"), // Nếu script chạy thẳng trong app.asar.unpacked
-    path.join(__dirname, "..", "bin", "node.exe"), // Trong trường hợp nằm trong thư mục con nào đó
-    path.join(__dirname, "..", "..", "bin", "node.exe") // Nếu cần lùi thêm cấp
-  ];
-
-  // Nếu tìm được file exe, trả về đường dẫn
-  for (const p of possiblePaths) {
-    if (fs.existsSync(p)) return p;
-  }
-
-  return "node";
-}
-
 /**
  * Tải một video YouTube duy nhất.
  */
@@ -257,7 +236,14 @@ const downloadVideo = async (url, outputPath, cookiesFile = COOKIES_FILE) => {
     limitRate: "2M",
     // addHeader: ["referer:youtube.com", "user-agent:googlebot"], // Bỏ comment nếu cần
     noOverwrites: true, // Không ghi đè nếu file đã tồn tại
-    jsRuntime: getNodeExecutable(),
+    // PHẢI qua jsRuntimeArg: yt-dlp đọc --js-runtime dạng RUNTIME[:PATH] và cắt ở
+    // dấu ":" đầu tiên, nên đường dẫn trần "C:\...\node.exe" bị hiểu thành runtime
+    // tên "c" -> "Ignoring unsupported JavaScript runtime(s): c" -> mất hẳn JS
+    // runtime -> YouTube trả về format cụt và chặn bot.
+    //
+    // Lỗi này CHỈ hiện ở bản đóng gói: chạy dev thì getNodeExecutable trả về "node",
+    // không có dấu ":" nên không bao giờ sai. Đó là lý do nó trốn được lâu.
+    jsRuntime: jsRuntimeArg(getNodeExecutable(__dirname)),
   };
 
   // Cookie hỏng/mất thì tải trần thay vì để yt-dlp chết vì --cookies trỏ vào hư không.
